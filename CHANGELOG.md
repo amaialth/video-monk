@@ -3,6 +3,27 @@
 Each entry says what changed, why it matters, and how to use or undo it. The full explanation of every part is in
 [docs/architecture.html](docs/architecture.html).
 
+## 0.5.0: production-grade delivery, voice and captions
+
+**Why:** a render that only "passes" is not yet a video you can upload. This release adds delivery tuning, voice treatment and caption hygiene,
+informed by the public video-editor-skills, claude-code-video-toolkit and awesome-claude-video-skills repos (ideas only; see THIRD_PARTY_NOTICES.md).
+
+### Added
+- **Delivery layer** (`src/delivery.js`): capped CRF with maxrate/bufsize per resolution and fps, High profile and level, BT.709 colour tags
+  written through x264 params, an explicit RGB to YUV BT.709 matrix for graphics (so brand colours stay accurate), targets `youtube`, `master`, `web`
+  (`delivery.target`), 320 kb/s AAC by default, and a warning for HDR sources. Verification now checks colour tags and the bitrate cap.
+- **Voice treatment** (`src/voice.js`, `--voice auto|on|off`): each spoken asset is measured for dullness and noise. Every voice gets high-pass, de-ess and gentle
+  compression; muffled voices get presence EQ; noisy rooms get a floor-matched denoise. Near-silent clips are never boosted. The report records what was applied.
+- **Caption hygiene**: cut-off fragments (`es--`), drawn-out fillers, stutters and stray punctuation are removed; `captions.fixes` takes `{replace, drop}`
+  for names and jargon; a lone short word joins the next page and pages stay on screen at least 0.9 s.
+- **Pace `relaxed`** for interviews and vlogs: keeps natural breathing room and removes only long dead air.
+
+### Changed
+- Caption pages hold longer by default (0.9 s minimum).
+
+### Not done yet
+Layout/contrast audit of rendered graphics, blurred-background fit and a `cutdown` command for 9:16 / 1:1, logo watermark, and a YOUTUBE.md package.
+
 ## 0.4.1: calm framing, content always visible
 
 **Why:** the picture zoomed in and out constantly behind panels (a punch-in on every other cut), and a panel covered the slide being explained.

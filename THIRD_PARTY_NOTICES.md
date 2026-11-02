@@ -43,6 +43,11 @@ bundles them under the same license. The fonts are unmodified and are not sold o
   derived from them (see `.../references/style-bytemonk.md`), not a verified description of the channel. No ByteMonk wording, branding,
   sponsor material or footage is included.
 
+## Production-quality practices
+
+Delivery, voice and caption practices were informed by `appariciojunior/video-editor-skills` (MIT), `digitalsamba/claude-code-video-toolkit` (MIT) and
+`zhuyansen/awesome-claude-video-skills`. They were read as references only; no code or prompt text was copied.
+
 ## Dev and runtime tools (not bundled)
 
 FFmpeg, Google Chrome / Chromium, whisper.cpp and its models, and the Claude Code CLI are separate programs under

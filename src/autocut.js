@@ -45,6 +45,8 @@ export function refineWords(words, silences, duration = Infinity) {
 
 // Pace presets. `noiseDb: 'auto'` measures this recording's own noise floor and speech level (see chooseNoiseDb).
 export const PACE = {
+  // relaxed: interviews, vlogs and conversation, where breathing room is part of the voice. Only long dead air goes.
+  relaxed: { noiseDb: 'auto', minSilence: 0.7, padBefore: 0.12, padAfter: 0.25, mergeGap: 0.25, trim: true, quiet: null },
   natural: { noiseDb: -35, minSilence: 0.35, padBefore: 0.08, padAfter: 0.14, mergeGap: 0.12, trim: false, quiet: null },
   tight: { noiseDb: 'auto', minSilence: 0.15, padBefore: 0.05, padAfter: 0.08, mergeGap: 0.06, trim: true, quiet: { aboveDb: 3, minLen: 0.3 } },
   extra: { noiseDb: 'auto+2', minSilence: 0.1, padBefore: 0.04, padAfter: 0.06, mergeGap: 0.04, trim: true, quiet: { aboveDb: 4, minLen: 0.25 } }
@@ -266,7 +268,7 @@ export async function materializeEdit(context, ranges, output, execute = run) {
       ...(speed !== 1 ? { speed } : {}), fit: options.fit || 'cover', audio: {}, purpose: `Speech segment ${i + 1} (auto-cut ${r.in.toFixed(2)}–${r.out.toFixed(2)}s)`,
       ...(zoomPlan[i] ? { motion: { type: 'punch-in', amount: 0.06 } } : {})
     })),
-    audio: { ducking: { enabled: true, amountDb: style.audio.duckingDb } },
+    audio: { ducking: { enabled: true, amountDb: style.audio.duckingDb }, voice: { enhance: options.voice || 'auto' } },
     notes: `style: ${style.name}`,
     delivery: { targetLufs: options.targetLufs ?? -14, truePeak: -1 }
   };

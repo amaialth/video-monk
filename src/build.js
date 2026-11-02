@@ -1,7 +1,7 @@
 // Version 2 build pipeline: motion graphics (headless Chrome) -> per-scene composites (FFmpeg) ->
 // transition joins -> audio mix with ducking -> loudness mastering -> final encode -> verified deliverables.
 import path from 'node:path';
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { exists, readJson, run, writeJson, writeNew } from './core.js';
 import { inspectMedia, digest } from './production.js';
@@ -9,6 +9,8 @@ import { loadTimeline, chapters } from './timeline.js';
 import { MotionRenderer, pool, resolveTheme } from './motion/render.js';
 import { pageWords, pagesToSrt, pagesToVtt } from './captions.js';
 import { markStress } from './stress.js';
+import { RGB_TO_YUV, videoArgs, hdrInfo, sourceColorFix } from './delivery.js';
+import { measureVoice, voiceChain, describeVoice } from './voice.js';
 import { Library, textPreview } from './library.js';
 
 const fail = message => { throw new Error(`Build: ${message}`); };
@@ -104,6 +106,27 @@ export async function buildTimeline(file, approval, output, options = {}) {
   await mkdir(path.join(output, 'stems'), { recursive: true });
   const started = Date.now();
 
+  const warnings = [];
+  for (const asset of assets.values()) {
+    const info = asset.kind === 'video' ? hdrInfo(asset.metadata.video) : null;
+    if (info?.hdr) { warnings.push(`hdr-source: ${asset.id} is HDR (${info.transfer}); it will look flat and dim as SDR. Convert it to SDR BT.709 before editing.`); log(`  Warning: ${warnings.at(-1)}`); }
+  }
+
+  // Voice treatment: measure each spoken source once, treat only what it needs (see voice.js).
+  const voiceMode = m.audio?.voice?.enhance ?? 'auto';
+  const voiceChains = new Map();
+  const voiceReport = {};
+  if (voiceMode !== 'off') {
+    const spoken = new Set([...(m.audio?.narration ? [m.audio.narration.asset] : []), ...timeline.filter(t => t.scene.audio).map(t => t.scene.asset)]);
+    for (const id of spoken) {
+      const profile = await measureVoice(assets.get(id).path, execute);
+      const chain = voiceChain(profile, voiceMode);
+      voiceChains.set(id, chain);
+      voiceReport[id] = { ...profile, treatment: describeVoice(profile, chain) };
+      log(`  Voice ${id}: ${voiceReport[id].treatment}`);
+    }
+  }
+
   // 1. Motion graphics
   const jobs = [];
   for (const t of timeline) {
@@ -188,8 +211,9 @@ export async function buildTimeline(file, approval, output, options = {}) {
     else if (s.kind === 'image') add(['-loop', '1', '-framerate', String(m.fps), '-t', sec(s.duration), '-i', asset.path]);
     else if (s.kind === 'graphic') add(['-framerate', String(m.fps), '-i', rendered.get(`g${t.index}`).pattern]);
     else add(['-f', 'lavfi', '-i', `color=c=${hex(s.color)}:s=${m.width}x${m.height}:r=${m.fps}:d=${sec(s.duration)}`]);
-    const baseFit = s.kind === 'graphic' ? `fps=${m.fps},setsar=1` : fitChain(m, s.fit, s.motion, t.frames, speed);
-    graph.push(`[0:v]${baseFit},tpad=stop_mode=clone:stop_duration=2,trim=end_frame=${t.frames},setpts=PTS-STARTPTS,format=yuv444p[l0]`);
+    const baseFit = s.kind === 'graphic' ? `fps=${m.fps},setsar=1` : (s.kind === 'video' ? sourceColorFix(asset.metadata.video) : '') + fitChain(m, s.fit, s.motion, t.frames, speed);
+    // Graphic scenes come from RGB PNGs: convert with an explicit BT.709 matrix instead of FFmpeg's BT.601 default.
+    graph.push(`[0:v]${baseFit},tpad=stop_mode=clone:stop_duration=2,trim=end_frame=${t.frames},setpts=PTS-STARTPTS,${s.kind === 'graphic' ? `${RGB_TO_YUV},` : ''}format=yuv444p[l0]`);
     let current = 'l0';
     t.broll.forEach((b, i) => {
       const ba = assets.get(b.asset);
@@ -203,7 +227,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
     });
     t.overlays.forEach((o, i) => {
       const idx = add(['-framerate', String(m.fps), '-i', rendered.get(`o${t.index}-${i}`).pattern]);
-      graph.push(`[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${sec(o.start)}/TB[o${i}]`);
+      graph.push(`[${idx}:v]format=rgba,${RGB_TO_YUV},format=yuva444p,setpts=PTS-STARTPTS+${sec(o.start)}/TB[o${i}]`);
       graph.push(`[${current}][o${i}]overlay=eof_action=pass:format=yuv444:enable='between(t,${sec(o.start)},${sec(o.start + o.duration - 0.5 / m.fps)})'[lo${i}]`);
       current = `lo${i}`;
     });
@@ -213,7 +237,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
       const fadeIn = s.audio.fadeIn ?? Math.max(0.012, timeline[t.index - 1]?.transition?.duration ?? 0);
       const fadeOut = s.audio.fadeOut ?? Math.max(0.012, t.transition?.duration ?? 0);
       await ffmpeg(['-ss', sec(s.in ?? 0), '-t', sec(s.duration * speed + 0.2), '-i', asset.path, '-vn',
-        '-af', `${speed === 1 ? '' : `atempo=${speed},`}aresample=48000,aformat=channel_layouts=stereo,volume=${s.audio.gainDb ?? 0}dB,apad,atrim=0:${sec(s.duration)},` +
+        '-af', `${speed === 1 ? '' : `atempo=${speed},`}aresample=48000,aformat=channel_layouts=stereo,${voiceChains.get(s.asset) ? `${voiceChains.get(s.asset)},` : ''}volume=${s.audio.gainDb ?? 0}dB,apad,atrim=0:${sec(s.duration)},` +
           `afade=t=in:d=${sec(fadeIn)},afade=t=out:st=${sec(Math.max(0, s.duration - fadeOut))}:d=${sec(fadeOut)}`,
         '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s24le', `scene-${pad3(t.index + 1)}.wav`], execute, work);
     }
@@ -243,7 +267,8 @@ export async function buildTimeline(file, approval, output, options = {}) {
   if (audio.narration) {
     const i = aAdd(['-i', assets.get(audio.narration.asset).path]);
     const delay = Math.round((audio.narration.start ?? 0) * 1000);
-    ag.push(`[${i}:a]${norm},volume=${audio.narration.gainDb ?? 0}dB,adelay=${delay}:all=1[n0]`);
+    const nv = voiceChains.get(audio.narration.asset);
+    ag.push(`[${i}:a]${norm},${nv ? `${nv},` : ''}volume=${audio.narration.gainDb ?? 0}dB,adelay=${delay}:all=1[n0]`);
     voiceParts.push('[n0]');
   }
   for (const t of timeline) {
@@ -374,15 +399,15 @@ export async function buildTimeline(file, approval, output, options = {}) {
   if (overlaysFinal.length) fg.push(`[${cur}]format=yuv444p[base]`), cur = 'base';
   overlaysFinal.forEach((o, k) => {
     const i = fAdd(['-framerate', String(m.fps), '-i', rendered.get(o.key).pattern]);
-    fg.push(`[${i}:v]format=rgba,setpts=PTS-STARTPTS+${sec(o.start)}/TB[g${k}]`);
+    fg.push(`[${i}:v]format=rgba,${RGB_TO_YUV},format=yuva444p,setpts=PTS-STARTPTS+${sec(o.start)}/TB[g${k}]`);
     fg.push(`[${cur}][g${k}]overlay=eof_action=pass:format=yuv444:enable='between(t,${sec(o.start)},${sec(o.start + o.duration - 0.5 / m.fps)})'[go${k}]`);
     cur = `go${k}`;
   });
   fg.push(`[${cur}]format=yuv420p[vout]`);
   const videoFile = path.join(work, 'video.mp4');
-  await ffmpeg([...fIn, '-filter_complex', fg.join(';'), '-map', '[vout]', '-an', '-frames:v', String(totalFrames),
-    '-c:v', 'libx264', '-preset', draft ? 'veryfast' : target.preset, '-crf', String(draft ? 26 : target.crf), '-pix_fmt', 'yuv420p',
-    '-r', String(m.fps), '-g', String(m.fps * 2), videoFile], execute, work);
+  // Capped CRF, High profile, closed GOPs and BT.709 tags (see delivery.js); the target comes from manifest.delivery.target.
+  const encoder = videoArgs({ width: m.width, height: m.height, fps: m.fps, delivery: { ...m.delivery, ...loaded.delivery, maxrateMbps: loaded.delivery.maxrateMbps }, draft });
+  await ffmpeg([...fIn, '-filter_complex', fg.join(';'), '-map', '[vout]', '-an', '-frames:v', String(totalFrames), ...encoder.args, videoFile], execute, work);
   const finalFile = path.join(output, 'final.mp4');
   const mux = () => ffmpeg(['-i', videoFile, '-i', master, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', `${target.audioBitrate}k`,
     '-ar', '48000', '-movflags', '+faststart', '-metadata', `title=${m.title}`, '-shortest', finalFile], execute, work);
@@ -436,7 +461,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
       thumbnail: 'thumbnail.png', contactSheet: 'contact-sheet.png', stems: ['stems/voice.wav', 'stems/music.wav', 'stems/sfx.wav', 'stems/master.wav'],
       resolveTimeline: 'timeline.xml' },
     timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters, splitLayouts: splitCount },
-    library: libraryStats,
+    library: libraryStats, warnings, voice: voiceReport,
     verification,
     humanReview: { facts: 'NOT VERIFIED', captionsWording: captionPages ? 'NOT VERIFIED' : 'N/A', rights: 'USER ATTESTED', wholeVideoPlayback: 'NOT VERIFIED' },
     credits
@@ -494,6 +519,10 @@ export async function verifyMedia(media, loaded, execute = run) {
   await execute(tool('ffmpeg'), ['-v', 'error', '-nostdin', '-i', media, '-f', 'null', '-'], { timeout: 6 * 3600_000 });
   const loud = await measureLoudness(media, execute, loaded.delivery);
   const silent = !(loud.input_i > -70);
+  const v = info.video || {};
+  const tagged = [v.color_space, v.color_transfer, v.color_primaries];
+  const cap = videoArgs({ width: m.width, height: m.height, fps: m.fps, delivery: { target: loaded.delivery.target, maxrateMbps: loaded.delivery.maxrateMbps } }).capMbps;
+  const totalMbps = (await stat(media)).size * 8 / Math.max(0.1, info.duration) / 1e6;
   const checks = {
     decode: 'PASS',
     dimensions: info.video?.width === m.width && info.video?.height === m.height ? 'PASS' : 'FAIL',
@@ -501,12 +530,14 @@ export async function verifyMedia(media, loaded, execute = run) {
     duration: Math.abs(info.duration - loaded.duration) <= 2 / m.fps + 0.05 ? 'PASS' : 'FAIL',
     audioPresent: info.audio ? 'PASS' : 'FAIL',
     loudness: silent ? 'SILENT' : Math.abs(loud.input_i - loaded.delivery.targetLufs) <= 1 ? 'PASS' : 'FAIL',
-    truePeak: silent ? 'SILENT' : loud.input_tp <= loaded.delivery.truePeak + 0.3 ? 'PASS' : 'FAIL'
+    truePeak: silent ? 'SILENT' : loud.input_tp <= loaded.delivery.truePeak + 0.3 ? 'PASS' : 'FAIL',
+    colorTags: tagged.every(x => x === 'bt709') ? 'PASS' : tagged.every(x => !x || x === 'unknown') ? 'NOT TAGGED' : 'FAIL',
+    bitrate: cap ? (totalMbps <= (cap + loaded.delivery.audioBitrate / 1000) * 1.3 ? 'PASS' : 'FAIL') : 'UNCAPPED'
   };
   return {
     passed: !Object.values(checks).includes('FAIL'), checks, sha256: await digest(media),
     measured: { width: info.video?.width, height: info.video?.height, fps, duration: info.duration,
-      integratedLufs: silent ? null : loud.input_i, truePeakDb: silent ? null : loud.input_tp },
+      integratedLufs: silent ? null : loud.input_i, truePeakDb: silent ? null : loud.input_tp, totalMbps: Math.round(totalMbps * 10) / 10, capMbps: cap },
     targets: { integratedLufs: loaded.delivery.targetLufs, toleranceLu: 1, maxTruePeakDb: loaded.delivery.truePeak }
   };
 }

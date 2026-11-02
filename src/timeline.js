@@ -7,7 +7,8 @@ import { exists, run } from './core.js';
 import { inspectMedia, digest } from './production.js';
 import { TEMPLATES, validateProps } from './motion/templates.js';
 import { PLACEMENTS } from './motion/render.js';
-import { validateWords } from './captions.js';
+import { validateWords, cleanCaptionWords } from './captions.js';
+import { resolveDelivery } from './delivery.js';
 
 export const RATES = [24, 25, 30, 50, 60];
 export const TRANSITIONS = ['fade', 'fadeblack', 'fadewhite', 'dissolve', 'wipeleft', 'wiperight', 'wipeup', 'wipedown',
@@ -194,7 +195,11 @@ export async function loadTimeline(file, execute = run) {
 
   // Audio
   const audio = m.audio || {};
-  keys(audio, ['narration', 'music', 'sfx', 'ducking'], 'audio');
+  keys(audio, ['narration', 'music', 'sfx', 'ducking', 'voice'], 'audio');
+  if (audio.voice !== undefined) {
+    keys(audio.voice, ['enhance'], 'audio.voice');
+    check(['auto', 'on', 'off'].includes(audio.voice.enhance), 'audio.voice.enhance must be auto (measure, treat only what is needed), on (always EQ) or off');
+  }
   const audioAsset = (id, label) => { const a = assets.get(id); check(a?.kind === 'audio', `${label} must reference an audio asset`); return a; };
   if (audio.narration) {
     keys(audio.narration, ['asset', 'gainDb', 'start'], 'audio.narration');
@@ -227,13 +232,17 @@ export async function loadTimeline(file, execute = run) {
   // Captions
   let words = null;
   if (m.captions !== undefined) {
-    keys(m.captions, ['words', 'style', 'position', 'maxWords', 'maxChars', 'burnIn'], 'captions');
+    keys(m.captions, ['words', 'style', 'position', 'maxWords', 'maxChars', 'burnIn', 'fixes'], 'captions');
     check(typeof m.captions.words === 'string', 'captions.words must be a path to a timeline-relative words.json');
     const wordsFile = local(m.captions.words);
     check(await exists(wordsFile), `captions words file not found: ${wordsFile}`);
     const wordsRaw = await readFile(wordsFile);
     fingerprint.update(wordsRaw);
     words = validateWords(JSON.parse(wordsRaw), duration, 'captions.words');
+    const fixes = m.captions.fixes;
+    check(fixes === undefined || (fixes && typeof fixes === 'object' && !Array.isArray(fixes) && (fixes.drop === undefined || Array.isArray(fixes.drop)) && (fixes.replace === undefined || (fixes.replace && typeof fixes.replace === 'object'))), 'captions.fixes must be { replace: {from: to}, drop: [phrases] }');
+    words = cleanCaptionWords(words, fixes || {});
+    check(words.length > 0, 'captions have no words left after cleaning');
     check(opt(m.captions.style, v => ['kinetic', 'karaoke', 'phrase', 'plain'].includes(v)), 'captions.style must be kinetic, karaoke, phrase or plain');
     check(opt(m.captions.position, v => ['bottom', 'center', 'top'].includes(v)), 'captions.position must be bottom, center or top');
     check(opt(m.captions.maxWords, v => Number.isInteger(v) && v >= 1 && v <= 16), 'captions.maxWords must be 1-16');
@@ -249,11 +258,14 @@ export async function loadTimeline(file, execute = run) {
   }
 
   const delivery = m.delivery || {};
-  keys(delivery, ['targetLufs', 'truePeak', 'crf', 'preset', 'thumbnail', 'audioBitrate'], 'delivery');
+  keys(delivery, ['target', 'targetLufs', 'truePeak', 'crf', 'preset', 'thumbnail', 'audioBitrate', 'maxrateMbps'], 'delivery');
+  check(opt(delivery.target, v => ['youtube', 'master', 'web'].includes(v)), 'delivery.target must be youtube, master or web');
+  check(opt(delivery.maxrateMbps, v => finite(v, 1, 200)), 'delivery.maxrateMbps must be 1-200');
   check(opt(delivery.targetLufs, v => finite(v, -30, -5)) && opt(delivery.truePeak, v => finite(v, -9, 0)), 'delivery LUFS (-30..-5) / truePeak (-9..0) out of range');
   check(opt(delivery.crf, v => Number.isInteger(v) && v >= 0 && v <= 35), 'delivery.crf must be 0-35');
   check(opt(delivery.preset, v => ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower'].includes(v)), 'delivery.preset invalid');
   check(opt(delivery.audioBitrate, v => [128, 160, 192, 256, 320].includes(v)), 'delivery.audioBitrate must be 128/160/192/256/320');
+  const resolved = resolveDelivery(delivery);
   if (delivery.thumbnail !== undefined) {
     keys(delivery.thumbnail, ['time', 'template', 'props'], 'delivery.thumbnail');
     if (delivery.thumbnail.template) validateProps(delivery.thumbnail.template, delivery.thumbnail.props ?? {}, 'delivery.thumbnail.props');
@@ -263,8 +275,8 @@ export async function loadTimeline(file, execute = run) {
   for (const f of extraFiles) fingerprint.update(await digest(f));
   return {
     manifest: m, base, assets, timeline, duration, totalFrames, font, words,
-    delivery: { targetLufs: delivery.targetLufs ?? -14, truePeak: delivery.truePeak ?? -1, crf: delivery.crf ?? 18,
-      preset: delivery.preset ?? 'medium', audioBitrate: delivery.audioBitrate ?? 192, thumbnail: delivery.thumbnail },
+    delivery: { target: resolved.target, targetLufs: resolved.lufs, truePeak: resolved.truePeak, crf: resolved.crf, preset: resolved.preset, audioBitrate: resolved.audioKbps,
+      maxrateMbps: delivery.maxrateMbps, thumbnail: delivery.thumbnail },
     fingerprint: fingerprint.digest('hex')
   };
 }
