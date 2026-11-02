@@ -10,8 +10,8 @@ const citation = str(160);
 
 export const TEMPLATES = {
   title: {
-    description: 'Kinetic title card: kicker, staggered title words, accent rule and subtitle.',
-    schema: { kicker: str(60), title: str(90, true), subtitle: str(140), align: { type: 'enum', values: ['center', 'left'] } },
+    description: 'Kinetic title card: kicker, mask-revealed headline with *stressed* words in italic serif, accent rule, subtitle.',
+    schema: { kicker: str(60), title: str(110, true), subtitle: str(140), align: { type: 'enum', values: ['center', 'left'] } },
     render(root, props, ctx, VM) {
       const left = props.align === 'left';
       const wrap = VM.el('div', { style: { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column',
@@ -19,13 +19,8 @@ export const TEMPLATES = {
         padding: (ctx.u * 8) + 'px' } }, root);
       const kicker = props.kicker ? VM.el('div', { style: { color: ctx.theme.accent, fontWeight: '700', letterSpacing: '0.18em',
         textTransform: 'uppercase', fontSize: (ctx.u * 3.2) + 'px', marginBottom: (ctx.u * 2.5) + 'px' } }, wrap, props.kicker) : null;
-      const title = VM.el('div', { style: { fontWeight: '800', lineHeight: '1.05', maxWidth: (ctx.w - ctx.u * 16) + 'px' } }, wrap);
-      const words = props.title.split(/\s+/).map(word => {
-        const outer = VM.el('span', { style: { display: 'inline-block', overflow: 'hidden', verticalAlign: 'bottom', paddingBottom: '0.08em' } }, title);
-        const inner = VM.el('span', { style: { display: 'inline-block' } }, outer, word);
-        title.appendChild(document.createTextNode(' '));
-        return inner;
-      });
+      const title = VM.el('div', { style: { fontWeight: '800', lineHeight: '1.06', letterSpacing: '-0.025em', maxWidth: (ctx.w - ctx.u * 16) + 'px' } }, wrap);
+      const words = VM.words(title, props.title, { stressColor: ctx.theme.accent });
       VM.fit(title, ctx.w - ctx.u * 16, ctx.u * 11, ctx.u * 4, ctx.h * 0.5);
       const rule = VM.el('div', { style: { height: (ctx.u * 0.8) + 'px', background: ctx.theme.accent, borderRadius: '99px',
         marginTop: (ctx.u * 3) + 'px', width: (ctx.u * 18) + 'px', transformOrigin: left ? 'left' : 'center' } }, wrap);
@@ -34,7 +29,12 @@ export const TEMPLATES = {
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.4, 0.4)) : 1;
         if (kicker) VM.set(kicker, { opacity: VM.r(VM.tw(t, 0, 0.4, 0, 1) * out), transform: 'translateY(' + VM.r(VM.tw(t, 0, 0.5, ctx.u * 2, 0)) + 'px)' });
-        words.forEach((w, i) => VM.set(w, { transform: 'translateY(' + VM.r(VM.tw(t, 0.15 + i * 0.07, 0.55, 110, 0, 'expo') + (1 - out) * -110) + '%)' }));
+        words.forEach((w, i) => {
+          const k = VM.ease.expo(VM.p(t, 0.12 + i * 0.055, 0.6));
+          // mask rise for every word; stressed words also focus-pull (blur-in) so they read as the beat.
+          VM.set(w.inner, { transform: 'translateY(' + VM.r((1 - k) * 112 + (1 - out) * -112) + '%)',
+            filter: w.stress ? 'blur(' + VM.r((1 - VM.ease.out(VM.p(t, 0.12 + i * 0.055, 0.5))) * ctx.u * 0.9) + 'px)' : 'none' });
+        });
         VM.set(rule, { transform: 'scaleX(' + VM.r(VM.tw(t, 0.35, 0.6, 0, 1, 'inOut') * out) + ')' });
         if (sub) VM.set(sub, { opacity: VM.r(VM.tw(t, 0.55, 0.5, 0, 1) * out) });
       };
@@ -43,15 +43,16 @@ export const TEMPLATES = {
 
   chapter: {
     description: 'Section bumper with large chapter number and name.',
-    schema: { number: str(6, true), title: str(70, true), subtitle: str(120) },
+    schema: { number: str(6, true), title: str(80, true), subtitle: str(120) },
     render(root, props, ctx, VM) {
       const wrap = VM.el('div', { style: { position: 'absolute', inset: '0', display: 'flex', alignItems: 'center',
-        gap: (ctx.u * 5) + 'px', padding: (ctx.u * 10) + 'px', flexDirection: ctx.portrait ? 'column' : 'row', justifyContent: 'center' } }, root);
+        gap: (ctx.u * 5) + 'px', padding: (ctx.u * 10) + 'px', flexDirection: ctx.narrow ? 'column' : 'row', justifyContent: 'center' } }, root);
       const n = VM.el('div', { style: { fontSize: (ctx.u * 26) + 'px', fontWeight: '900', color: 'transparent',
         WebkitTextStroke: (ctx.u * 0.35) + 'px ' + ctx.theme.accent, lineHeight: '1' } }, wrap, props.number);
-      const col = VM.el('div', { style: { display: 'flex', flexDirection: 'column', gap: (ctx.u * 1.5) + 'px', textAlign: ctx.portrait ? 'center' : 'left' } }, wrap);
-      const tt = VM.el('div', { style: { fontWeight: '800', maxWidth: (ctx.w * 0.6) + 'px' } }, col, props.title);
-      VM.fit(tt, ctx.portrait ? ctx.w * 0.85 : ctx.w * 0.6, ctx.u * 8, ctx.u * 3.5, ctx.h * 0.4);
+      const col = VM.el('div', { style: { display: 'flex', flexDirection: 'column', gap: (ctx.u * 1.5) + 'px', textAlign: ctx.narrow ? 'center' : 'left' } }, wrap);
+      const tt = VM.el('div', { style: { fontWeight: '800', letterSpacing: '-0.025em', maxWidth: (ctx.w * 0.6) + 'px' } }, col);
+      VM.rich(tt, props.title, { stressColor: ctx.theme.accent });
+      VM.fit(tt, ctx.narrow ? ctx.w * 0.85 : ctx.w * 0.6, ctx.u * 8, ctx.u * 3.5, ctx.h * 0.4);
       const st = props.subtitle ? VM.el('div', { style: { color: ctx.theme.muted, fontSize: (ctx.u * 3.4) + 'px' } }, col, props.subtitle) : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.4, 0.4)) : 1;
@@ -86,32 +87,70 @@ export const TEMPLATES = {
   },
 
   'kinetic-text': {
-    description: 'Large emphasis text revealed word by word; emphasis words take the accent color.',
-    schema: { text: str(140, true), emphasis: { type: 'array', items: str(40), maxItems: 10 },
-      mode: { type: 'enum', values: ['build', 'sequence'] }, position: { type: 'enum', values: ['center', 'top', 'bottom'] } },
+    description: 'Large pull-text revealed word by word (mask rise / blur-in / pop). *Stressed* words switch to italic serif in the accent colour. Optional cues land each word on its spoken time.',
+    schema: { text: str(160, true), emphasis: { type: 'array', items: str(40), maxItems: 12 },
+      reveal: { type: 'enum', values: ['mask', 'blur', 'pop'] }, mode: { type: 'enum', values: ['build', 'sequence'] },
+      position: { type: 'enum', values: ['center', 'top', 'bottom'] }, align: { type: 'enum', values: ['center', 'left'] },
+      cues: { type: 'array', maxItems: 40, items: num(true, 0, 3600) } },
     render(root, props, ctx, VM) {
-      const emph = new Set((props.emphasis || []).map(w => w.toLowerCase()));
       const pos = props.position || 'center';
-      const wrap = VM.el('div', { style: { position: 'absolute', inset: '0', display: 'flex', padding: (ctx.u * 8) + 'px',
-        alignItems: pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center', justifyContent: 'center' } }, root);
-      const line = VM.el('div', { style: { fontWeight: '900', textAlign: 'center', lineHeight: '1.08', textShadow: '0 0.06em 0.25em rgba(0,0,0,0.45)' } }, wrap);
-      const words = props.text.split(/\s+/).map(word => {
-        const key = word.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
-        const span = VM.el('span', { style: { display: 'inline-block', color: emph.has(key) ? ctx.theme.accent : ctx.theme.text } }, line, word);
-        line.appendChild(document.createTextNode(' '));
-        return span;
-      });
-      VM.fit(line, ctx.w - ctx.u * 16, ctx.u * 12, ctx.u * 4, ctx.h * 0.7);
+      const left = props.align === 'left';
+      const reveal = props.reveal || 'mask';
+      const wrap = VM.el('div', { style: { position: 'absolute', inset: '0', display: 'flex', padding: (ctx.u * 4) + 'px',
+        alignItems: pos === 'top' ? 'flex-start' : pos === 'bottom' ? 'flex-end' : 'center', justifyContent: left ? 'flex-start' : 'center' } }, root);
+      const line = VM.el('div', { style: { fontWeight: '800', textAlign: left ? 'left' : 'center', lineHeight: '1.08', letterSpacing: '-0.025em' } }, wrap);
+      const markup = VM.stressify(props.text, props.emphasis);
+      const words = VM.words(line, markup, { stressColor: ctx.theme.accent, mask: reveal === 'mask' });
+      VM.fit(line, ctx.w - ctx.u * 8, ctx.strip ? ctx.h * 0.46 : ctx.u * 12, ctx.strip ? ctx.h * 0.2 : ctx.u * 3.4, ctx.h - ctx.u * (ctx.strip ? 2 : 8));
+      const cues = props.cues && props.cues.length === words.length ? props.cues : null;
       const span = Math.max(0.3, ctx.duration - 0.6);
-      const step = Math.min(0.45, span * 0.7 / words.length);
+      const step = Math.min(0.07, span * 0.7 / words.length);
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.3, 0.3)) : 1;
         words.forEach((w, i) => {
-          const start = i * step;
-          let k = VM.ease.back(VM.p(t, start, 0.35));
-          if (props.mode === 'sequence' && i < words.length - 1) k = Math.min(k, 1 - VM.p(t, start + step, 0.12));
-          VM.set(w, { opacity: VM.r(VM.clamp(k) * out), transform: 'translateY(' + VM.r((1 - k) * 0.4) + 'em) scale(' + VM.r(0.85 + 0.15 * k) + ')',
-            display: props.mode === 'sequence' && k <= 0 && t > start ? 'none' : 'inline-block' });
+          const start = cues ? cues[i] : i * Math.max(step, 0.07);
+          const e = VM.ease.expo(VM.p(t, start, reveal === 'pop' ? 0.35 : 0.55));
+          const k = reveal === 'pop' ? VM.ease.back(VM.p(t, start, 0.35)) : e;
+          const style = { opacity: VM.r(VM.clamp(reveal === 'mask' ? 1 : k * 1.4) * out) };
+          if (reveal === 'mask') style.transform = 'translateY(' + VM.r((1 - e) * 112 + (1 - out) * -112) + '%)';
+          else if (reveal === 'blur') { style.transform = 'translateY(' + VM.r((1 - e) * 0.3) + 'em)'; style.filter = 'blur(' + VM.r((1 - e) * ctx.u * 1.1) + 'px)'; }
+          else style.transform = 'translateY(' + VM.r((1 - k) * 0.4) + 'em) scale(' + VM.r(0.85 + 0.15 * k) + ')';
+          if (w.stress && reveal === 'mask') style.filter = 'blur(' + VM.r((1 - VM.ease.out(VM.p(t, start, 0.45))) * ctx.u * 0.9) + 'px)';
+          VM.set(w.inner, style);
+          if (reveal !== 'mask') VM.set(w.outer, { display: props.mode === 'sequence' && k <= 0 && t > start ? 'none' : 'inline-block' });
+        });
+      };
+    }
+  },
+
+  term: {
+    description: 'Definition card: a category pill, the term in large type, and its definition revealed word by word (use *stress* for the key word).',
+    schema: { term: str(60, true), definition: str(190, true), category: str(28), icon: iconName, cues: { type: 'array', maxItems: 60, items: num(true, 0, 3600) } },
+    render(root, props, ctx, VM) {
+      const wrap = VM.el('div', { style: { position: 'absolute', inset: '0', display: 'flex', flexDirection: 'column', justifyContent: 'center',
+        padding: (ctx.u * 9) + 'px', gap: (ctx.u * 2.2) + 'px' } }, root);
+      const pill = VM.el('div', { style: { alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: (ctx.u * 1.2) + 'px', color: ctx.theme.accent,
+        border: '1.5px solid ' + VM.hexToRgba(ctx.theme.accent, 0.6), borderRadius: '99px', padding: (ctx.u * 0.7) + 'px ' + (ctx.u * 2) + 'px',
+        fontWeight: '700', letterSpacing: '0.14em', textTransform: 'uppercase', fontSize: (ctx.u * 2.5) + 'px' } }, wrap);
+      if (props.icon) VM.icon(props.icon, ctx.u * 3, ctx.theme.accent, pill);
+      VM.el('span', {}, pill, props.category || 'Definition');
+      const termLine = VM.el('div', { style: { fontWeight: '800', lineHeight: '1.04', letterSpacing: '-0.03em' } }, wrap);
+      const termWords = VM.words(termLine, '*' + props.term.replace(/\*/g, '') + '*', { stressColor: ctx.theme.text });
+      termWords.forEach(w => { w.inner.style.fontSize = '1.22em'; });
+      VM.fit(termLine, ctx.w - ctx.u * 18, ctx.u * 15, ctx.u * 6, ctx.h * 0.35);
+      const rule = VM.el('div', { style: { height: (ctx.u * 0.7) + 'px', width: (ctx.u * 14) + 'px', background: ctx.theme.accent, borderRadius: '99px', transformOrigin: 'left' } }, wrap);
+      const def = VM.el('div', { style: { fontSize: (ctx.u * 4.4) + 'px', lineHeight: '1.3', color: ctx.theme.text, maxWidth: (ctx.w - ctx.u * 18) + 'px', fontWeight: '500' } }, wrap);
+      const defWords = VM.words(def, props.definition, { stressColor: ctx.theme.accent, mask: false });
+      VM.fit(def, ctx.w - ctx.u * 18, ctx.u * 4.4, ctx.u * 2.6, ctx.h * 0.4);
+      const cues = props.cues && props.cues.length === defWords.length ? props.cues : null;
+      return t => {
+        const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
+        VM.set(pill, { opacity: VM.r(VM.tw(t, 0, 0.3, 0, 1) * out), transform: 'translateY(' + VM.r(VM.tw(t, 0, 0.45, ctx.u * 1.5, 0)) + 'px)' });
+        termWords.forEach((w, i) => VM.set(w.inner, { transform: 'translateY(' + VM.r((1 - VM.ease.expo(VM.p(t, 0.1 + i * 0.07, 0.6))) * 112 + (1 - out) * -112) + '%)' }));
+        VM.set(rule, { transform: 'scaleX(' + VM.r(VM.tw(t, 0.4, 0.5, 0, 1, 'inOut') * out) + ')' });
+        defWords.forEach((w, i) => {
+          const start = cues ? cues[i] : 0.55 + i * 0.045;
+          VM.set(w.inner, { opacity: VM.r(VM.tw(t, start, 0.25, 0, 1) * out), transform: 'translateY(' + VM.r(VM.tw(t, start, 0.35, ctx.u * 0.9, 0)) + 'px)' });
         });
       };
     }
@@ -122,7 +161,7 @@ export const TEMPLATES = {
     schema: { title: str(70), unit: str(16), max: num(), decimals: num(false, 0, 4),
       orientation: { type: 'enum', values: ['horizontal', 'vertical'] }, highlight: num(false, 0, 9), hideValues: { type: 'boolean' },
       bars: { type: 'array', required: true, minItems: 1, maxItems: 10,
-        items: { type: 'object', fields: { label: str(40, true), value: num(true, 0), color, display: str(24) } } },
+        items: { type: 'object', fields: { label: str(40, true), value: num(true, 0), color, display: str(24), at: num(false, 0, 3600) } } },
       citation },
     render(root, props, ctx, VM) {
       const pad = ctx.u * 7;
@@ -163,7 +202,7 @@ export const TEMPLATES = {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         if (title) VM.set(title, { opacity: VM.r(VM.tw(t, 0, 0.4, 0, 1) * out) });
         items.forEach((it, i) => {
-          const start = 0.3 + i * Math.min(0.25, (ctx.duration * 0.4) / n);
+          const start = it.b.at !== undefined ? it.b.at : 0.3 + i * Math.min(0.25, (ctx.duration * 0.4) / n);
           const k = VM.ease.inOut(VM.p(t, start, 0.9));
           const share = Math.min(1, it.b.value / max);
           VM.set(it.row, { opacity: VM.r(VM.tw(t, start - 0.1, 0.3, 0, 1) * out) });
@@ -250,12 +289,12 @@ export const TEMPLATES = {
         items: { type: 'object', fields: { label: str(36, true), value: num(true, 0), color } } }, citation },
     render(root, props, ctx, VM) {
       const pad = ctx.u * 7;
-      const title = props.title ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', top: pad * 0.8 + 'px', right: pad + 'px', fontWeight: '800', textAlign: ctx.portrait ? 'center' : 'left' } }, root, props.title) : null;
+      const title = props.title ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', top: pad * 0.8 + 'px', right: pad + 'px', fontWeight: '800', textAlign: ctx.narrow ? 'center' : 'left' } }, root, props.title) : null;
       if (title) VM.fit(title, ctx.w - pad * 2, ctx.u * 6, ctx.u * 3);
       const total = props.segments.reduce((a, s) => a + s.value, 0) || 1;
-      const size = Math.min(ctx.portrait ? ctx.w * 0.75 : ctx.w * 0.42, ctx.h * 0.62);
+      const size = Math.min(ctx.narrow ? ctx.w * 0.75 : ctx.w * 0.42, ctx.h * 0.62);
       const body = VM.el('div', { style: { position: 'absolute', left: pad + 'px', right: pad + 'px', top: (pad + (title ? ctx.u * 10 : 0)) + 'px',
-        bottom: (props.citation ? ctx.u * 9 : pad) + 'px', display: 'flex', flexDirection: ctx.portrait ? 'column' : 'row', alignItems: 'center',
+        bottom: (props.citation ? ctx.u * 9 : pad) + 'px', display: 'flex', flexDirection: ctx.narrow ? 'column' : 'row', alignItems: 'center',
         justifyContent: 'center', gap: (ctx.u * 7) + 'px' } }, root);
       const holder = VM.el('div', { style: { position: 'relative', width: size + 'px', height: size + 'px', flex: '0 0 auto' } }, body);
       const svg = VM.svg('svg', { width: size, height: size, viewBox: '0 0 100 100', style: 'transform:rotate(-90deg)' }, holder);
@@ -309,7 +348,8 @@ export const TEMPLATES = {
       const big = VM.el('div', { style: { fontWeight: '900', color: ctx.theme.accent, fontVariantNumeric: 'tabular-nums', lineHeight: '1', whiteSpace: 'nowrap' } }, wrap);
       big.textContent = (props.prefix || '') + VM.fmt(props.value, props.decimals || 0) + (props.suffix || '');
       VM.fit(big, ctx.w - ctx.u * 12, ctx.u * 26, ctx.u * 8);
-      const label = VM.el('div', { style: { fontWeight: '700', fontSize: (ctx.u * 5) + 'px', marginTop: (ctx.u * 2) + 'px', maxWidth: (ctx.w * 0.85) + 'px' } }, wrap, props.label);
+      const label = VM.el('div', { style: { fontWeight: '700', fontSize: (ctx.u * 5) + 'px', marginTop: (ctx.u * 2) + 'px', maxWidth: (ctx.w * 0.85) + 'px' } }, wrap);
+      VM.rich(label, props.label, { stressColor: ctx.theme.accent });
       const note = props.note ? VM.el('div', { style: { color: ctx.theme.muted, fontSize: (ctx.u * 3.2) + 'px', marginTop: (ctx.u * 1.5) + 'px', maxWidth: (ctx.w * 0.8) + 'px' } }, wrap, props.note) : null;
       const cite = props.citation ? VM.el('div', { style: { position: 'absolute', bottom: (ctx.u * 3) + 'px', left: '0', right: '0', textAlign: 'center', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
       return t => {
@@ -334,7 +374,7 @@ export const TEMPLATES = {
       const title = props.title ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', right: pad + 'px', top: pad + 'px', fontWeight: '800', textAlign: 'center' } }, root, props.title) : null;
       if (title) VM.fit(title, ctx.w - pad * 2, ctx.u * 6, ctx.u * 3);
       const grid = VM.el('div', { style: { position: 'absolute', left: pad + 'px', right: pad + 'px', top: (pad + (title ? ctx.u * 11 : 0)) + 'px',
-        bottom: (props.citation ? ctx.u * 9 : pad) + 'px', display: 'flex', flexDirection: ctx.portrait ? 'column' : 'row', gap: (ctx.u * 3) + 'px', alignItems: ctx.portrait ? 'stretch' : 'center', justifyContent: 'center' } }, root);
+        bottom: (props.citation ? ctx.u * 9 : pad) + 'px', display: 'flex', flexDirection: ctx.narrow ? 'column' : 'row', gap: (ctx.u * 3) + 'px', alignItems: ctx.narrow ? 'stretch' : 'center', justifyContent: 'center' } }, root);
       const cols = props.columns.map((c, i) => {
         const colr = c.color || ctx.theme.palette[i % ctx.theme.palette.length];
         const col = VM.el('div', { style: { flex: '1', background: VM.hexToRgba(ctx.theme.text, 0.05), border: '1px solid ' + VM.hexToRgba(colr, 0.5),
@@ -372,7 +412,7 @@ export const TEMPLATES = {
     schema: { title: str(70),
       nodes: { type: 'array', required: true, minItems: 2, maxItems: 12,
         items: { type: 'object', fields: { id: { type: 'string', max: 32, required: true }, label: str(28, true), sub: str(40),
-          icon: iconName, color, x: num(false, 0, 1), y: num(false, 0, 1) } } },
+          icon: iconName, color, x: num(false, 0, 1), y: num(false, 0, 1), at: num(false, 0, 3600) } } },
       edges: { type: 'array', maxItems: 20, items: { type: 'object', fields: { from: str(32, true), to: str(32, true), label: str(24), dashed: { type: 'boolean' } } } },
       packets: { type: 'boolean' }, citation },
     render(root, props, ctx, VM) {
@@ -381,7 +421,7 @@ export const TEMPLATES = {
       if (title) VM.fit(title, ctx.w - pad * 2, ctx.u * 6, ctx.u * 3);
       const top = pad + (title ? ctx.u * 10 : 0), bottom = ctx.h - (props.citation ? ctx.u * 9 : pad);
       const n = props.nodes.length;
-      const vertical = ctx.portrait;
+      const vertical = ctx.narrow;
       const pos = (node, i) => {
         const fx = node.x ?? (vertical ? 0.5 : (n === 1 ? 0.5 : 0.08 + 0.84 * i / (n - 1)));
         const fy = node.y ?? (vertical ? (n === 1 ? 0.5 : 0.08 + 0.84 * i / (n - 1)) : 0.5);
@@ -391,7 +431,7 @@ export const TEMPLATES = {
       const defs = VM.svg('defs', {}, svg);
       const marker = VM.svg('marker', { id: 'arrow', viewBox: '0 0 10 10', refX: 8, refY: 5, markerWidth: 5, markerHeight: 5, orient: 'auto-start-reverse' }, defs);
       VM.svg('path', { d: 'M0 0L10 5L0 10z', fill: ctx.theme.muted }, marker);
-      const per = vertical ? Math.min(ctx.w * 0.6, ctx.u * 34) : Math.min((ctx.w - pad * 2) / Math.max(2, n) * 0.82, ctx.u * 30);
+      const per = vertical ? Math.min(ctx.w * 0.88, ctx.u * 70) : Math.min((ctx.w - pad * 2) / Math.max(2, n) * 0.82, ctx.u * 30);
       const nodes = new Map();
       props.nodes.forEach((node, i) => {
         const c = node.color || ctx.theme.palette[i % ctx.theme.palette.length];
@@ -414,7 +454,7 @@ export const TEMPLATES = {
         return { x1: a.p.x + dx * ta, y1: a.p.y + dy * ta, x2: b.p.x - dx * tb, y2: b.p.y - dy * tb };
       };
       const order = props.nodes.length;
-      const nodeStart = i => 0.2 + i * Math.min(0.35, (ctx.duration * 0.45) / order);
+      const nodeStart = i => (props.nodes[i].at !== undefined ? props.nodes[i].at : 0.2 + i * Math.min(0.35, (ctx.duration * 0.45) / order));
       const edges = (props.edges || props.nodes.slice(1).map((nd, i) => ({ from: props.nodes[i].id, to: nd.id }))).map(e => {
         const a = nodes.get(e.from), b = nodes.get(e.to);
         if (!a || !b) throw new Error('flow edge references unknown node: ' + e.from + ' -> ' + e.to);
@@ -462,10 +502,10 @@ export const TEMPLATES = {
   steps: {
     description: 'Numbered process steps revealed in sequence along a growing connector.',
     schema: { title: str(70), steps: { type: 'array', required: true, minItems: 1, maxItems: 7,
-      items: { type: 'object', fields: { title: str(40, true), detail: str(100), icon: iconName } } }, citation },
+      items: { type: 'object', fields: { title: str(40, true), detail: str(100), icon: iconName, at: num(false, 0, 3600) } } }, citation },
     render(root, props, ctx, VM) {
       const pad = ctx.u * 7;
-      const horizontal = !ctx.portrait && props.steps.length <= 5;
+      const horizontal = !ctx.narrow && props.steps.length <= 5;
       const title = props.title ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', right: pad + 'px', top: pad * 0.8 + 'px', fontWeight: '800', textAlign: horizontal ? 'center' : 'left' } }, root, props.title) : null;
       if (title) VM.fit(title, ctx.w - pad * 2, ctx.u * 6, ctx.u * 3);
       const list = VM.el('div', { style: { position: 'absolute', left: pad + 'px', right: pad + 'px', top: (pad + (title ? ctx.u * 10 : 0)) + 'px', bottom: pad + 'px',
@@ -488,13 +528,14 @@ export const TEMPLATES = {
       if (horizontal) Object.assign(rail.style, { left: (a.left - base.left + d / 2) + 'px', width: Math.max(0, b.left - a.left) + 'px', top: (a.top - base.top + d / 2) + 'px', height: (ctx.u * 0.4) + 'px' });
       else Object.assign(rail.style, { top: (a.top - base.top + d / 2) + 'px', height: Math.max(0, b.top - a.top) + 'px', left: (a.left - base.left + d / 2 - ctx.u * 0.2) + 'px', width: (ctx.u * 0.4) + 'px' });
       const step = Math.min(0.6, (ctx.duration * 0.7) / items.length);
+      const at = i => (props.steps[i].at !== undefined ? props.steps[i].at : 0.3 + i * step);
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         root.style.opacity = VM.r(out);
         if (title) title.style.opacity = VM.r(VM.tw(t, 0, 0.4, 0, 1));
         rail.style.transform = (horizontal ? 'scaleX(' : 'scaleY(') + VM.r(VM.ease.inOut(VM.p(t, 0.3, step * items.length))) + ')';
         items.forEach((it, i) => {
-          const s = 0.3 + i * step;
+          const s = at(i);
           VM.set(it.row, { opacity: VM.r(VM.tw(t, s, 0.35, 0, 1)), transform: 'translateY(' + VM.r(VM.tw(t, s, 0.5, ctx.u * 2, 0, 'expo')) + 'px)' });
           const active = t >= s;
           it.dot.style.background = active ? ctx.theme.accent : ctx.theme.background;
@@ -507,7 +548,7 @@ export const TEMPLATES = {
   bullets: {
     description: 'Title with bullet points revealed one by one.',
     schema: { title: str(70), items: { type: 'array', required: true, minItems: 1, maxItems: 8, items: str(110) },
-      marker: { type: 'enum', values: ['dot', 'check', 'number', 'x'] } },
+      marker: { type: 'enum', values: ['dot', 'check', 'number', 'x'] }, cues: { type: 'array', maxItems: 8, items: num(true, 0, 3600) } },
     render(root, props, ctx, VM) {
       const pad = ctx.u * 7;
       const wrap = VM.el('div', { style: { position: 'absolute', inset: pad + 'px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: (ctx.u * 2.4) + 'px' } }, root);
@@ -520,15 +561,16 @@ export const TEMPLATES = {
         if (m === 'check' || m === 'x') VM.icon(m, fs * 1.1, m === 'x' ? ctx.theme.palette[1] : ctx.theme.accent, row);
         else if (m === 'number') VM.el('span', { style: { color: ctx.theme.accent, fontWeight: '900', minWidth: '1.3em' } }, row, (i + 1) + '.');
         else VM.el('span', { style: { width: (fs * 0.35) + 'px', height: (fs * 0.35) + 'px', background: ctx.theme.accent, borderRadius: '99px', marginTop: '0.42em', flex: '0 0 auto' } }, row);
-        VM.el('span', {}, row, text);
+        VM.rich(VM.el('span', {}, row), text, { stressColor: ctx.theme.accent });
         return row;
       });
       const step = Math.min(0.5, (ctx.duration * 0.6) / rows.length);
+      const cues = props.cues && props.cues.length === rows.length ? props.cues : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         root.style.opacity = VM.r(out);
         if (title) VM.set(title, { opacity: VM.r(VM.tw(t, 0, 0.4, 0, 1)), transform: 'translateY(' + VM.r(VM.tw(t, 0, 0.5, ctx.u * 2, 0)) + 'px)' });
-        rows.forEach((row, i) => { const s = 0.35 + i * step; VM.set(row, { opacity: VM.r(VM.tw(t, s, 0.35, 0, 1)), transform: 'translateX(' + VM.r(VM.tw(t, s, 0.45, ctx.u * 3, 0, 'expo')) + 'px)' }); });
+        rows.forEach((row, i) => { const s = cues ? cues[i] : 0.35 + i * step; VM.set(row, { opacity: VM.r(VM.tw(t, s, 0.35, 0, 1)), transform: 'translateX(' + VM.r(VM.tw(t, s, 0.45, ctx.u * 3, 0, 'expo')) + 'px)' }); });
       };
     }
   },
@@ -575,7 +617,8 @@ export const TEMPLATES = {
     render(root, props, ctx, VM) {
       const wrap = VM.el('div', { style: { position: 'absolute', inset: (ctx.u * 9) + 'px', display: 'flex', flexDirection: 'column', justifyContent: 'center' } }, root);
       const mark = VM.el('div', { style: { color: ctx.theme.accent, fontSize: (ctx.u * 22) + 'px', fontWeight: '900', lineHeight: '0.7', height: (ctx.u * 10) + 'px' } }, wrap, '“');
-      const q = VM.el('div', { style: { fontWeight: '700', lineHeight: '1.25' } }, wrap, props.quote);
+      const q = VM.el('div', { style: { fontWeight: '700', lineHeight: '1.25', letterSpacing: '-0.015em' } }, wrap);
+      VM.rich(q, props.quote, { stressColor: ctx.theme.accent });
       VM.fit(q, ctx.w - ctx.u * 18, ctx.u * 8.5, ctx.u * 3, ctx.h * 0.55);
       const by = props.author || props.source ? VM.el('div', { style: { color: ctx.theme.muted, fontSize: (ctx.u * 4) + 'px', marginTop: (ctx.u * 3) + 'px' } }, wrap,
         '— ' + [props.author, props.source].filter(Boolean).join(', ')) : null;
@@ -601,7 +644,7 @@ export const TEMPLATES = {
       const bar = VM.el('div', { style: { display: 'flex', alignItems: 'center', gap: ctx.u + 'px', padding: (ctx.u * 1.4) + 'px ' + (ctx.u * 2) + 'px', background: 'rgba(255,255,255,0.05)' } }, win);
       ['#ff5f57', '#febc2e', '#28c840'].forEach(c => VM.el('span', { style: { width: (ctx.u * 1.4) + 'px', height: (ctx.u * 1.4) + 'px', borderRadius: '99px', background: c } }, bar));
       if (props.filename) VM.el('span', { style: { color: '#8b949e', fontSize: (ctx.u * 2.8) + 'px', marginLeft: (ctx.u * 1.5) + 'px' } }, bar, props.filename);
-      const body = VM.el('pre', { style: { margin: '0', padding: (ctx.u * 2.4) + 'px', flex: '1', fontFamily: "'SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace",
+      const body = VM.el('pre', { style: { margin: '0', padding: (ctx.u * 2.4) + 'px', flex: '1', fontFamily: "VMMono,'SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace",
         lineHeight: '1.45', color: '#e6edf3', whiteSpace: 'pre', overflow: 'hidden' } }, win);
       const avail = (ctx.h - pad * 2 - ctx.u * 9);
       const longest = Math.max(...lines.map(l => l.length), 10);
@@ -689,11 +732,14 @@ export const TEMPLATES = {
     schema: {},
     render(root, props, ctx, VM) {
       const pos = props.position || 'bottom';
+      const style = props.style || 'kinetic';
       const wrap = VM.el('div', { style: { position: 'absolute', left: (ctx.w * 0.06) + 'px', right: (ctx.w * 0.06) + 'px', display: 'flex', justifyContent: 'center',
         [pos === 'top' ? 'top' : 'bottom']: (pos === 'center' ? ctx.h * 0.42 : ctx.h * (ctx.portrait ? 0.2 : 0.075)) + 'px' } }, root);
-      const box = VM.el('div', { style: { textAlign: 'center', fontWeight: '800', fontSize: (ctx.u * (ctx.portrait ? 6 : 4.6)) + 'px', lineHeight: '1.25',
-        padding: '0.15em 0.4em', borderRadius: '0.3em', background: props.style === 'phrase' ? 'rgba(0,0,0,0.6)' : 'transparent',
-        textShadow: props.style === 'phrase' ? 'none' : '0 0.06em 0.18em rgba(0,0,0,0.9), 0 0 0.06em rgba(0,0,0,0.9)', maxWidth: '100%' } }, wrap);
+      const shadow = ctx.theme.text.toLowerCase() === '#0b0b0b' ? '0 0.05em 0.14em rgba(255,255,255,0.85)' : '0 0.06em 0.18em rgba(0,0,0,0.9), 0 0 0.06em rgba(0,0,0,0.9)';
+      const box = VM.el('div', { style: { textAlign: 'center', fontWeight: '800', fontSize: (ctx.u * (ctx.portrait ? 6 : 4.6)) + 'px', lineHeight: '1.22',
+        letterSpacing: '-0.012em', padding: '0.15em 0.4em', borderRadius: '0.3em', color: style === 'phrase' ? '#fff' : ctx.theme.text,
+        background: style === 'phrase' ? 'rgba(0,0,0,0.62)' : 'transparent',
+        textShadow: style === 'phrase' ? 'none' : shadow, maxWidth: '100%' } }, wrap);
       const pages = props.pages;
       let current = -2;
       let spans = [];
@@ -709,11 +755,27 @@ export const TEMPLATES = {
           box.textContent = '';
           spans = idx < 0 ? [] : pages[idx].words.map((w, i) => {
             if (i) box.appendChild(document.createTextNode(' '));
-            return { w, s: VM.el('span', { style: { display: 'inline-block', padding: '0 0.08em', borderRadius: '0.18em' } }, box, w.text) };
+            const stressed = style === 'kinetic' && w.stress;
+            const s = VM.el('span', { class: stressed ? 'vm-stress' : '', style: { display: 'inline-block', padding: stressed ? '0 0.06em' : '0 0.08em', borderRadius: '0.18em' } }, box, w.text);
+            return { w, s, stressed };
           });
           box.style.visibility = idx < 0 ? 'hidden' : 'visible';
         }
-        if (props.style === 'karaoke') {
+        if (idx < 0) return;
+        if (style === 'kinetic') {
+          // Quantised to 30 steps/s so held frames dedupe in the frame cache.
+          const tq = Math.floor(t * 30 + 1e-6) / 30;
+          const age = tq - pages[idx].start;
+          spans.forEach(({ w, s, stressed }, i) => {
+            const enter = VM.ease.expo(VM.p(age, i * 0.03, 0.2));
+            const active = tq >= w.start && tq < w.end;
+            const pop = active ? VM.ease.out(VM.p(tq, w.start, 0.09)) : 0;
+            s.style.opacity = VM.r(enter);
+            s.style.transform = 'translateY(' + VM.r((1 - enter) * 0.38) + 'em) scale(' + VM.r(1 + 0.07 * pop) + ')';
+            s.style.filter = stressed && enter < 1 ? 'blur(' + VM.r((1 - enter) * 3) + 'px)' : 'none';
+            s.style.color = stressed ? ctx.theme.accent : active ? ctx.theme.accent : ctx.theme.text;
+          });
+        } else if (style === 'karaoke') {
           for (const { w, s } of spans) {
             const active = t >= w.start && t < w.end;
             s.style.background = active ? ctx.theme.accent : 'transparent';

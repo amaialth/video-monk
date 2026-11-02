@@ -1,0 +1,556 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video Monk Architecture</title>
+<style>
+:root {
+  --bg: #f6f7fb; --surface: #ffffff; --surface2: #eef1f8; --text: #121829; --muted: #5a6580; --line: #cfd6e6;
+  --accent: #0b6fd6; --c-in: #6d4fd0; --c-cli: #0b6fd6; --c-plan: #0e8f6b; --c-motion: #c2410c; --c-build: #b4237a; --c-ext: #5a6580; --c-out: #0e7490;
+  --code-bg: #101626; --code-text: #e6edf7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b1020; --surface: #141b2f; --surface2: #1b2440; --text: #eef1fa; --muted: #9aa5bd; --line: #2c3757;
+    --accent: #4cc9f0; --c-in: #a78bfa; --c-cli: #4cc9f0; --c-plan: #34d399; --c-motion: #fb923c; --c-build: #f472b6; --c-ext: #9aa5bd; --c-out: #22d3ee;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0b1020; --surface: #141b2f; --surface2: #1b2440; --text: #eef1fa; --muted: #9aa5bd; --line: #2c3757;
+  --accent: #4cc9f0; --c-in: #a78bfa; --c-cli: #4cc9f0; --c-plan: #34d399; --c-motion: #fb923c; --c-build: #f472b6; --c-ext: #9aa5bd; --c-out: #22d3ee;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+a { color: var(--accent); }
+header.hero { padding: 56px 16px 32px; max-width: 1120px; margin: 0 auto; }
+header.hero h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.02em; }
+header.hero p { color: var(--muted); font-size: 18px; max-width: 760px; margin: 0; }
+nav.toc { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+nav.toc div { max-width: 1120px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 6px 16px; flex-wrap: wrap; font-size: 14px; }
+nav.toc a { text-decoration: none; color: var(--muted); }
+nav.toc a:hover { color: var(--accent); }
+main { max-width: 1120px; margin: 0 auto; padding: 0 16px 80px; }
+section { padding-top: 48px; }
+h2 { font-size: 28px; margin: 0 0 8px; letter-spacing: -0.01em; }
+h3 { font-size: 19px; margin: 28px 0 8px; }
+p.lead { color: var(--muted); margin: 0 0 20px; max-width: 800px; }
+.grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+.card h4 { margin: 0 0 6px; font-size: 16px; }
+.card p { margin: 0; color: var(--muted); font-size: 15px; }
+.pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; padding: 2px 8px; border-radius: 99px; background: var(--surface2); color: var(--muted); }
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 12px; margin: 16px 0; overflow-x: auto; }
+.diagram svg { width: 100%; height: auto; min-width: 720px; display: block; }
+.diagram figcaption { color: var(--muted); font-size: 14px; padding: 8px 6px 2px; }
+figure { margin: 0; }
+/* SVG classes */
+svg text { font-family: inherit; fill: var(--text); }
+.t { font-size: 14px; font-weight: 700; }
+.s { font-size: 11.5px; fill: var(--muted); }
+.h { font-size: 15px; font-weight: 800; letter-spacing: .02em; }
+.box { fill: var(--surface2); stroke: var(--line); stroke-width: 1.2; }
+.grp { fill: none; stroke-width: 1.6; stroke-dasharray: 6 5; }
+.ln { stroke: var(--muted); stroke-width: 1.6; fill: none; }
+.ln.opt { stroke-dasharray: 5 4; }
+.ah { fill: var(--muted); }
+.in { stroke: var(--c-in); } .cli { stroke: var(--c-cli); } .plan { stroke: var(--c-plan); } .motion { stroke: var(--c-motion); }
+.build { stroke: var(--c-build); } .ext { stroke: var(--c-ext); } .out { stroke: var(--c-out); }
+.fin { fill: var(--c-in); } .fcli { fill: var(--c-cli); } .fplan { fill: var(--c-plan); } .fmotion { fill: var(--c-motion); }
+.fbuild { fill: var(--c-build); } .fext { fill: var(--c-ext); } .fout { fill: var(--c-out); }
+svg text.fin, svg text.fcli, svg text.fplan, svg text.fmotion, svg text.fbuild, svg text.fext, svg text.fout { font-size: 15px; font-weight: 800; }
+/* tables */
+.tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 14.5px; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { background: var(--surface2); font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+code { background: var(--surface2); padding: 1px 6px; border-radius: 5px; font-size: .9em; }
+pre { background: var(--code-bg); color: var(--code-text); padding: 16px 18px; border-radius: 12px; overflow-x: auto; font-size: 13.5px; line-height: 1.55; margin: 12px 0; }
+pre code { background: none; padding: 0; color: inherit; }
+/* pipeline step cards */
+.steps { counter-reset: s; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); }
+.step { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 12px; padding: 14px 16px 14px 16px; }
+.step::before { content: "Step " counter(s); font-size: 12px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); }
+.step h4 { margin: 2px 0 4px; font-size: 16px; }
+.step p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.note { border-left: 4px solid var(--c-motion); background: var(--surface); border-radius: 0 10px 10px 0; padding: 12px 16px; color: var(--muted); margin: 16px 0; }
+.note b { color: var(--text); }
+footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <span class="pill">@amailath/video-monk · v0.3.0</span>
+  <h1>How Video Monk works</h1>
+  <p>An automated video editing toolkit. Give it a recording and it analyzes, transcribes, cuts, adds motion graphics and infographics, mixes, masters and delivers a verified <code>final.mp4</code>. This page explains every part: the architecture, each pipeline stage, the motion engine, the audio graph, the approval gates and every command.</p>
+</header>
+
+<nav class="toc"><div>
+  <a href="#overview">Overview</a><a href="#architecture">Architecture</a><a href="#auto">Auto pipeline</a><a href="#autocut">Autocut</a>
+  <a href="#explain">Explainer graphics</a><a href="#typography">Typography</a><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build pipeline</a>
+  <a href="#audio">Audio graph</a><a href="#gates">Approval gates</a><a href="#outputs">Outputs</a><a href="#commands">Commands</a>
+  <a href="#claude">Claude Code</a><a href="#tests">Testing</a><a href="#limits">Limits</a>
+</div></nav>
+
+<main>
+
+<section id="overview">
+  <h2>Overview</h2>
+  <p class="lead">Video Monk has no npm dependencies. It orchestrates three local tools (FFmpeg, headless Google Chrome and whisper.cpp) and keeps every step checkable.</p>
+  <div class="grid">
+    <div class="card"><h4>Local and private</h4><p>Transcription runs on your machine. Graphics render offline in headless Chrome with DNS blocked. Nothing is uploaded unless you opt in to a stock search or an LLM call.</p></div>
+    <div class="card"><h4>Deterministic</h4><p>Every graphic is a pure function of time, <code>seek(t)</code>. The same manifest always yields the same frames, so renders are reproducible and frame exact.</p></div>
+    <div class="card"><h4>Gated</h4><p>A build only runs if the plan review approved the exact manifest, media and caption hashes. Rights, facts and publishing stay human decisions.</p></div>
+    <div class="card"><h4>Verified</h4><p>The final file is decoded, then measured for size, frame rate, duration, integrated loudness and true peak before it is reported as passing.</p></div>
+  </div>
+</section>
+
+<section id="architecture">
+  <h2>System architecture</h2>
+  <p class="lead">Everything runs through one CLI. Modules fall into three groups, each backed by an external tool. FFmpeg is the foundation under all of them.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 800" role="img" aria-label="System architecture: inputs flow through the CLI into three module groups, then external tools, FFmpeg and outputs">
+    <defs><marker id="a1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+
+    <text class="h fin" x="20" y="14">INPUTS</text>
+    <rect class="box in" x="20" y="22" width="240" height="58" rx="10"/><text class="t" x="140" y="48" text-anchor="middle">Recordings</text><text class="s" x="140" y="66" text-anchor="middle">talk · screen · B-roll clips</text>
+    <rect class="box in" x="290" y="22" width="240" height="58" rx="10"/><text class="t" x="410" y="48" text-anchor="middle">Word timestamps</text><text class="s" x="410" y="66" text-anchor="middle">words.json (whisper.cpp or supplied)</text>
+    <rect class="box in" x="560" y="22" width="240" height="58" rx="10"/><text class="t" x="680" y="48" text-anchor="middle">Licensed assets</text><text class="s" x="680" y="66" text-anchor="middle">music · SFX · images · fonts</text>
+    <rect class="box in" x="830" y="22" width="240" height="58" rx="10"/><text class="t" x="950" y="48" text-anchor="middle">Claude Code + skills</text><text class="s" x="950" y="66" text-anchor="middle">brief · manifest design · review</text>
+    <path class="ln" d="M140 80V130" marker-end="url(#a1)"/><path class="ln" d="M410 80V130" marker-end="url(#a1)"/>
+    <path class="ln" d="M680 80V130" marker-end="url(#a1)"/><path class="ln" d="M950 80V130" marker-end="url(#a1)"/>
+
+    <rect class="box cli" x="20" y="132" width="1050" height="62" rx="10"/>
+    <text class="t fcli" x="545" y="156" text-anchor="middle">CLI   bin/video-monk.js → src/cli.js</text>
+    <text class="s" x="545" y="177" text-anchor="middle">auto · inspect · transcribe · models · autocut · templates · graphic · production-review / build / verify · stock-* · install · doctor</text>
+    <path class="ln" d="M190 194V238" marker-end="url(#a1)"/><path class="ln" d="M550 194V238" marker-end="url(#a1)"/><path class="ln" d="M905 194V238" marker-end="url(#a1)"/>
+
+    <!-- Group 1 -->
+    <rect class="grp plan" x="20" y="240" width="340" height="272" rx="14"/>
+    <text class="h fplan" x="36" y="264">ANALYZE &amp; PLAN</text>
+    <rect class="box plan" x="35" y="278" width="150" height="50" rx="8"/><text class="t" x="110" y="299" text-anchor="middle">auto.js</text><text class="s" x="110" y="316" text-anchor="middle">one-shot orchestrator</text>
+    <rect class="box plan" x="195" y="278" width="150" height="50" rx="8"/><text class="t" x="270" y="299" text-anchor="middle">autocut.js</text><text class="s" x="270" y="316" text-anchor="middle">silence + filler cuts</text>
+    <rect class="box plan" x="35" y="338" width="150" height="50" rx="8"/><text class="t" x="110" y="359" text-anchor="middle">transcribe.js</text><text class="s" x="110" y="376" text-anchor="middle">whisper.cpp adapter</text>
+    <rect class="box plan" x="195" y="338" width="150" height="50" rx="8"/><text class="t" x="270" y="359" text-anchor="middle">timeline.js</text><text class="s" x="270" y="376" text-anchor="middle">v2 manifest validator</text>
+    <rect class="box plan" x="35" y="398" width="150" height="50" rx="8"/><text class="t" x="110" y="419" text-anchor="middle">media.js</text><text class="s" x="110" y="436" text-anchor="middle">probe · reference study</text>
+    <rect class="box plan" x="195" y="398" width="150" height="50" rx="8"/><text class="t" x="270" y="419" text-anchor="middle">external-tools.js</text><text class="s" x="270" y="436" text-anchor="middle">Parakeet / HyperFrames</text>
+    <text class="s" x="36" y="476">Measures speech, pauses, loudness, pacing.</text>
+    <text class="s" x="36" y="493">Produces a frame-aligned, approval-ready manifest.</text>
+
+    <!-- Group 2 -->
+    <rect class="grp motion" x="380" y="240" width="340" height="272" rx="14"/>
+    <text class="h fmotion" x="396" y="264">MOTION ENGINE</text>
+    <rect class="box motion" x="395" y="278" width="150" height="50" rx="8"/><text class="t" x="470" y="299" text-anchor="middle">chrome.js</text><text class="s" x="470" y="316" text-anchor="middle">DevTools protocol driver</text>
+    <rect class="box motion" x="555" y="278" width="150" height="50" rx="8"/><text class="t" x="630" y="299" text-anchor="middle">runtime.js</text><text class="s" x="630" y="316" text-anchor="middle">easing · icons · page shell</text>
+    <rect class="box motion" x="395" y="338" width="150" height="50" rx="8"/><text class="t" x="470" y="359" text-anchor="middle">templates.js</text><text class="s" x="470" y="376" text-anchor="middle">18 templates + schemas</text>
+    <rect class="box motion" x="555" y="338" width="150" height="50" rx="8"/><text class="t" x="630" y="359" text-anchor="middle">render.js</text><text class="s" x="630" y="376" text-anchor="middle">frame cache · pool</text>
+    <rect class="box motion" x="395" y="398" width="150" height="50" rx="8"/><text class="t" x="470" y="419" text-anchor="middle">preview.js</text><text class="s" x="470" y="436" text-anchor="middle">graphic → png / mp4 / mov</text>
+    <rect class="box motion" x="555" y="398" width="150" height="50" rx="8"/><text class="t" x="630" y="419" text-anchor="middle">Custom HTML</text><text class="s" x="630" y="436" text-anchor="middle">your own seekable page</text>
+    <text class="s" x="396" y="476">Turns template + props into frame-exact PNG</text>
+    <text class="s" x="396" y="493">sequences, cached by content hash.</text>
+
+    <!-- Group 3 -->
+    <rect class="grp build" x="740" y="240" width="330" height="272" rx="14"/>
+    <text class="h fbuild" x="756" y="264">BUILD, DELIVER &amp; SOURCES</text>
+    <rect class="box build" x="755" y="278" width="150" height="50" rx="8"/><text class="t" x="830" y="299" text-anchor="middle">build.js</text><text class="s" x="830" y="316" text-anchor="middle">v2 render pipeline</text>
+    <rect class="box build" x="915" y="278" width="150" height="50" rx="8"/><text class="t" x="990" y="299" text-anchor="middle">production.js</text><text class="s" x="990" y="316" text-anchor="middle">v1 · review · verify</text>
+    <rect class="box build" x="755" y="338" width="150" height="50" rx="8"/><text class="t" x="830" y="359" text-anchor="middle">captions.js</text><text class="s" x="830" y="376" text-anchor="middle">paging · SRT · VTT · remap</text>
+    <rect class="box build" x="915" y="338" width="150" height="50" rx="8"/><text class="t" x="990" y="359" text-anchor="middle">plan.js</text><text class="s" x="990" y="376" text-anchor="middle">rough cut · Resolve XML</text>
+    <rect class="box build" x="755" y="398" width="150" height="50" rx="8"/><text class="t" x="830" y="419" text-anchor="middle">stock.js</text><text class="s" x="830" y="436" text-anchor="middle">opt-in Pexels B-roll</text>
+    <rect class="box build" x="915" y="398" width="150" height="50" rx="8"/><text class="t" x="990" y="419" text-anchor="middle">llm.js · core.js</text><text class="s" x="990" y="436" text-anchor="middle">opt-in LLM · shared utils</text>
+    <text class="s" x="756" y="476">Composite, transition, mix, master, encode,</text>
+    <text class="s" x="756" y="493">then verify the real file.</text>
+
+    <!-- tools -->
+    <text class="h fext" x="20" y="548">EXTERNAL TOOLS</text>
+    <rect class="box ext" x="20" y="558" width="165" height="62" rx="10"/><text class="t" x="102" y="583" text-anchor="middle">whisper.cpp</text><text class="s" x="102" y="601" text-anchor="middle">local speech-to-text</text>
+    <rect class="box ext" x="195" y="558" width="165" height="62" rx="10" stroke-dasharray="5 4"/><text class="t" x="277" y="583" text-anchor="middle">yt-dlp</text><text class="s" x="277" y="601" text-anchor="middle">optional reference study</text>
+    <rect class="box ext" x="380" y="558" width="340" height="62" rx="10"/><text class="t" x="550" y="583" text-anchor="middle">Headless Google Chrome</text><text class="s" x="550" y="601" text-anchor="middle">DevTools protocol · DNS blocked · screenshots</text>
+    <rect class="box ext" x="740" y="558" width="160" height="62" rx="10" stroke-dasharray="5 4"/><text class="t" x="820" y="583" text-anchor="middle">Pexels API</text><text class="s" x="820" y="601" text-anchor="middle">opt-in stock search</text>
+    <rect class="box ext" x="910" y="558" width="160" height="62" rx="10" stroke-dasharray="5 4"/><text class="t" x="990" y="583" text-anchor="middle">LLM endpoint</text><text class="s" x="990" y="601" text-anchor="middle">opt-in planning</text>
+    <path class="ln" d="M165 512V556" marker-end="url(#a1)"/><path class="ln opt" d="M277 512V556" marker-end="url(#a1)"/>
+    <path class="ln" d="M550 512V556" marker-end="url(#a1)"/>
+    <path class="ln opt" d="M820 512V556" marker-end="url(#a1)"/><path class="ln opt" d="M990 512V556" marker-end="url(#a1)"/>
+
+    <rect class="box ext" x="20" y="650" width="1050" height="48" rx="10" stroke-width="2"/>
+    <text class="t" x="545" y="672" text-anchor="middle">FFmpeg + ffprobe</text>
+    <text class="s" x="545" y="689" text-anchor="middle">probe · silencedetect · zoompan · overlay · xfade · amix · sidechaincompress · loudnorm · alimiter · libx264 · AAC</text>
+    <path class="ln" d="M550 620V648" marker-end="url(#a1)"/><text class="s" x="560" y="638">PNG frames</text>
+
+    <text class="h fout" x="20" y="722">OUTPUTS</text>
+    <rect class="box out" x="20" y="730" width="1050" height="56" rx="10"/>
+    <text class="t" x="545" y="754" text-anchor="middle">final.mp4 · captions.srt / .vtt · chapters.txt · thumbnail.png · contact-sheet.png</text>
+    <text class="s" x="545" y="773" text-anchor="middle">stems (voice, music, sfx, master) · timeline.xml for Resolve · report.json · REVIEW.txt · CREDITS.txt</text>
+    <path class="ln" d="M545 698V728" marker-end="url(#a1)"/>
+  </svg>
+  <figcaption>Dashed boxes and arrows are optional: they only run when you ask for them (reference study, stock search, LLM planning).</figcaption>
+  </figure>
+
+  <h3>Source layout</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Path</th><th>Responsibility</th></tr>
+    <tr><td><code>bin/video-monk.js</code></td><td>Executable entry; calls <code>main()</code> in <code>src/cli.js</code>.</td></tr>
+    <tr><td><code>src/cli.js</code></td><td>Argument parsing, every command, skill/agent installer, <code>doctor</code>.</td></tr>
+    <tr><td><code>src/auto.js</code>, <code>autocut.js</code>, <code>transcribe.js</code></td><td>Inspect, transcribe, cut and orchestrate.</td></tr>
+    <tr><td><code>src/explain.js</code>, <code>explain-llm.js</code>, <code>storyboard.js</code></td><td>Explainer planner: transcript rules, optional Claude engine, scheduler, storyboard files, applying graphics to a manifest.</td></tr>
+    <tr><td><code>src/stress.js</code></td><td>Decides which spoken words get the italic-serif stress treatment.</td></tr>
+    <tr><td><code>assets/fonts/</code></td><td>Bundled OFL fonts: Geist Variable, Geist Mono, Instrument Serif Italic, with their license texts.</td></tr>
+    <tr><td><code>src/timeline.js</code></td><td>Version-2 manifest validation, frame accounting, chapters, content fingerprint.</td></tr>
+    <tr><td><code>src/build.js</code></td><td>Render pipeline: motion, composites, transitions, audio, mastering, final encode, deliverables.</td></tr>
+    <tr><td><code>src/production.js</code></td><td>Version-1 manifests, plan review, fingerprinting, export verification, shared media helpers.</td></tr>
+    <tr><td><code>src/captions.js</code></td><td>Word validation, caption paging, SRT/VTT, mapping words onto an edited timeline.</td></tr>
+    <tr><td><code>src/chrome.js</code></td><td>Zero-dependency headless Chrome driver over the DevTools protocol.</td></tr>
+    <tr><td><code>src/motion/</code></td><td><code>runtime.js</code> (page shell), <code>templates.js</code> (18 templates, schemas), <code>render.js</code> (frame rendering and cache), <code>preview.js</code>.</td></tr>
+    <tr><td><code>src/media.js</code>, <code>plan.js</code>, <code>llm.js</code>, <code>stock.js</code>, <code>external-tools.js</code>, <code>core.js</code></td><td>Reference study and probing, picture-only plans and Resolve XML, optional LLM, Pexels, HyperFrames/Parakeet wrappers, shared helpers.</td></tr>
+    <tr><td><code>templates/</code></td><td>Skills and agents that <code>install</code> copies into a workspace, including the v2 schema reference.</td></tr>
+    <tr><td><code>test/</code></td><td>108 tests, including real FFmpeg and Chrome renders.</td></tr>
+  </table></div>
+</section>
+
+<section id="auto">
+  <h2>The one-shot pipeline: <code>auto</code></h2>
+  <p class="lead">For a talking-head or screen recording, one command runs five stages and writes everything into a new folder.</p>
+<pre><code>video-monk auto --media talk.mp4 --output talk-v1 --transcribe \
+  --allow-render --approve-plan --rights-confirmed</code></pre>
+  <div class="steps">
+    <div class="step"><h4>Inspect</h4><p><code>analyzeFootage</code> measures duration, resolution, fps, scene changes, integrated loudness, true peak and speech ratio, then writes <code>analysis.json</code> with suggestions.</p></div>
+    <div class="step"><h4>Transcribe</h4><p>whisper.cpp runs locally on 16 kHz mono audio. Word times are refined against measured silences. Output: <code>transcript/words.json</code>.</p></div>
+    <div class="step"><h4>Autocut</h4><p>Removes pauses and filler words, adds punch-ins on alternating cuts, remaps captions and writes a version-2 <code>production.json</code>.</p></div>
+    <div class="step"><h4>Review</h4><p>Hashes the manifest, media and caption words into a fingerprint. Approval requires <code>--approve-plan</code>.</p></div>
+    <div class="step"><h4>Render</h4><p>The build pipeline produces <code>final.mp4</code> and every deliverable, then verifies the real file.</p></div>
+  </div>
+  <div class="note"><b>Without <code>--transcribe</code></b>, auto still cuts pauses and adds punch-ins, but there are no captions and no filler removal. Without <code>--allow-render</code> it stops after the plan so you can add graphics first.</div>
+</section>
+
+<section id="autocut">
+  <h2>How autocut decides what to keep</h2>
+  <p class="lead">The planning step (<code>planCuts</code>) is a pure, unit-tested function. It turns measurements and words into frame-aligned ranges.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 250" role="img" aria-label="Autocut flow from silence detection to a manifest">
+    <defs><marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box plan" x="20" y="30" width="190" height="78" rx="10"/><text class="t" x="115" y="58" text-anchor="middle">silencedetect</text><text class="s" x="115" y="76" text-anchor="middle">noise −35 dB</text><text class="s" x="115" y="92" text-anchor="middle">min pause 0.35 s</text>
+    <rect class="box plan" x="236" y="30" width="190" height="78" rx="10"/><text class="t" x="331" y="58" text-anchor="middle">Subtract silences</text><text class="s" x="331" y="76" text-anchor="middle">keep = whole file</text><text class="s" x="331" y="92" text-anchor="middle">minus each pause</text>
+    <rect class="box plan" x="452" y="30" width="190" height="78" rx="10"/><text class="t" x="547" y="58" text-anchor="middle">Subtract fillers</text><text class="s" x="547" y="76" text-anchor="middle">um · uh · erm · hmm</text><text class="s" x="547" y="92" text-anchor="middle">from word timestamps</text>
+    <rect class="box plan" x="668" y="30" width="190" height="78" rx="10"/><text class="t" x="763" y="58" text-anchor="middle">Pad and merge</text><text class="s" x="763" y="76" text-anchor="middle">0.08 s before, 0.14 s after</text><text class="s" x="763" y="92" text-anchor="middle">merge gaps ≤ 0.12 s</text>
+    <rect class="box plan" x="884" y="30" width="186" height="78" rx="10"/><text class="t" x="977" y="58" text-anchor="middle">Frame-align</text><text class="s" x="977" y="76" text-anchor="middle">snap in/out to fps grid</text><text class="s" x="977" y="92" text-anchor="middle">drop empty ranges</text>
+    <path class="ln" d="M210 69H234" marker-end="url(#a2)"/><path class="ln" d="M426 69H450" marker-end="url(#a2)"/><path class="ln" d="M642 69H666" marker-end="url(#a2)"/><path class="ln" d="M858 69H882" marker-end="url(#a2)"/>
+    <path class="ln" d="M977 108V148H170V168" marker-end="url(#a2)"/>
+    <rect class="box build" x="20" y="170" width="300" height="60" rx="10"/><text class="t" x="170" y="196" text-anchor="middle">Remap words onto new timeline</text><text class="s" x="170" y="214" text-anchor="middle">best-overlap range wins; removed words dropped</text>
+    <rect class="box build" x="350" y="170" width="300" height="60" rx="10"/><text class="t" x="500" y="196" text-anchor="middle">Version-2 production.json</text><text class="s" x="500" y="214" text-anchor="middle">one scene per kept range, audio kept</text>
+    <rect class="box build" x="680" y="170" width="390" height="60" rx="10"/><text class="t" x="875" y="196" text-anchor="middle">words.timeline.json + autocut-report.json</text><text class="s" x="875" y="214" text-anchor="middle">seconds removed, cuts, fillers removed, next steps</text>
+    <path class="ln" d="M320 200H348" marker-end="url(#a2)"/><path class="ln" d="M650 200H678" marker-end="url(#a2)"/>
+  </svg>
+  <figcaption>On the test recording, 13.7 s of speech with four pauses and one “um” became 9.6 s in 5 cuts.</figcaption>
+  </figure>
+  <p>Tuning: <code>--noise-db</code> (louder noise floor needs a higher value), <code>--min-silence</code>, <code>--keep-fillers</code> and <code>--no-jump-zoom</code>. <code>--format vertical|landscape|square</code> reframes with a cover fit.</p>
+</section>
+
+<section id="explain">
+  <h2>The explainer graphics planner</h2>
+  <p class="lead">This is what makes the edit explain things instead of only cutting them. It reads the timed transcript, finds ideas that can be shown, and places graphics on the timeline under rules that protect the speaker.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 470" role="img" aria-label="Explainer planner: transcript to rules or Claude engine, candidates, scheduler, storyboard, manifest overlays">
+    <defs><marker id="a6" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box in" x="20" y="150" width="190" height="86" rx="10"/><text class="t" x="115" y="178" text-anchor="middle">Timed transcript</text><text class="s" x="115" y="196" text-anchor="middle">edited-timeline words</text><text class="s" x="115" y="212" text-anchor="middle">words.timeline.json</text>
+    <rect class="box plan" x="270" y="40" width="250" height="150" rx="10"/><text class="t fplan" x="395" y="66" text-anchor="middle">rules engine (offline)</text>
+    <text class="s" x="395" y="90" text-anchor="middle">title · chapter · definition (X is a…)</text><text class="s" x="395" y="106" text-anchor="middle">ordinal steps · agenda lists · examples</text><text class="s" x="395" y="122" text-anchor="middle">flows (A sends to B) · numbers</text><text class="s" x="395" y="138" text-anchor="middle">A vs B · questions · key phrases</text><text class="s" x="395" y="162" text-anchor="middle">deterministic, free, private</text>
+    <rect class="box motion" x="270" y="210" width="250" height="150" rx="10" stroke-dasharray="6 5"/><text class="t fmotion" x="395" y="236" text-anchor="middle">claude engine (opt-in)</text>
+    <text class="s" x="395" y="260" text-anchor="middle">claude -p, headless, no tools</text><text class="s" x="395" y="276" text-anchor="middle">brief: direction, structure, templates</text><text class="s" x="395" y="292" text-anchor="middle">returns graphics + cue words</text><text class="s" x="395" y="308" text-anchor="middle">props validated, cues aligned</text><text class="s" x="395" y="332" text-anchor="middle">one repair round for rejected items</text>
+    <path class="ln" d="M210 180L268 120" marker-end="url(#a6)"/><path class="ln opt" d="M210 206L268 270" marker-end="url(#a6)"/>
+    <rect class="box build" x="590" y="110" width="200" height="130" rx="10"/><text class="t fbuild" x="690" y="136" text-anchor="middle">Scheduler</text>
+    <text class="s" x="690" y="158" text-anchor="middle">density budget (3 / 6 / 10 per min)</text><text class="s" x="690" y="174" text-anchor="middle">≥ 2 s face time between cutaways</text><text class="s" x="690" y="190" text-anchor="middle">nothing in the first second</text><text class="s" x="690" y="206" text-anchor="middle">no overlaps · long ideas → panels</text><text class="s" x="690" y="222" text-anchor="middle">fill long gaps with best leftovers</text>
+    <path class="ln" d="M520 115L588 150" marker-end="url(#a6)"/><path class="ln opt" d="M520 285L560 285V205L588 205" marker-end="url(#a6)"/>
+    <rect class="box out" x="860" y="40" width="210" height="82" rx="10"/><text class="t" x="965" y="66" text-anchor="middle">storyboard.json</text><text class="s" x="965" y="84" text-anchor="middle">editable items: template, mode,</text><text class="s" x="965" y="100" text-anchor="middle">start, duration, props, cues</text>
+    <rect class="box out" x="860" y="150" width="210" height="64" rx="10"/><text class="t" x="965" y="176" text-anchor="middle">STORYBOARD.md</text><text class="s" x="965" y="194" text-anchor="middle">line · graphic · mode · why</text>
+    <rect class="box build" x="860" y="250" width="210" height="82" rx="10"/><text class="t" x="965" y="276" text-anchor="middle">production.graphics.json</text><text class="s" x="965" y="294" text-anchor="middle">items become globalOverlays;</text><text class="s" x="965" y="310" text-anchor="middle">chapter cards label scenes</text>
+    <path class="ln" d="M790 150L858 90" marker-end="url(#a6)"/><path class="ln" d="M790 175L858 182" marker-end="url(#a6)"/><path class="ln" d="M790 205L858 280" marker-end="url(#a6)"/>
+    <path class="ln opt" d="M965 122V148" /><path class="ln opt" d="M965 40V22H115V148" marker-end="url(#a6)"/><text class="s" x="440" y="16">edit storyboard.json, re-apply with --from-storyboard</text>
+    <rect class="box ext" x="590" y="390" width="480" height="60" rx="10"/><text class="t" x="830" y="416" text-anchor="middle">production-review → production-build</text><text class="s" x="830" y="434" text-anchor="middle">cutaways are opaque overlays that fade in and out over the picture</text>
+    <path class="ln" d="M965 332V388" marker-end="url(#a6)"/>
+  </svg>
+  <figcaption>Dashed parts are optional. Both engines feed the same scheduler, so the safety rules hold whichever one plans.</figcaption>
+  </figure>
+  <h3>Cutaway, panel or overlay</h3>
+  <div class="grid">
+    <div class="card"><h4>Cutaway</h4><p>Opaque full frame for a diagram or card that deserves 3–8 seconds. Audio keeps playing. Needs two seconds of speaker or slide between cutaways.</p></div>
+    <div class="card"><h4>Panel</h4><p>A box on the right half that ends above the captions. Long ideas (up to 26 s) become panels so the slide stays visible.</p></div>
+    <div class="card"><h4>Overlay</h4><p>A short pull-text strip at the top of the frame for a key phrase, question or claim.</p></div>
+    <div class="card"><h4>Nothing</h4><p>Greetings, personal remarks and anything that would only restate the caption get no graphic.</p></div>
+  </div>
+  <h3>Grounding and cues</h3>
+  <p>Every label, number and phrase comes from the transcript, and numbers are used only when the speaker said them. Items such as bullets, steps, flow nodes, bars and pull-text words carry <code>cues</code>: the spoken time of the word that names them, so each element appears as the word is said. With the Claude engine the model names the cue words and the tool aligns them to the real word timestamps.</p>
+  <h3>Method credits</h3>
+  <p>Density levels, the cutaway-or-panel-or-nothing decision, minimum face time and the never-invent-numbers rule follow the <b>motion-graphics</b> skill by Barty-Bart (MIT). The structure of the Claude brief (inputs, direction, structure, rules, output) reflects craft lessons from the creator-prompt collection <b>awesome-opus-5-5-video-prompts</b>; no prompt text from it is copied because those prompts belong to their authors. See <code>THIRD_PARTY_NOTICES.md</code>.</p>
+</section>
+
+<section id="typography">
+  <h2>Kinetic typography</h2>
+  <p class="lead">All text uses one system, from the <b>kinetic-typography</b> skill by iart.ai (MIT): a strong sans for the line and a different face for the words that carry the point.</p>
+  <div class="grid">
+    <div class="card"><h4>Two faces</h4><p>Geist Variable (weights 100–900) for lines. Instrument Serif Italic, 1.16× size in the accent colour, for stressed words. Both bundled under the SIL OFL.</p></div>
+    <div class="card"><h4>Stress markup</h4><p>Write <code>*word*</code> in any headline-style prop. Captions choose stress automatically from numbers, acronyms, proper terms, intensifiers, lingered-on words and pauses.</p></div>
+    <div class="card"><h4>Reveals</h4><p>Words rise from a hidden baseline with expo-out easing and 40–70 ms stagger. Stressed words also focus-pull from blur to sharp. Reveal styles: mask, blur, pop.</p></div>
+    <div class="card"><h4>Captions</h4><p>The <code>kinetic</code> style keeps bold sans, pops the word being spoken in the accent colour and sets stress words in italic serif. Rendered in ~40 s chunks in parallel.</p></div>
+    <div class="card"><h4>Themes</h4><p><code>night</code> or <code>paper</code> (warm gray, black ink, one orange accent). <code>auto</code> picks by footage brightness.</p></div>
+  </div>
+</section>
+
+<section id="motion">
+  <h2>The motion engine</h2>
+  <p class="lead">Each graphic is a self-contained HTML page. Headless Chrome seeks it to every frame time and captures a PNG. FFmpeg later layers those PNGs over video.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 330" role="img" aria-label="Motion engine: manifest entry to validated page, Chrome seek loop, deduplicated PNG frames, cache and FFmpeg overlay">
+    <defs><marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box motion" x="20" y="30" width="185" height="80" rx="10"/><text class="t" x="112" y="58" text-anchor="middle">Manifest entry</text><text class="s" x="112" y="76" text-anchor="middle">template + props</text><text class="s" x="112" y="92" text-anchor="middle">size · fps · duration</text>
+    <rect class="box motion" x="236" y="30" width="185" height="80" rx="10"/><text class="t" x="328" y="58" text-anchor="middle">validateProps</text><text class="s" x="328" y="76" text-anchor="middle">schema check</text><text class="s" x="328" y="92" text-anchor="middle">unknown fields rejected</text>
+    <rect class="box motion" x="452" y="30" width="185" height="80" rx="10"/><text class="t" x="544" y="58" text-anchor="middle">motionPage</text><text class="s" x="544" y="76" text-anchor="middle">theme · placement box</text><text class="s" x="544" y="92" text-anchor="middle">font as data URL</text>
+    <rect class="box motion" x="668" y="30" width="185" height="80" rx="10"/><text class="t" x="760" y="58" text-anchor="middle">renderPage</text><text class="s" x="760" y="76" text-anchor="middle">runtime + escaped JSON</text><text class="s" x="760" y="92" text-anchor="middle">text via textContent</text>
+    <rect class="box ext" x="884" y="30" width="186" height="80" rx="10"/><text class="t" x="977" y="58" text-anchor="middle">Headless Chrome</text><text class="s" x="977" y="76" text-anchor="middle">DevTools protocol</text><text class="s" x="977" y="92" text-anchor="middle">all DNS blocked</text>
+    <path class="ln" d="M205 70H234" marker-end="url(#a3)"/><path class="ln" d="M421 70H450" marker-end="url(#a3)"/><path class="ln" d="M637 70H666" marker-end="url(#a3)"/><path class="ln" d="M853 70H882" marker-end="url(#a3)"/>
+    <path class="ln" d="M977 110V150H112V180" marker-end="url(#a3)"/>
+
+    <rect class="box motion" x="20" y="182" width="185" height="80" rx="10"/><text class="t" x="112" y="210" text-anchor="middle">seek(t)</text><text class="s" x="112" y="228" text-anchor="middle">t = frame ÷ fps</text><text class="s" x="112" y="244" text-anchor="middle">pure function of time</text>
+    <rect class="box motion" x="236" y="182" width="185" height="80" rx="10"/><text class="t" x="328" y="210" text-anchor="middle">DOM signature</text><text class="s" x="328" y="228" text-anchor="middle">hash of the stage markup</text><text class="s" x="328" y="244" text-anchor="middle">unchanged = same frame</text>
+    <rect class="box motion" x="452" y="182" width="185" height="80" rx="10"/><text class="t" x="544" y="210" text-anchor="middle">Screenshot or link</text><text class="s" x="544" y="228" text-anchor="middle">new state: capture PNG</text><text class="s" x="544" y="244" text-anchor="middle">same state: hardlink</text>
+    <rect class="box motion" x="668" y="182" width="185" height="80" rx="10"/><text class="t" x="760" y="210" text-anchor="middle">Frame cache</text><text class="s" x="760" y="228" text-anchor="middle">key = sha256(page, size,</text><text class="s" x="760" y="244" text-anchor="middle">fps, frames)</text>
+    <rect class="box build" x="884" y="182" width="186" height="80" rx="10"/><text class="t" x="977" y="210" text-anchor="middle">FFmpeg overlay</text><text class="s" x="977" y="228" text-anchor="middle">RGBA, 4:4:4, enable window</text><text class="s" x="977" y="244" text-anchor="middle">frame-exact timing</text>
+    <path class="ln" d="M205 222H234" marker-end="url(#a3)"/><path class="ln" d="M421 222H450" marker-end="url(#a3)"/><path class="ln" d="M637 222H666" marker-end="url(#a3)"/><path class="ln" d="M853 222H882" marker-end="url(#a3)"/>
+    <text class="s" x="20" y="300">Concurrency: up to 4 pages render in parallel in one Chrome. Speed: about 55 ms per captured 1080p frame; held frames cost almost nothing.</text>
+    <text class="s" x="20" y="318">Transparent overlays use a transparent default background and ProRes 4444 (.mov) when exported by the graphic command.</text>
+  </svg>
+  <figcaption>Because no template uses CSS transitions, timers or randomness, <code>seek(t)</code> returns the same picture every time.</figcaption>
+  </figure>
+
+  <h3>Safety properties</h3>
+  <div class="grid">
+    <div class="card"><h4>No network</h4><p>Chrome starts with <code>--host-resolver-rules=MAP * ~NOTFOUND</code>. Pages cannot reach the internet.</p></div>
+    <div class="card"><h4>No script injection</h4><p>Props are JSON-escaped, text is set with <code>textContent</code>, and the schema rejects control characters and unknown fields.</p></div>
+    <div class="card"><h4>Fresh profile</h4><p>Each run uses a temporary profile with extensions, sync and background networking disabled, and it is deleted afterwards.</p></div>
+    <div class="card"><h4>Custom HTML is trusted code</h4><p>Your own <code>html</code> page runs in the same sandboxed Chrome, but review it before approving. Its bytes are part of the fingerprint.</p></div>
+  </div>
+
+  <h3>Placement and theme</h3>
+  <p>Full-screen graphics fill the frame. Overlays use one of twelve placements: <code>full center left right top bottom top-left top-right bottom-left bottom-right strip-top strip-center</code> (boxed placements end above the caption zone). In portrait, <code>left/right</code> become the top/bottom halves. Boxed overlays get a translucent panel. <code>lower-third</code>, <code>callout</code>, <code>progress-bar</code> and captions always use the full frame. The manifest <code>theme</code> takes a <code>preset</code> (<code>night</code> or <code>paper</code>), optional token overrides (<code>background surface text muted accent</code>), a chart <code>palette</code> and a <code>font</code> file.</p>
+</section>
+
+<section id="templates">
+  <h2>Template library</h2>
+  <p class="lead">Eighteen validated templates plus word-timed captions. Run <code>video-monk templates</code> for every prop, and <code>video-monk graphic</code> to preview one.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Template</th><th>Best for</th><th>Key props</th></tr>
+    <tr><td><code>title</code></td><td>Intro or section card with staggered words</td><td>kicker, title, subtitle, align</td></tr>
+    <tr><td><code>chapter</code></td><td>Numbered section bumper</td><td>number, title, subtitle</td></tr>
+    <tr><td><code>lower-third</code></td><td>Name and role over footage</td><td>name, role, position</td></tr>
+    <tr><td><code>kinetic-text</code></td><td>Emphasis phrase revealed word by word</td><td>text, emphasis[], mode, position</td></tr>
+    <tr><td><code>bar-chart</code></td><td>Compare values, horizontal or vertical</td><td>bars[{label,value,display,color}], unit, max, orientation, highlight, citation</td></tr>
+    <tr><td><code>line-chart</code></td><td>Trends over time, lines draw on</td><td>labels[], series[{name,values[]}], unit, yMin, yMax</td></tr>
+    <tr><td><code>donut</code></td><td>Share of a whole</td><td>segments[{label,value}], centerValue, centerLabel</td></tr>
+    <tr><td><code>term</code></td><td>Definition card: category pill, large term, definition revealed word by word</td><td>term, definition, category, icon, cues[]</td></tr>
+    <tr><td><code>stat</code></td><td>One big counting-up number</td><td>value, prefix, suffix, decimals, label, note</td></tr>
+    <tr><td><code>comparison</code></td><td>Two or three columns side by side</td><td>columns[{heading, icon, items[]}]</td></tr>
+    <tr><td><code>flow</code></td><td>Architecture or request path with moving packets</td><td>nodes[{id,label,sub,icon,x,y}], edges[{from,to,label,dashed}], packets</td></tr>
+    <tr><td><code>steps</code></td><td>Numbered process on a growing rail</td><td>steps[{title, detail, icon}]</td></tr>
+    <tr><td><code>bullets</code></td><td>Reveal points one at a time</td><td>items[], marker (dot, check, number, x)</td></tr>
+    <tr><td><code>callout</code></td><td>Highlight a region of the shot</td><td>x, y, w, h (0–1), label, shape, dim</td></tr>
+    <tr><td><code>quote</code></td><td>Attributed quotation card</td><td>quote, author, source</td></tr>
+    <tr><td><code>code</code></td><td>Typed, syntax-highlighted snippet</td><td>filename, code, highlight[], typing</td></tr>
+    <tr><td><code>table</code></td><td>Header and rows revealed in sequence</td><td>columns[], rows[][], highlight</td></tr>
+    <tr><td><code>progress-bar</code></td><td>Whole-video progress with chapter ticks</td><td>ticks[], position</td></tr>
+    <tr><td><code>captions</code> (internal)</td><td>Karaoke, phrase or plain captions burned in</td><td>generated from <code>captions.words</code></td></tr>
+  </table></div>
+  <p>The built-in icon set: server, database, user, users, cloud, lock, gear, bolt, check, x, code, globe, phone, cpu, queue, file, chart, clock, shield, search, mail, key, warning, star, arrow, box, network.</p>
+</section>
+
+<section id="manifest">
+  <h2>The version-2 manifest</h2>
+  <p class="lead">A single <code>production.json</code> describes the whole edit. Unknown fields are rejected, times must align to the frame grid, and every asset needs approval, rights and attribution.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Block</th><th>What it controls</th></tr>
+    <tr><td><code>fps, width, height, theme</code></td><td>Timeline format (24/25/30/50/60 fps, even sizes up to 3840), colors and font.</td></tr>
+    <tr><td><code>assets[]</code></td><td>Video, image and audio files with <code>approved: true</code>, <code>rights</code>, <code>attribution</code>, optional <code>sourceUrl</code>.</td></tr>
+    <tr><td><code>scenes[]</code></td><td>Ordered <code>video | image | graphic | color</code> scenes with <code>duration</code>, <code>purpose</code>, optional <code>chapter</code>, <code>fit</code>, <code>motion</code> (zoom, pan, punch-in), source <code>audio</code>, <code>broll[]</code>, <code>overlays[]</code> and an outgoing <code>transition</code>.</td></tr>
+    <tr><td><code>audio</code></td><td><code>narration</code>, <code>music[]</code> beds (fades, loop, trim), <code>sfx[]</code> hits and <code>ducking</code>.</td></tr>
+    <tr><td><code>captions</code></td><td>Timeline-relative <code>words</code> file and <code>style</code> (karaoke, phrase, plain), position and paging limits.</td></tr>
+    <tr><td><code>globalOverlays[]</code></td><td>Overlays timed on the whole video, such as <code>progress-bar</code>.</td></tr>
+    <tr><td><code>delivery</code></td><td><code>targetLufs</code> (−14), <code>truePeak</code> (−1), <code>crf</code>, <code>preset</code>, audio bitrate, thumbnail.</td></tr>
+  </table></div>
+<pre><code>{ "kind": "video", "asset": "talk", "in": 12.4, "duration": 6, "purpose": "Show the latency gap",
+  "audio": {}, "motion": { "type": "zoom-in", "amount": 0.06 },
+  "overlays": [{ "template": "bar-chart", "start": 1, "duration": 5, "placement": "right",
+    "props": { "title": "p99 latency", "unit": "ms", "citation": "Benchmark, Oct 2026",
+      "bars": [{ "label": "Database", "value": 120 }, { "label": "Cache", "value": 4 }] } }],
+  "transition": { "type": "slideleft", "duration": 0.4 } }</code></pre>
+  <h3>Timeline arithmetic</h3>
+  <p>Transitions overlap neighbouring scenes, so total duration is the sum of scene durations minus the sum of transition durations. A transition must be shorter than both scenes it joins, and the last scene cannot have one. Narration longer than the timeline is rejected rather than silently truncated.</p>
+  <h3>Transitions and camera moves</h3>
+  <p><b>Transitions (25):</b> fade, fadeblack, fadewhite, dissolve, wipeleft/right/up/down, slideleft/right/up/down, smoothleft/right/up/down, circleopen, circleclose, radial, pixelize, zoomin, distance, hblur, squeezeh, squeezev. <b>Camera:</b> zoom-in, zoom-out, pan-left/right/up/down (cosine-eased <code>zoompan</code> on a 2× canvas) and punch-in (a static crop).</p>
+</section>
+
+<section id="build">
+  <h2>The build pipeline</h2>
+  <p class="lead"><code>production-build</code> runs eight stages. Intermediate work lives in <code>work/</code>, and motion frames are deleted after a successful build unless you pass <code>--keep-work</code>.</p>
+  <div class="steps">
+    <div class="step"><h4>Gate</h4><p>Reload the manifest, recompute the fingerprint and require it to equal the approved review. Create the output folder only after this passes.</p></div>
+    <div class="step"><h4>Motion frames</h4><p>Render every graphic scene, overlay, global overlay and the caption layer in headless Chrome, in parallel.</p></div>
+    <div class="step"><h4>Scene composites</h4><p>For each scene: fit or reframe the source, apply camera motion, overlay B-roll, then overlay motion PNGs in 4:4:4. Encode an intermediate and cut matching source-audio clips.</p></div>
+    <div class="step"><h4>Join</h4><p>Hard-cut runs are stream-copied together. Scenes separated by transitions are joined with <code>xfade</code> at frame-exact offsets.</p></div>
+    <div class="step"><h4>Audio mix</h4><p>Build voice, music and SFX buses, duck the music under speech and write stems.</p></div>
+    <div class="step"><h4>Mastering</h4><p>Two-pass gain to the loudness target with an oversampled peak limiter, written to <code>stems/master.wav</code>.</p></div>
+    <div class="step"><h4>Final encode</h4><p>One pass applies transitions, global overlays and burned-in captions, muxes the master as AAC and writes <code>final.mp4</code> with <code>+faststart</code>.</p></div>
+    <div class="step"><h4>Deliver and verify</h4><p>Write captions, chapters, thumbnail, contact sheet, Resolve XML and credits. Decode <code>final.mp4</code> and measure size, fps, duration, LUFS and true peak.</p></div>
+  </div>
+  <p><code>--quality draft</code> uses faster x264 settings for quick iterations; <code>final</code> (default) uses the manifest's <code>crf</code> and <code>preset</code>.</p>
+</section>
+
+<section id="audio">
+  <h2>The audio graph</h2>
+  <p class="lead">Speech always wins. Music is compressed against the voice with a sidechain, and the result is mastered to the target loudness.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 400" role="img" aria-label="Audio graph: narration and scene audio form the voice bus, music is ducked by a sidechain compressor, everything is mixed and mastered">
+    <defs><marker id="a4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box in" x="20" y="14" width="180" height="46" rx="8"/><text class="t" x="110" y="34" text-anchor="middle">Narration</text><text class="s" x="110" y="50" text-anchor="middle">gain, start offset</text>
+    <rect class="box in" x="20" y="76" width="180" height="46" rx="8"/><text class="t" x="110" y="96" text-anchor="middle">Scene source audio</text><text class="s" x="110" y="112" text-anchor="middle">gain, micro-fades at cuts</text>
+    <rect class="box in" x="20" y="160" width="180" height="46" rx="8"/><text class="t" x="110" y="180" text-anchor="middle">Music beds</text><text class="s" x="110" y="196" text-anchor="middle">loop, trim, fade in / out</text>
+    <rect class="box in" x="20" y="236" width="180" height="46" rx="8"/><text class="t" x="110" y="256" text-anchor="middle">SFX hits</text><text class="s" x="110" y="272" text-anchor="middle">gain, placed at time</text>
+
+    <rect class="box plan" x="260" y="38" width="140" height="64" rx="8"/><text class="t" x="330" y="64" text-anchor="middle">Voice bus</text><text class="s" x="330" y="82" text-anchor="middle">amix, no normalize</text>
+    <rect class="box plan" x="260" y="160" width="140" height="46" rx="8"/><text class="t" x="330" y="180" text-anchor="middle">Music bus</text><text class="s" x="330" y="196" text-anchor="middle">amix</text>
+    <rect class="box plan" x="260" y="236" width="140" height="46" rx="8"/><text class="t" x="330" y="256" text-anchor="middle">SFX bus</text><text class="s" x="330" y="272" text-anchor="middle">amix</text>
+    <path class="ln" d="M200 37H230V58H258" marker-end="url(#a4)"/><path class="ln" d="M200 99H230V82H258" marker-end="url(#a4)"/>
+    <path class="ln" d="M200 183H258" marker-end="url(#a4)"/><path class="ln" d="M200 259H258" marker-end="url(#a4)"/>
+
+    <rect class="box motion" x="470" y="130" width="210" height="96" rx="8"/><text class="t" x="575" y="154" text-anchor="middle">sidechaincompress</text>
+    <text class="s" x="575" y="172" text-anchor="middle">key = voice, input = music</text><text class="s" x="575" y="188" text-anchor="middle">attack 20 ms · release 400 ms</text><text class="s" x="575" y="204" text-anchor="middle">ratio set by amountDb (12)</text>
+    <path class="ln" d="M400 183H468" marker-end="url(#a4)"/>
+    <path class="ln" d="M400 62H435V140H468" marker-end="url(#a4)"/><text class="s" x="441" y="112">sidechain key</text>
+
+    <rect class="box build" x="730" y="130" width="130" height="96" rx="8"/><text class="t" x="795" y="170" text-anchor="middle">Mix</text><text class="s" x="795" y="188" text-anchor="middle">voice + music</text><text class="s" x="795" y="204" text-anchor="middle">+ SFX</text>
+    <path class="ln" d="M680 178H728" marker-end="url(#a4)"/>
+    <path class="ln" d="M400 50H795V128" marker-end="url(#a4)"/>
+    <path class="ln" d="M400 259H795V228" marker-end="url(#a4)"/>
+
+    <rect class="box build" x="920" y="104" width="150" height="148" rx="8"/><text class="t" x="995" y="128" text-anchor="middle">Mastering</text>
+    <text class="s" x="995" y="148" text-anchor="middle">pass 1: gain to target</text><text class="s" x="995" y="164" text-anchor="middle">192 kHz peak limiter</text><text class="s" x="995" y="180" text-anchor="middle">measure LUFS</text><text class="s" x="995" y="196" text-anchor="middle">pass 2: corrected gain</text><text class="s" x="995" y="212" text-anchor="middle">default −14 LUFS</text><text class="s" x="995" y="228" text-anchor="middle">ceiling −1.8 dBTP</text>
+    <path class="ln" d="M860 178H918" marker-end="url(#a4)"/>
+
+    <rect class="box out" x="470" y="320" width="390" height="56" rx="8"/><text class="t" x="665" y="344" text-anchor="middle">stems/voice.wav · music.wav (ducked) · sfx.wav</text><text class="s" x="665" y="362" text-anchor="middle">24-bit, 48 kHz stereo, saved for Resolve or re-mixing</text>
+    <path class="ln opt" d="M575 226V318" marker-end="url(#a4)"/>
+    <rect class="box out" x="920" y="320" width="150" height="56" rx="8"/><text class="t" x="995" y="344" text-anchor="middle">final.mp4</text><text class="s" x="995" y="362" text-anchor="middle">AAC 192k mux</text>
+    <path class="ln" d="M995 252V318" marker-end="url(#a4)"/>
+  </svg>
+  <figcaption>With no music or no speech, ducking is skipped automatically. A fully silent mix is reported as <code>SILENT</code> rather than failing loudness.</figcaption>
+  </figure>
+</section>
+
+<section id="gates">
+  <h2>Approval gates and verification</h2>
+  <p class="lead">The toolkit separates what it can prove (structure, hashes, decoded media, measured levels) from what only a person can decide (facts, rights, taste).</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 250" role="img" aria-label="Fingerprint, review, build gate and post-render verification">
+    <defs><marker id="a5" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box in" x="20" y="40" width="215" height="90" rx="10"/><text class="t" x="127" y="68" text-anchor="middle">Inputs</text><text class="s" x="127" y="86" text-anchor="middle">manifest bytes</text><text class="s" x="127" y="102" text-anchor="middle">every asset sha256</text><text class="s" x="127" y="118" text-anchor="middle">caption words · font · HTML</text>
+    <rect class="box plan" x="270" y="40" width="190" height="90" rx="10"/><text class="t" x="365" y="68" text-anchor="middle">Fingerprint</text><text class="s" x="365" y="86" text-anchor="middle">one SHA-256 over</text><text class="s" x="365" y="102" text-anchor="middle">everything above</text>
+    <rect class="box motion" x="495" y="40" width="200" height="90" rx="10"/><text class="t" x="595" y="68" text-anchor="middle">production-review</text><text class="s" x="595" y="86" text-anchor="middle">pending, or approved</text><text class="s" x="595" y="102" text-anchor="middle">with --approve-plan</text>
+    <rect class="box build" x="730" y="40" width="160" height="90" rx="10"/><text class="t" x="810" y="68" text-anchor="middle">production-build</text><text class="s" x="810" y="86" text-anchor="middle">recompute and compare</text><text class="s" x="810" y="102" text-anchor="middle">+ --allow-render</text>
+    <rect class="box out" x="925" y="40" width="145" height="90" rx="10"/><text class="t" x="997" y="68" text-anchor="middle">Verify</text><text class="s" x="997" y="86" text-anchor="middle">decode · size · fps</text><text class="s" x="997" y="102" text-anchor="middle">duration · LUFS · peak</text>
+    <path class="ln" d="M235 85H268" marker-end="url(#a5)"/><path class="ln" d="M460 85H493" marker-end="url(#a5)"/><path class="ln" d="M695 85H728" marker-end="url(#a5)"/><path class="ln" d="M890 85H923" marker-end="url(#a5)"/>
+    <path class="ln opt" d="M810 130V190H365" marker-end="url(#a5)"/><text class="s" x="560" y="184">hash mismatch: build refuses, review again</text>
+    <rect class="box ext" x="20" y="198" width="340" height="40" rx="8"/><text class="s" x="190" y="223" text-anchor="middle">Any edit to media, captions or manifest invalidates approval.</text>
+  </svg>
+  </figure>
+  <div class="tablewrap"><table>
+    <tr><th>Automatically checked</th><th>Always left to a human</th></tr>
+    <tr><td>Manifest schema, frame alignment, source bounds, template props, narration fit, hashes, decode, dimensions, fps, duration, loudness, true peak, caption presence.</td><td>Factual accuracy, chart values, caption wording, asset rights and attribution, creative quality, whole-video playback and publication.</td></tr>
+  </table></div>
+  <p>Reports carry explicit <code>NOT VERIFIED</code> and <code>USER ATTESTED</code> markers, and the build never reports a file as final. <code>production-verify</code> re-runs the technical checks on any file you export elsewhere.</p>
+</section>
+
+<section id="outputs">
+  <h2>What a build produces</h2>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>final.mp4</code></td><td>H.264 video with AAC audio at the target loudness.</td></tr>
+    <tr><td><code>captions.srt</code>, <code>captions.vtt</code></td><td>Paged captions for platform upload (also burned in unless <code>burnIn: false</code>).</td></tr>
+    <tr><td><code>chapters.txt</code></td><td>YouTube chapter list from scene <code>chapter</code> labels (starts at 0:00).</td></tr>
+    <tr><td><code>thumbnail.png</code>, <code>contact-sheet.png</code></td><td>A still (or a rendered template) and a per-scene overview grid for quick review.</td></tr>
+    <tr><td><code>stems/</code></td><td><code>voice.wav</code>, <code>music.wav</code>, <code>sfx.wav</code>, <code>master.wav</code>.</td></tr>
+    <tr><td><code>timeline.xml</code></td><td>Resolve-importable sequence: scene clips on two video tracks plus the three stems.</td></tr>
+    <tr><td><code>report.json</code>, <code>REVIEW.txt</code>, <code>CREDITS.txt</code></td><td>Verification results, what a human must still check, and per-asset attribution.</td></tr>
+    <tr><td><code>production.json</code></td><td>A copy of the manifest used, for reproducibility.</td></tr>
+  </table></div>
+</section>
+
+<section id="commands">
+  <h2>Command reference</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>auto</code></td><td>Inspect, transcribe, cut, review and render a recording in one go.</td></tr>
+    <tr><td><code>inspect</code></td><td>Measure loudness, true peak, pauses, speech ratio and pacing; print suggestions.</td></tr>
+    <tr><td><code>transcribe</code></td><td>Local word timestamps (<code>--engine whisper</code>, or <code>parakeet</code> via HyperFrames).</td></tr>
+    <tr><td><code>models</code></td><td>List or download whisper.cpp models into <code>~/.cache/video-monk/models</code>.</td></tr>
+    <tr><td><code>autocut</code></td><td>Silence and filler removal to a v2 manifest with remapped captions.</td></tr>
+    <tr><td><code>templates</code></td><td>List motion templates and their props (<code>--json</code> for tools).</td></tr>
+    <tr><td><code>graphic</code></td><td>Render one template to <code>.png</code>, <code>.mp4</code> or alpha <code>.mov</code>.</td></tr>
+    <tr><td><code>production-review</code></td><td>Validate a manifest and optionally record approval of its fingerprint.</td></tr>
+    <tr><td><code>production-build</code></td><td>Render the approved timeline (<code>--quality draft</code>, <code>--keep-work</code>, <code>--concurrency</code>).</td></tr>
+    <tr><td><code>production-verify</code></td><td>Technical checks on any exported file against the manifest and loudness targets.</td></tr>
+    <tr><td><code>stock-search</code>, <code>stock-fetch</code></td><td>Opt-in Pexels candidates and a selected download with attribution.</td></tr>
+    <tr><td><code>catalog</code>, <code>fetch</code>, <code>analyze</code>, <code>style</code></td><td>Reference-channel study: metadata, sampled frames, optional LLM style notes.</td></tr>
+    <tr><td><code>plan</code>, <code>import-plan</code>, <code>validate</code>, <code>handoff</code></td><td>Picture-only rough-cut plans and Resolve XML handoff (original v1 workflow).</td></tr>
+    <tr><td><code>install</code></td><td>Copy skills and agents into a workspace for Claude Code or Copilot.</td></tr>
+    <tr><td><code>doctor</code></td><td>Check required tools and FFmpeg filters, and report which optional tools are present.</td></tr>
+  </table></div>
+  <h3>Environment overrides</h3>
+  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>PEXELS_API_KEY</code> (stock search only).</p>
+</section>
+
+<section id="claude">
+  <h2>Working with Claude Code</h2>
+  <p class="lead">The CLI does the rendering. Claude supplies the editorial judgment: which beat needs a chart, a diagram or B-roll.</p>
+<pre><code>video-monk install --target ~/videos/my-explainer --format claude --workflow non-resolve</code></pre>
+  <div class="grid">
+    <div class="card"><h4>Skill</h4><p><code>non-resolve-production</code> gives Claude the procedure, the v2 schema reference and a working example manifest.</p></div>
+    <div class="card"><h4>claude-editor</h4><p>Owns the brief, beat sheet, manifest and review loop. Coordinates the others.</p></div>
+    <div class="card"><h4>parakeet-transcriber</h4><p>Runs local transcription and reports speech-review gaps.</p></div>
+    <div class="card"><h4>hyperframes-animator</h4><p>Chooses templates, writes props, previews PNGs and checks layout for 16:9 and 9:16.</p></div>
+    <div class="card"><h4>chrome-researcher</h4><p>Collects attributed facts and sources; pages are treated as untrusted.</p></div>
+    <div class="card"><h4>free-sound-designer</h4><p>Picks licensed music and SFX and records per-track license evidence.</p></div>
+    <div class="card"><h4>obs-screen-recorder</h4><p>Guides original local capture. You operate OBS.</p></div>
+    <div class="card"><h4>ffmpeg-finisher</h4><p>Builds from an approved review, inspects the contact sheet and reports verification.</p></div>
+  </div>
+  <div class="note"><b>Design loop:</b> Claude writes overlay props, runs <code>video-monk graphic ... --output x.png</code>, reads the PNG to check layout, fixes problems, then reviews and builds. Subagents never nest; the main conversation coordinates.</div>
+</section>
+
+<section id="tests">
+  <h2>Testing</h2>
+  <p class="lead"><code>npm test</code> runs 108 tests. Real-render tests run when FFmpeg and Chrome are installed.</p>
+  <ul>
+    <li><b>Unit:</b> caption paging and remapping, cut planning, silence refinement, whisper JSON parsing, template schema validation, placement maths.</li>
+    <li><b>Timeline:</b> 12 rejection cases (bad template, overlay out of bounds, transition too long, unaligned durations, missing captions file, unapproved asset and others).</li>
+    <li><b>Gating:</b> a build is refused without a matching approval.</li>
+    <li><b>End to end:</b> a real run with autocut, a counting-up stat scene, a transition, an overlay chart, captions, ducked music and mastering, checking every deliverable and that the animation changes over time.</li>
+    <li><b>Customization:</b> installed skills and agents keep their tool boundaries, valid links and size budgets.</li>
+  </ul>
+</section>
+
+<section id="limits">
+  <h2>Limits</h2>
+  <ul>
+    <li>Transcripts are drafts. Proofread names, numbers and jargon before publishing captions.</li>
+    <li>Charts show the numbers you give them; the toolkit checks structure, not truth.</li>
+    <li>Silence detection is acoustic. Background music or a noisy room may need <code>--noise-db</code> tuning, and cuts should be watched.</li>
+    <li><code>auto</code> plans graphics by default (offline rules). For richer diagrams use <code>--engine claude --allow-llm</code> or have Claude edit the storyboard.</li>
+    <li>Each command takes one recording. Folder or batch input is not built yet.</li>
+    <li>The offline planner works from patterns in the words; on conversational speech it mostly yields pull-text and a few definition cards, lists and flows. The Claude engine (opt-in, sends the transcript to Anthropic) draws real diagrams. Always review the storyboard.</li>
+    <li>Rights, attribution, factual accuracy and publishing are always human decisions.</li>
+  </ul>
+</section>
+
+</main>
+<footer>Video Monk 0.3.0 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
+</body>
+</html>

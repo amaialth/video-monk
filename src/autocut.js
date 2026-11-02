@@ -126,7 +126,7 @@ export async function autocut(media, output, options = {}, execute = run) {
   if (words) {
     timelineWords = remapWords(words, placed);
     await writeJson(path.join(output, 'words.timeline.json'), timelineWords);
-    manifest.captions = { words: 'words.timeline.json', style: options.captionStyle || 'karaoke', position: 'bottom' };
+    manifest.captions = { words: 'words.timeline.json', style: options.captionStyle || 'kinetic', position: 'bottom' };
   }
   await writeJson(path.join(output, 'production.json'), manifest);
   const kept = placed.reduce((n, r) => n + r.frames / fps, 0);

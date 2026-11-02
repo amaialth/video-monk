@@ -20,7 +20,8 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 | Analyze | `inspect` | Loudness, true peak, pauses, speech ratio, scene-change pacing and suggestions |
 | Transcribe | `transcribe` | Local whisper.cpp word timestamps, refined against measured silence |
 | Plan / cut | `autocut` | Removes pauses and filler words ("um", "uh"), adds jump-cut punch-ins, remaps captions, writes a version-2 timeline |
-| Design | edit `production.json`; `templates`, `graphic` | 17 motion and infographic templates, B-roll layers, camera moves, 25 transitions |
+| Explain | `storyboard` (also run by `auto`) | Reads the transcript and places motion graphics wherever an idea can be shown: definitions, flows, steps, lists, numbers, comparisons, chapters, pull-text. Offline rules, or Claude designs the diagrams (`--engine claude`) |
+| Design | edit `production.json`; `templates`, `graphic` | 18 motion and infographic templates, B-roll layers, camera moves, 25 transitions |
 | Build | `production-build` | Composites, transitions, karaoke captions, music ducking, SFX, two-pass loudness mastering, final encode |
 | Deliver | (included) | `final.mp4`, `captions.srt/.vtt`, `chapters.txt`, `thumbnail.png`, `contact-sheet.png`, stems, `timeline.xml`, verification report |
 | One shot | `auto` | Runs all of the above for a talking-head or screen recording |
@@ -28,13 +29,34 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 ### Motion graphics and infographics
 
 `title` · `chapter` · `lower-third` · `kinetic-text` · `bar-chart` · `line-chart` ·
-`donut` · `stat` (count-up) · `comparison` · `flow` (architecture diagram with icons
+`donut` · `stat` (count-up) · `term` (definition card) · `comparison` · `flow` (architecture diagram with icons
 and moving packets) · `steps` · `bullets` · `callout` (highlight part of the shot) ·
 `quote` · `code` (typed, syntax-highlighted) · `table` · `progress-bar`, plus
 word-timed karaoke captions. Each template has a validated props schema
 (`video-monk templates`), adapts to 16:9, 9:16 and 1:1, and can be full-screen or
 boxed in any of ten placements over footage. You can also supply your own seekable
 HTML page for fully custom animation.
+
+### Typography
+
+Text follows modern kinetic-type practice. Headlines are bold Geist; **stressed words switch to an italic
+serif (Instrument Serif) in the accent colour**, written `*like this*` in any headline-style prop. Captions
+pick stress automatically from the transcript (numbers, acronyms, proper terms, intensifiers, words the
+speaker lingers on). Reveals are masked word-by-word rises with expo-out easing, stressed words focus-pull
+into place, and `cues` land each word or bullet on the moment it is spoken. Two theme presets:
+`night` and `paper` (warm gray, black ink, orange accent), chosen automatically from the footage brightness.
+Fonts are bundled (SIL OFL). Details: [kinetic-typography.md](templates/workflows/non-resolve/skills/non-resolve-production/references/kinetic-typography.md).
+
+### Explainer graphics
+
+`video-monk storyboard` (and `auto`, by default) plans graphics for every idea the speaker explains, then
+writes a reviewable `STORYBOARD.md` table and an editable `storyboard.json`. For each idea it chooses a
+full-frame **cutaway**, a **side panel** (long ideas, keeps the picture visible) or a pull-text **overlay**,
+under a density budget (`light` 3, `medium` 6, `heavy` 10 per minute), with at least two seconds of face time
+between cutaways, nothing in the first second, and every label and number taken from the transcript.
+Engines: `rules` (offline, deterministic) and `claude` (Claude designs the diagrams through your local
+Claude Code login; opt-in with `--allow-llm`, the transcript is sent to Anthropic). See
+[explainer-graphics.md](templates/workflows/non-resolve/skills/non-resolve-production/references/explainer-graphics.md).
 
 ### Editing features
 
@@ -68,6 +90,10 @@ required; all text renders in Chrome.
 # Fully automatic: inspect -> transcribe -> cut -> caption -> master -> final.mp4
 video-monk auto --media talk.mp4 --output talk-v1 --transcribe \
   --allow-render --approve-plan --rights-confirmed
+
+# Same, with Claude designing the diagrams (needs the claude CLI; sends the transcript to Anthropic)
+video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude --allow-llm \
+  --graphics medium --allow-render --approve-plan --rights-confirmed
 
 # Vertical short from the same recording, fast draft quality
 video-monk auto --media talk.mp4 --output talk-short --transcribe --format vertical \
@@ -128,6 +154,7 @@ Run `video-monk --help` for every option.
 | `transcribe` | Local word-level transcription (`--engine whisper` default, or `parakeet` via HyperFrames) |
 | `models` | List/download whisper.cpp models |
 | `autocut` | Silence/filler removal to a version-2 manifest with remapped captions |
+| `storyboard` | Plan explainer graphics from the transcript; writes the manifest, `.storyboard.json` and `.STORYBOARD.md` |
 | `templates` | Motion template catalog and props |
 | `graphic` | Render one template to `.png` (still), `.mp4` or `.mov` (ProRes 4444 with alpha) |
 | `production-review` | Validate a v1/v2 manifest; `--approve-plan` records approval of its fingerprint |
@@ -164,8 +191,10 @@ Typical speed on an M-series Mac: about 55 ms per captured 1080p motion frame; a
 - `autocut` judges pauses acoustically. Music under speech or a noisy room needs
   `--noise-db` tuning, and cuts should be watched.
 - Ducking uses a sidechain compressor; very dense music may still need manual gain.
-- Automatic graphic placement is the editor's (Claude's) job via the manifest;
-  `auto` alone produces cuts, punch-ins and captions, not infographics.
+- The offline `rules` planner works from patterns in the words. On conversational speech it mostly yields
+  pull-text plus a few definition cards, lists and flows; `--engine claude` (or Claude editing the
+  storyboard) is what turns ideas into real diagrams. Always review the storyboard table.
+- Graphics show what was said. They never add facts, but a transcription error becomes a labelling error.
 - Rights, attribution, factual accuracy and publishing are always human decisions.
 
 ## Reference study, Resolve handoff and version-1 manifests
@@ -194,4 +223,5 @@ The v1 real-media test runs when `VIDEO_MONK_FFMPEG`, `VIDEO_MONK_FFPROBE` and
 `VIDEO_MONK_WHISPER_MODEL`, `VIDEO_MONK_HYPERFRAMES`.
 
 Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.
-MIT licensed.
+MIT licensed. Bundled fonts are SIL OFL; methods credit the kinetic-typography-skills (iart.ai) and
+motion-graphics (Barty-Bart) projects, both MIT. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

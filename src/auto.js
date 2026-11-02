@@ -5,6 +5,7 @@ import { exists, run, writeJson } from './core.js';
 import { analyzeFootage, autocut } from './autocut.js';
 import { transcribeWhisper, findWhisper, findModel } from './transcribe.js';
 import { reviewProduction, buildProduction } from './production.js';
+import { storyboardManifest } from './storyboard.js';
 
 export async function autoEdit(media, output, options = {}, execute = run) {
   const log = options.log || (() => {});
@@ -27,10 +28,21 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   log('3/5 Auto-cutting pauses and fillers...');
   const cut = await autocut(media, path.join(output, 'edit'), { ...options, words }, execute);
   log(`    ${cut.report.sourceDuration}s -> ${cut.report.editedDuration}s, ${cut.report.cuts} cuts, ${cut.report.fillersRemoved} fillers removed`);
-  const manifest = path.join(output, 'edit', 'production.json');
+  let manifest = path.join(output, 'edit', 'production.json');
+  let storyboard = null;
+  const density = options.graphics ?? 'medium';
+  if (density !== 'off' && cut.words) {
+    log(`    Planning explainer graphics (${density}, engine ${options.engine || 'rules'})...`);
+    const planned = await storyboardManifest(manifest, path.join(output, 'edit', 'production.graphics.json'), {
+      density, graphicsMode: options.graphicsMode, theme: options.theme || 'auto', engine: options.engine, allowLlm: options.allowLlm,
+      presenter: options.presenter, role: options.role }, execute);
+    manifest = planned.manifest;
+    storyboard = planned.storyboard;
+    log(`    ${storyboard.stats.graphics} graphics planned (${storyboard.stats.perMinute}/min); table: ${planned.table}`);
+  } else if (density !== 'off') log('    Graphics need a transcript: pass --transcribe (or --words) to plan explainer graphics.');
   if (!options.render) {
     log('4/5 Skipped rendering (pass --allow-render --approve-plan to render).');
-    return { analysis, cut, manifest, rendered: null };
+    return { analysis, cut, manifest, storyboard, rendered: null };
   }
   log('4/5 Reviewing plan...');
   const review = path.join(output, 'edit', 'review.json');
@@ -39,5 +51,5 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   log('5/5 Rendering...');
   const rendered = await buildProduction(manifest, review, path.join(output, 'render'), true, execute, undefined,
     { log, quality: options.quality, concurrency: options.concurrency });
-  return { analysis, cut, manifest, rendered };
+  return { analysis, cut, manifest, storyboard, rendered };
 }

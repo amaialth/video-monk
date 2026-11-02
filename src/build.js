@@ -8,6 +8,7 @@ import { inspectMedia, digest } from './production.js';
 import { loadTimeline, chapters } from './timeline.js';
 import { MotionRenderer, pool } from './motion/render.js';
 import { pageWords, pagesToSrt, pagesToVtt } from './captions.js';
+import { markStress } from './stress.js';
 
 const fail = message => { throw new Error(`Build: ${message}`); };
 const check = (condition, message) => { if (!condition) fail(message); };
@@ -78,7 +79,8 @@ function motionJob(loaded, spec, duration, overlay) {
     template: spec.template, html: spec.html ? path.resolve(loaded.base, spec.html) : undefined, props: spec.props ?? {},
     width: m.width, height: m.height, fps: m.fps, duration, theme: m.theme ? { ...m.theme, font: undefined } : undefined,
     font: loaded.font, placement: spec.placement, panel: spec.panel,
-    background: overlay ? 'transparent' : (spec.background || 'grid'), exit: overlay
+    background: overlay ? (spec.background || 'transparent') : (spec.background || 'grid'), exit: overlay,
+    fadeFrame: overlay && Boolean(spec.background) && spec.background !== 'transparent'
   };
 }
 
@@ -105,12 +107,30 @@ export async function buildTimeline(file, approval, output, options = {}) {
   }
   (m.globalOverlays || []).forEach((o, i) => jobs.push({ key: `global-${i}`, job: motionJob(loaded, o, o.duration, true) }));
   let captionPages = null;
+  const captionChunks = [];
   if (loaded.words) {
     const c = m.captions;
-    captionPages = pageWords(loaded.words, { maxWords: c.maxWords ?? (m.height > m.width ? 4 : 7), maxChars: c.maxChars ?? (m.height > m.width ? 22 : 38) });
+    const portrait = m.height > m.width;
+    captionPages = pageWords(loaded.words, { maxWords: c.maxWords ?? (portrait ? 4 : 7), maxChars: c.maxChars ?? (portrait ? 22 : 38) });
+    // Stress words (italic serif + accent) are decided per page from the transcript; explicit word.stress flags win.
+    const stressed = markStress(captionPages.flatMap(p => p.words));
+    let at = 0;
+    for (const page of captionPages) page.words = page.words.map(() => stressed[at++]);
     if (c.burnIn !== false) {
-      jobs.push({ key: 'captions', job: { ...motionJob(loaded, { template: 'captions' }, duration, true), exit: false,
-        props: { pages: captionPages, style: c.style || 'karaoke', position: c.position || 'bottom' } } });
+      // Render captions in ~40 s chunks so they run in parallel and silent gaps cost nothing.
+      const frame = 1 / m.fps;
+      for (let i = 0; i < captionPages.length;) {
+        let j = i;
+        while (j + 1 < captionPages.length && captionPages[j + 1].end - captionPages[i].start < 40) j++;
+        const start = Math.max(0, Math.floor((captionPages[i].start - 0.08) / frame) * frame);
+        const end = Math.min(duration, Math.ceil((captionPages[j].end + 0.08) / frame) * frame);
+        const chunk = captionPages.slice(i, j + 1).map(p => ({ start: p.start - start, end: p.end - start,
+          words: p.words.map(w => ({ text: w.text, start: w.start - start, end: w.end - start, stress: w.stress })) }));
+        captionChunks.push({ key: `captions-${captionChunks.length}`, start: Math.round(start * 1000) / 1000, duration: Math.round((end - start) * 1000) / 1000 });
+        jobs.push({ key: `captions-${captionChunks.length - 1}`, job: { ...motionJob(loaded, { template: 'captions' }, Math.round((end - start) * m.fps) / m.fps, true), exit: false,
+          props: { pages: chunk, style: c.style || 'kinetic', position: c.position || 'bottom' } } });
+        i = j + 1;
+      }
     }
   }
   const rendered = new Map();
@@ -283,7 +303,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
   check(length === totalFrames, `internal frame accounting mismatch (${length} vs ${totalFrames})`);
   const overlaysFinal = [];
   (m.globalOverlays || []).forEach((o, i) => overlaysFinal.push({ key: `global-${i}`, start: o.start, duration: o.duration }));
-  if (rendered.has('captions')) overlaysFinal.push({ key: 'captions', start: 0, duration });
+  for (const chunk of captionChunks) overlaysFinal.push({ key: chunk.key, start: chunk.start, duration: chunk.duration });
   if (overlaysFinal.length) fg.push(`[${cur}]format=yuv444p[base]`), cur = 'base';
   overlaysFinal.forEach((o, k) => {
     const i = fAdd(['-framerate', String(m.fps), '-i', rendered.get(o.key).pattern]);

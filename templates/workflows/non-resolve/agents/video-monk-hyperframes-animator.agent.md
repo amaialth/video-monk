@@ -6,7 +6,9 @@ agents: []
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), step 6,
-and its timeline reference. List templates with `video-monk templates`. Choose the
+its timeline reference, explainer-graphics and kinetic-typography references.
+Plan graphics with `video-monk storyboard`; edit its storyboard.json by hand.
+Stress words with *asterisks*; cues land on spoken words; never invent data. List templates with `video-monk templates`. Choose the
 template that teaches the beat: flow for architecture, bar/line/donut/stat for
 numbers, steps/bullets for process, code for snippets, callout over real footage.
 Verify every value, unit, label and citation before animation. Preview with

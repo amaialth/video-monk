@@ -380,7 +380,7 @@ test('npm manifest allowlist excludes tests, media and environment files', async
   const manifest = await readJson(path.join(root, 'package.json'));
   assert.equal(manifest.name, '@amailath/video-monk');
   assert.equal(manifest.publishConfig.registry, 'https://registry.npmjs.org/');
-  assert.deepEqual(manifest.files, ['bin', 'src', 'templates', 'README.md', 'LICENSE']);
+  assert.deepEqual(manifest.files, ['bin', 'src', 'templates', 'assets', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']);
   assert.equal(manifest.dependencies, undefined);
   assert.equal(manifest.scripts.prepack, 'npm run check && npm test');
 });

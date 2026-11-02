@@ -7,7 +7,9 @@ description: 'Use when producing or automatically editing videos without DaVinci
 
 Read the [shared contract](../channel-editing-study/references/workflow-contract.md),
 the [timeline reference](./references/timeline-v2.md) and
-[tool setup](./references/tool-setup.md). Run `video-monk doctor` first.
+[tool setup](./references/tool-setup.md). Run `video-monk doctor` first. For graphics read
+[explainer graphics](./references/explainer-graphics.md), [kinetic typography](./references/kinetic-typography.md)
+and [graphic briefs](./references/graphic-briefs.md).
 
 ## Team and handoff
 
@@ -28,7 +30,8 @@ an explicit not-needed decision, never a faked output.
 
 `video-monk auto --media <recording> --output <new-folder> --transcribe --allow-render --approve-plan --rights-confirmed`
 inspects, transcribes locally, removes pauses and filler words, adds jump-cut
-punch-ins, burns karaoke captions, masters loudness and writes final.mp4. Add
+punch-ins, plans explainer graphics from the transcript (`--graphics off|light|medium|heavy`),
+burns kinetic captions (stressed words in italic serif), masters loudness and writes final.mp4. Add
 `--format vertical` for Shorts/Reels (center reframe), `--quality draft` for speed.
 Use `--approve-plan`/`--rights-confirmed` only after the user approves.
 
@@ -43,8 +46,13 @@ Use `--approve-plan`/`--rights-confirmed` only after the user approves.
    Words are draft: proofread names and numbers before publishing captions.
 5. `video-monk autocut --media <recording> --output <new-folder> --words <words.json>`
    writes a version-2 production.json plus timeline-remapped captions.
-6. Design the edit in the manifest: every 5-15s change the picture with B-roll,
-   `motion` (zoom/pan/punch-in), an overlay or a graphic scene. Pick templates with
+6. Explain with graphics wherever an idea can be shown:
+   `video-monk storyboard --manifest <production.json> --output <production.graphics.json>`
+   (rules engine offline; `--engine claude --allow-llm` for designed diagrams). Read the
+   generated `.STORYBOARD.md`, edit `.storyboard.json` if needed (`--from-storyboard`).
+   Cutaway, side panel or nothing per idea; cues land on spoken words; never invent
+   numbers; stress key words with `*asterisks*`. Then fine-tune the manifest: B-roll,
+   `motion` (zoom/pan/punch-in), overlays. Pick templates with
    `video-monk templates`; preview one with
    `video-monk graphic --template bar-chart --props <props.json> --output <chart.png>`
    and Read the PNG to check layout. Charts need real values, units and citations.

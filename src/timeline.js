@@ -47,7 +47,8 @@ export async function loadTimeline(file, execute = run) {
   // Theme
   let font = null;
   if (m.theme !== undefined) {
-    keys(m.theme, ['background', 'surface', 'text', 'muted', 'accent', 'palette', 'font'], 'theme');
+    keys(m.theme, ['preset', 'background', 'surface', 'text', 'muted', 'accent', 'grid', 'palette', 'font'], 'theme');
+    check(opt(m.theme.preset, v => ['night', 'paper'].includes(v)), 'theme.preset must be night or paper');
     for (const k of ['background', 'surface', 'text', 'muted', 'accent']) check(opt(m.theme[k], v => /^#[0-9a-fA-F]{6}$/.test(v)), `theme.${k} must be #RRGGBB`);
     check(opt(m.theme.palette, v => Array.isArray(v) && v.length >= 2 && v.length <= 10 && v.every(c => /^#[0-9a-fA-F]{6}$/.test(c))), 'theme.palette needs 2-10 #RRGGBB colors');
     if (m.theme.font !== undefined) {
@@ -85,7 +86,7 @@ export async function loadTimeline(file, execute = run) {
     check(opt(value.amount, v => finite(v, 0.01, 0.5)), `${label}.amount must be 0.01-0.5`);
   };
   const motionJob = async (value, label, { overlay }) => {
-    if (overlay) keys(value, ['template', 'html', 'props', 'start', 'duration', 'placement', 'panel'], label);
+    if (overlay) keys(value, ['id', 'note', 'template', 'html', 'props', 'start', 'duration', 'placement', 'panel', 'background'], label);
     else keys(value, ['template', 'html', 'props', 'background'], label);
     check(Boolean(value.template) !== Boolean(value.html), `${label} needs exactly one of template or html`);
     if (value.template) {
@@ -101,6 +102,8 @@ export async function loadTimeline(file, execute = run) {
     if (overlay) {
       check(opt(value.placement, v => PLACEMENTS.includes(v)), `${label}.placement must be one of ${PLACEMENTS.join(', ')}`);
       check(opt(value.panel, v => typeof v === 'boolean'), `${label}.panel must be boolean`);
+      check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent (opaque backgrounds make a full-frame cutaway)`);
+      check(opt(value.id, v => text(v, 64)) && opt(value.note, v => text(v, 300)), `${label}.id/note must be short text`);
     } else {
       check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent`);
     }
@@ -222,7 +225,7 @@ export async function loadTimeline(file, execute = run) {
     const wordsRaw = await readFile(wordsFile);
     fingerprint.update(wordsRaw);
     words = validateWords(JSON.parse(wordsRaw), duration, 'captions.words');
-    check(opt(m.captions.style, v => ['karaoke', 'phrase', 'plain'].includes(v)), 'captions.style must be karaoke, phrase or plain');
+    check(opt(m.captions.style, v => ['kinetic', 'karaoke', 'phrase', 'plain'].includes(v)), 'captions.style must be kinetic, karaoke, phrase or plain');
     check(opt(m.captions.position, v => ['bottom', 'center', 'top'].includes(v)), 'captions.position must be bottom, center or top');
     check(opt(m.captions.maxWords, v => Number.isInteger(v) && v >= 1 && v <= 16), 'captions.maxWords must be 1-16');
     check(opt(m.captions.maxChars, v => Number.isInteger(v) && v >= 8 && v <= 80), 'captions.maxChars must be 8-80');
@@ -230,7 +233,7 @@ export async function loadTimeline(file, execute = run) {
   }
 
   const globals = m.globalOverlays || [];
-  check(Array.isArray(globals) && globals.length <= 50, 'globalOverlays must be an array (max 50)');
+  check(Array.isArray(globals) && globals.length <= 500, 'globalOverlays must be an array (max 500)');
   for (const [i, o] of globals.entries()) {
     await motionJob(o, `globalOverlays[${i}]`, { overlay: true });
     check(finite(o.start, 0, duration) && finite(o.duration, 0.2, duration) && o.start + o.duration <= duration + 1e-6, `globalOverlays[${i}] must fit in the timeline`);

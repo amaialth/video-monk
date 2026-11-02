@@ -12,6 +12,7 @@ import { transcribeParakeet, renderHyperframes } from './external-tools.js';
 import { transcribeWhisper, downloadModel, findWhisper, findModel, MODELS, MODEL_DIR } from './transcribe.js';
 import { autocut, analyzeFootage, FORMATS } from './autocut.js';
 import { autoEdit } from './auto.js';
+import { storyboardManifest } from './storyboard.js';
 import { templateCatalog } from './motion/templates.js';
 import { renderGraphic } from './motion/preview.js';
 import { findChrome } from './chrome.js';
@@ -23,7 +24,14 @@ AUTOMATED EDITING
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
-             One shot: inspect -> transcribe -> autocut -> review -> render final.mp4
+             [--graphics off|light|medium|heavy (default medium)] [--graphics-mode mixed|cutaway|panel]
+             [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--presenter <name> --role <text>]
+             One shot: inspect -> transcribe -> autocut -> explainer graphics -> review -> render final.mp4
+  storyboard --manifest <production.json> --output <new manifest in the same folder>
+             [--density light|medium|heavy] [--graphics-mode mixed|cutaway|panel] [--theme auto|paper|night]
+             [--engine rules|claude --allow-llm [--model <alias>]] [--presenter <name> --role <text>]
+             [--from-storyboard <edited storyboard.json>]
+             Plan motion graphics from the transcript: writes the manifest, <name>.storyboard.json and <name>.STORYBOARD.md
   inspect    --media <file> [--output <new analysis.json>]  Loudness, pauses, pacing, suggestions
   transcribe --media <file> --output <new folder> --allow-transcribe
              [--engine whisper|parakeet] [--model base.en] [--language en|auto]
@@ -109,7 +117,10 @@ const definitions = {
   inspect: { media: 'string', output: 'string' },
   autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string',
     'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
+  storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
+    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string' },
   auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean',
+    graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', title: 'string' },
   templates: { json: 'boolean' },
@@ -290,12 +301,22 @@ export async function main(args) {
     case 'auto': {
       const result = await autoEdit(required(opts, 'media'), path.resolve(required(opts, 'output')), {
         ...cutOptions(opts), words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language,
-        render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message)
+        render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
+        graphics: opts.graphics, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        presenter: opts.presenter, role: opts.role
       });
       if (result.rendered) {
         console.log(`Rendered: ${path.resolve(opts.output, 'render', 'final.mp4')} (${result.rendered.status}). Read REVIEW.txt and watch it end to end.`);
         if (result.rendered.status === 'failed-technical-checks') process.exitCode = 1;
       } else console.log(`Plan ready: ${result.manifest}. Add overlays/music, then production-review and production-build.`);
+      break;
+    }
+    case 'storyboard': {
+      const result = await storyboardManifest(required(opts, 'manifest'), required(opts, 'output'), {
+        density: opts.density, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        model: opts.model, presenter: opts.presenter, role: opts.role, fromStoryboard: opts['from-storyboard'] });
+      const st = result.storyboard.stats;
+      console.log(`Storyboard (${result.storyboard.engine}): ${st.graphics} graphics, ${st.perMinute}/min, ${st.cutawaySeconds}s of cutaways.\nTable: ${result.table}\nManifest: ${result.manifest}\nReview the table, edit ${path.basename(result.storyboardFile)} if needed, then production-review and production-build.`);
       break;
     }
     case 'templates': {

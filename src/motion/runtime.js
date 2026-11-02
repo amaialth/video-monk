@@ -57,6 +57,48 @@ const VM = (() => {
     const n = parseInt(v.slice(0, 6), 16);
     return 'rgba(' + ((n >> 16) & 255) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + alpha + ')';
   }
+  // ---- Typography (kinetic-typography rules: mask reveals, expo-out, 40-70ms word stagger, tight display tracking) ----
+  // Rich text: *stressed words* switch to the stress face (italic serif, accent colour); everything else is the sans face.
+  function parseRich(str) {
+    const out = [];
+    let stress = false, cur = '', space = false;
+    const push = () => { if (cur) { out.push({ text: cur, stress, space }); cur = ''; space = false; } };
+    for (const ch of String(str)) {
+      if (ch === '*') { push(); stress = !stress; }
+      else if (/\s/.test(ch)) { push(); space = out.length > 0; }
+      else cur += ch;
+    }
+    push();
+    return out;
+  }
+  // Words wrapped in overflow:hidden masks so they can rise from a hidden baseline. Returns [{outer, inner, stress, text}].
+  function words(parent, str, opts) {
+    opts = opts || {};
+    return parseRich(str).map(tok => {
+      if (tok.space) parent.appendChild(document.createTextNode(' '));
+      const outer = el('span', { style: { display: 'inline-block', overflow: opts.mask === false ? 'visible' : 'hidden', verticalAlign: 'bottom',
+        padding: '0.06em 0.1em 0.16em', margin: '-0.06em -0.1em -0.16em' } }, parent);
+      const inner = el('span', { class: tok.stress ? 'vm-stress' : '', style: { display: 'inline-block' } }, outer, tok.text);
+      if (tok.stress && opts.stressColor) inner.style.color = opts.stressColor;
+      return { outer, inner, stress: tok.stress, text: tok.text };
+    });
+  }
+  // Static rich text (no masks); returns the created tokens' spans.
+  function rich(parent, str, opts) {
+    opts = opts || {};
+    return parseRich(str).map(tok => {
+      if (tok.space) parent.appendChild(document.createTextNode(' '));
+      const span = el('span', { class: tok.stress ? 'vm-stress' : '' }, parent, tok.text);
+      if (tok.stress && opts.stressColor) span.style.color = opts.stressColor;
+      return span;
+    });
+  }
+  // Mark listed words (case-insensitive, punctuation ignored) as stressed using *...* markup.
+  function stressify(str, list) {
+    if (!list || !list.length || String(str).indexOf('*') >= 0) return str;
+    const set = new Set(list.map(w => String(w).toLowerCase().replace(/[^\p{L}\p{N}']/gu, '')));
+    return String(str).split(/\s+/).map(w => (set.has(w.toLowerCase().replace(/[^\p{L}\p{N}']/gu, '')) ? '*' + w + '*' : w)).join(' ');
+  }
   const ICONS = {
     server: '<rect x="3" y="3" width="18" height="7" rx="1.5"/><rect x="3" y="14" width="18" height="7" rx="1.5"/><path d="M7 6.5h.01M7 17.5h.01M11 6.5h6M11 17.5h6"/>',
     database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
@@ -108,12 +150,13 @@ const VM = (() => {
     }
     return out;
   }
-  return { clamp, ease, p, tw, el, svg, set, r, fmt, fit, life, hexToRgba, icon, ICONS, tokens };
+  return { clamp, ease, p, tw, el, svg, set, r, fmt, fit, life, hexToRgba, icon, ICONS, tokens, parseRich, words, rich, stressify };
 })();
 `;
 
 // Builds a complete self-contained render page. Props/theme are JSON-escaped; text is inserted with textContent.
-export function renderPage({ templateSource, props, ctx, fontDataUrl, background }) {
+// fonts = { sans, stress, mono } data URLs. sans is variable (wght 100-900); stress is an italic display serif.
+export function renderPage({ templateSource, props, ctx, fonts = {}, background }) {
   const json = value => JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
   const t = ctx.theme;
   const backgrounds = {
@@ -124,14 +167,19 @@ export function renderPage({ templateSource, props, ctx, fontDataUrl, background
       `linear-gradient(90deg, ${t.grid} 1px, transparent 1px) 0 0 / ${ctx.unit * 6}px ${ctx.unit * 6}px, ` +
       `radial-gradient(120% 90% at 20% 10%, ${t.surface} 0%, ${t.background} 65%)`
   };
+  const face = (name, url, weight, style) => (url ? `@font-face{font-family:${name};src:url(${url});font-weight:${weight};font-style:${style};}` : '');
   return `<!doctype html><html><head><meta charset="utf-8"><style>
-${fontDataUrl ? `@font-face{font-family:VMFont;src:url(${fontDataUrl});}` : ''}
+${face('VMSans', fonts.sans, '100 900', 'normal')}
+${face('VMStress', fonts.stress, '400', 'italic')}
+${face('VMMono', fonts.mono, '400 700', 'normal')}
 html,body{margin:0;padding:0;width:${ctx.width}px;height:${ctx.height}px;overflow:hidden;background:transparent;}
 #frame{position:absolute;inset:0;background:${backgrounds[background] || 'transparent'};}
 #stage{position:absolute;box-sizing:border-box;overflow:hidden;color:${t.text};
-  font-family:VMFont,-apple-system,'SF Pro Display','Helvetica Neue','Segoe UI',Roboto,Arial,sans-serif;
-  -webkit-font-smoothing:antialiased;line-height:1.15;}
+  font-family:VMSans,-apple-system,'SF Pro Display','Helvetica Neue','Segoe UI',Roboto,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.15;font-feature-settings:'ss01','cv11';}
 #stage *{box-sizing:border-box;}
+.vm-stress{font-family:VMStress,'Instrument Serif','Iowan Old Style',Georgia,'Times New Roman',serif;font-style:italic;font-weight:400;
+  font-size:1.16em;letter-spacing:0;line-height:1;}
 </style></head><body><div id="frame"></div><div id="stage"></div>
 <script>
 ${RUNTIME}
@@ -140,15 +188,15 @@ const __ctx = ${json(ctx)};
 const __template = (${templateSource});
 (async () => {
   try {
-    if (${fontDataUrl ? 'true' : 'false'}) await document.fonts.load('32px VMFont');
+    await Promise.all([${fonts.sans ? "document.fonts.load('800 32px VMSans')," : ''}${fonts.stress ? "document.fonts.load('italic 400 32px VMStress')," : ''}${fonts.mono ? "document.fonts.load('500 32px VMMono')," : ''}Promise.resolve()]);
     await document.fonts.ready;
     const stage = document.getElementById('stage');
     const box = __ctx.box;
     Object.assign(stage.style, { left: box.x + 'px', top: box.y + 'px', width: box.w + 'px', height: box.h + 'px' });
-    if (__ctx.panel) Object.assign(stage.style, { background: VM.hexToRgba(__ctx.theme.background, 0.86),
-      borderRadius: (__ctx.unit * 2.2) + 'px', boxShadow: '0 ' + __ctx.unit + 'px ' + (__ctx.unit * 4) + 'px rgba(0,0,0,0.45)',
+    if (__ctx.panel) Object.assign(stage.style, { background: VM.hexToRgba(__ctx.theme.surface, 0.985),
+      borderRadius: (__ctx.unit * 2.2) + 'px', boxShadow: '0 ' + __ctx.unit + 'px ' + (__ctx.unit * 4) + 'px rgba(0,0,0,0.35)',
       border: '1px solid ' + VM.hexToRgba(__ctx.theme.text, 0.12) });
-    const ctx = Object.assign({}, __ctx, { w: box.w, h: box.h, u: Math.min(box.w, box.h) / 100 });
+    const ctx = Object.assign({}, __ctx, { w: box.w, h: box.h, u: Math.min(box.w, box.h) / 100, narrow: box.w < box.h * 1.25, strip: box.w > box.h * 3 });
     const update = __template(stage, __props, ctx, VM);
     const frame = document.getElementById('frame');
     window.__seek = t => {
@@ -158,9 +206,15 @@ const __template = (${templateSource});
         stage.style.opacity = VM.r(k);
         stage.style.transform = 'translateY(' + VM.r((1 - k) * ctx.u * 4) + 'px)';
       }
+      if (__ctx.fadeFrame) {
+        // Opaque cutaways fade the whole frame (background included) in and out so they dissolve over the picture.
+        const k = Math.min(VM.ease.out(VM.p(t, 0, 0.18)), 1 - VM.ease.in(VM.p(t, ctx.duration - 0.22, 0.22)));
+        frame.style.opacity = VM.r(k);
+        stage.style.opacity = VM.r(Math.min(1, k * 1.6));
+      }
     };
     window.__sig = () => {
-      const s = stage.outerHTML;
+      const s = frame.style.opacity + stage.outerHTML;
       let h = 2166136261;
       for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
       return (h >>> 0).toString(16) + ':' + s.length;
