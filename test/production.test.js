@@ -182,8 +182,14 @@ test('real landscape and portrait assembly includes B-roll, animated graphics, n
     const output = path.join(folder, `render-${width}`);
     await writeJson(file, m);
     await reviewProduction(file, review, true);
-    const report = await buildProduction(file, review, output, true);
-    assert.equal(report.status, 'draft-needs-resolve-review');
+    const finishing = width === 180 ? 'ffmpeg' : 'resolve';
+    const report = await buildProduction(file, review, output, true, undefined, finishing);
+    assert.equal(report.status, finishing === 'ffmpeg' ? 'candidate-needs-human-review' : 'draft-needs-resolve-review');
+    assert.equal(await exists(path.join(output, 'delivery-candidate.mp4')), finishing === 'ffmpeg');
+    if (finishing === 'ffmpeg') {
+      assert.deepEqual(await readFile(path.join(output, 'delivery-candidate.mp4')), await readFile(path.join(output, 'preview.mp4')));
+      assert.match(await readFile(path.join(output, 'REVIEW.txt'), 'utf8'), /Resolve is not required/);
+    }
     assert.equal(report.checks.finalExport, 'NOT VERIFIED');
     const metadata = await inspectMedia(path.join(output, 'preview.mp4'));
     assert.equal(metadata.video.width, width);

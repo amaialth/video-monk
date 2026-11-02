@@ -9,7 +9,7 @@
   "files": ["bin", "src", "templates", "README.md", "LICENSE"],
   "scripts": {
     "test": "node --test",
-    "check": "node --check bin/video-monk.js && node --check src/core.js && node --check src/media.js && node --check src/llm.js && node --check src/plan.js && node --check src/production.js && node --check src/stock.js && node --check src/cli.js",
+    "check": "node --check bin/video-monk.js && node --check src/core.js && node --check src/media.js && node --check src/llm.js && node --check src/plan.js && node --check src/production.js && node --check src/stock.js && node --check src/external-tools.js && node --check src/cli.js",
     "prepack": "npm run check && npm test"
   },
   "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },

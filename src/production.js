@@ -150,7 +150,8 @@ const scale = (m, fit) => fit === 'cover'
   ? `scale=${m.width}:${m.height}:force_original_aspect_ratio=increase,crop=${m.width}:${m.height}`
   : `scale=${m.width}:${m.height}:force_original_aspect_ratio=decrease,pad=${m.width}:${m.height}:(ow-iw)/2:(oh-ih)/2:color=0x080c14`;
 
-export async function buildProduction(file, approval, output, allowRender, execute = run) {
+export async function buildProduction(file, approval, output, allowRender, execute = run, finishing = 'resolve') {
+  check(['resolve', 'ffmpeg'].includes(finishing), 'finishing must be resolve or ffmpeg');
   check(allowRender === true, 'draft rendering requires --allow-render');
   check(!(await exists(output)), 'production output already exists');
   const loaded = await loadProduction(file, execute);
@@ -231,6 +232,7 @@ export async function buildProduction(file, approval, output, allowRender, execu
   check(measured.video?.width === m.width && measured.video?.height === m.height && measured.audio &&
     Math.abs(measured.duration - duration) <= 1 / m.fps + 0.03, 'preview metadata mismatch');
   await ffmpeg(['-i', 'preview.mp4', '-f', 'null', '-']);
+  if (finishing === 'ffmpeg') await copyFile(path.join(output, 'preview.mp4'), path.join(output, 'delivery-candidate.mp4'));
   const plan = {
     ...m, durationFrames: loaded.totalFrames,
     clips: m.scenes.map((scene, index) => ({ mediaId: `scene-${index}`, in: 0, out: scene.duration, purpose: scene.purpose }))
@@ -253,7 +255,8 @@ export async function buildProduction(file, approval, output, allowRender, execu
   await writeNew(path.join(output, 'timeline.xml'),
     resolveXml(plan, inventory).replace('</video></media></sequence>', `</video><audio>${audioXml}</audio></media></sequence>`));
   const report = {
-    version: 1, status: 'draft-needs-resolve-review', fingerprint: loaded.fingerprint,
+    version: 1, status: finishing === 'ffmpeg' ? 'candidate-needs-human-review' : 'draft-needs-resolve-review',
+    finishing, fingerprint: loaded.fingerprint,
     checks: { encoding: 'PASS', dimensions: 'PASS', duration: 'PASS', audioPresent: 'PASS',
       factualAccuracy: 'NOT VERIFIED', visualReadability: 'NOT VERIFIED', audioLoudness: 'NOT VERIFIED',
       resolveImport: 'NOT VERIFIED', finalPlayback: 'NOT VERIFIED', finalExport: 'NOT VERIFIED' },
@@ -263,14 +266,21 @@ export async function buildProduction(file, approval, output, allowRender, execu
   await writeJson(path.join(output, 'production-report.json'), report);
   await writeJson(path.join(output, 'production.json'), m);
   await writeNew(path.join(output, 'REVIEW.txt'), [
-    'DRAFT ASSEMBLY, NOT A FINAL PRODUCTION VIDEO.',
+    'DRAFT ASSEMBLY, NOT AN AUTOMATICALLY APPROVED FINAL PRODUCTION VIDEO.',
     'Review preview.mp4 and each scene contact image. Graphics use schematic normalized bars; verify values, labels and citations.',
-    'Create a NEW Resolve Free project. Import timeline.xml; check both audio channels, scene order, sync, fps and duration.',
-    'If XML audio import differs in your Resolve version, use preview.mp4 as a flattened audiovisual draft instead.',
-    'The preview includes a safety limiter; separate WAV tracks in the XML do not. Set and measure final dynamics/loudness in Resolve.',
+    ...(finishing === 'resolve' ? [
+      'Create a NEW Resolve Free project. Import timeline.xml; check both audio channels, scene order, sync, fps and duration.',
+      'If XML audio import differs in your Resolve version, use preview.mp4 as a flattened audiovisual draft instead.',
+      'The preview includes a safety limiter; separate WAV tracks in the XML do not. Set and measure final dynamics/loudness in Resolve.',
+      'Complete titles/captions, mixing and color in Resolve. Export only after whole-timeline approval.'
+    ] : [
+      'Non-Resolve workflow: delivery-candidate.mp4 is the assembled audiovisual candidate; Resolve is not required.',
+      'Preview and candidate share a safety limiter, not measured mastering. Complete any approved FFmpeg caption/mix/color steps and verify again.',
+      'Run production-verify on the actual candidate with agreed LUFS/true-peak targets. Failures block delivery.',
+      'Watch/listen end-to-end; record playback approval and accept factual/rights/creative quality before delivery.'
+    ]),
     'B-roll source audio is intentionally silent. Narration/music are separate prepared WAV tracks. No automatic ducking or caption generation.',
     'Review every asset license, attribution, identity, factual claim, crop and text for both target orientations.',
-    'Complete titles/captions, mixing and color in Resolve. Export only after whole-timeline approval.',
     'Verify actual export metadata and watch/listen end-to-end before calling it final. Publishing is separate.',
     'Generated segments are baked clips, not editable Fusion node graphs.',
     '', 'CREDITS', ...report.credits.map(asset => `${asset.id}: ${asset.attribution}; ${asset.rights}; ${asset.sourceUrl || 'local asset'}`)

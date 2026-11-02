@@ -153,6 +153,105 @@ Specialist agents: **video-monk-analyst**, **video-monk-editor** and
 **video-monk-quality-reviewer**. These are Copilot customization files, not a
 separate paid agent runtime. CLI commands also work without Copilot.
 
+### Second team: without DaVinci Resolve
+
+The original Resolve team remains the default. Select the second team at install:
+
+```powershell
+node .\bin\video-monk.js install --target "C:\Projects\my-video" `
+  --format claude --workflow non-resolve
+```
+
+Use `--workflow both` in a fresh target to install both teams together. The
+non-Resolve set has seven agents, the shared study/planning skills and a new
+`non-resolve-production` skill; it does not install the Resolve finishing skill
+or change the original team's roles. Copilot also supports these workflow selectors.
+All destination conflicts still fail before writing anything. For an existing
+installation, install into a fresh staging directory, compare/merge the specific
+generated files yourself and preserve user customizations; no overwrite upgrade
+flag is provided.
+
+| Role | Tool | Actual integration |
+|---|---|---|
+| Editor | Claude Code | Original plan, review loop and handoff coordination |
+| Transcriber | Parakeet | Executable `transcribe` wrapper via installed HyperFrames CLI |
+| Animator | HyperFrames | Executable `animate` wrapper; Claude authors the approved HTML |
+| Researcher | Google Chrome | Connected browser research through the host conversation |
+| Screen recorder | OBS Studio; optional Shotcut | Free local capture and optional manual edits; no OBS control adapter |
+| Sound designer | YouTube Audio Library; optional Pixabay | Free licensed local music/SFX, per-track attribution/evidence and cue sheet |
+| Finisher | FFmpeg | Native assembly, delivery candidate and actual-file verification; no Resolve required |
+
+Restart Claude Code and invoke `/non-resolve-production`. The main conversation
+coordinates specialists; Claude subagents cannot spawn nested subagents.
+Chrome/audio-library agent definitions do not create a browser/MCP connection.
+Restricted roles request browser actions through the host conversation. The
+user signs in directly if needed; no credentials are collected. OBS runs locally
+without an account or cloud upload. Recording, installs, downloads and publishing
+need separate scope/approval. Free library access is not unrestricted reuse:
+preserve per-track license/download evidence and required credits. Off-YouTube
+use needs its own license check; Content ID claims are not categorically excluded.
+
+#### Parakeet and HyperFrames commands
+
+Install a reviewed HyperFrames version in your video project's own dependency
+manifest, and configure its JS CLI entry point as described in
+[external-tool setup](templates/workflows/non-resolve/skills/non-resolve-production/references/tool-setup.md).
+The wrappers never run `npx` or automatically install packages. Parakeet's model/
+runtime and HyperFrames' browser/render dependencies must be available; setup
+needs separate approval. Installed CLI help was checked with HyperFrames 0.9.5.
+
+```powershell
+$env:VIDEO_MONK_HYPERFRAMES = "C:\Projects\my-video\node_modules\hyperframes\bin\hyperframes.mjs"
+node .\bin\video-monk.js transcribe --media "C:\Media\recording.wav" `
+  --output ".\transcript-v1" --allow-transcribe --allow-tool-network
+node .\bin\video-monk.js animate --project "C:\Projects\my-animation" `
+  --composition "composition.html" --output ".\animation-v1" `
+  --fps 24 --width 1920 --height 1080 --seconds 5 `
+  --allow-render --allow-tool-network
+```
+
+`transcribe` forces `--engine parakeet`, validates source-relative word times and
+writes `words.json`, `transcript.txt` and a draft report. It never silently falls
+back to Whisper or paid remote ASR. Verify words and re-map times after edits.
+`animate` executes approved HyperFrames HTML and verifies actual MP4 decode,
+dimensions/FPS/duration. It isn't a browser sandbox, HTML authoring engine or
+automatic visual/factual reviewer. Review every script and external asset first.
+The network flag acknowledges upstream dependency/model fetching and telemetry;
+it doesn't authorize transmitting private media or promise offline operation.
+
+#### FFmpeg-only finishing
+
+Use original OBS/Shotcut exports and HyperFrames clips in the existing production
+manifest. Preserve source speech as a separately supplied, synchronized narration
+file: the assembler discards source-video sound. Free-library music must be licensed,
+local and recorded in the asset/credit ledger. One music bed is supported; timed
+SFX need a separately approved premix rather than invented manifest keys.
+
+```powershell
+node .\bin\video-monk.js production-review --manifest ".\production.json" `
+  --output ".\approved-review.json" --approve-plan
+node .\bin\video-monk.js production-build --manifest ".\production.json" `
+  --review ".\approved-review.json" --output ".\production-v1" `
+  --finishing ffmpeg --allow-render
+node .\bin\video-monk.js production-verify --manifest ".\production.json" `
+  --media ".\production-v1\delivery-candidate.mp4" --output ".\verification.json" `
+  --target-lufs=-16 --max-true-peak=-1
+```
+
+Approve the plan only after user review. The resulting `delivery-candidate.mp4`
+is not automatically final: satisfy agreed technical targets, actual whole-file
+playback, factual/license review and human acceptance. Example loudness numbers
+are choices, not universal requirements. Caption burn-in/muxing and complex SFX/
+mastering still need explicit approved FFmpeg steps and re-verification. Existing
+Resolve handoffs remain available with default `--finishing resolve`.
+
+The wrapper contract tests use mocked HyperFrames output; actual ASR/model accuracy
+and real HyperFrames rendering are separate integration checks, not implied by
+passing native FFmpeg tests. OBS capture remains user-operated; YouTube Audio
+Library browser access may require your own YouTube Studio session. No paid
+screen-recording or music subscription is required. Optional Shotcut is a manual
+editor, not an automatic recreation of Tella's editing features.
+
 ### Optimized skills, agents and reference loading
 
 The [study index](templates/skills/channel-editing-study/references/study-index.md)

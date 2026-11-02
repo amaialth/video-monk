@@ -8,6 +8,7 @@ import { complete, parseModelJson, styleContent } from './llm.js';
 import { PLAN_SCHEMA, validateInventory, validatePlan, captionsSrt, resolveXml, requireXmlRates } from './plan.js';
 import { reviewProduction, buildProduction, verifyProduction } from './production.js';
 import { searchStock, downloadStock } from './stock.js';
+import { transcribeParakeet, renderHyperframes } from './external-tools.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - evidence-based editing skills and DaVinci Resolve handoffs
@@ -15,6 +16,7 @@ const HELP = `video-monk - evidence-based editing skills and DaVinci Resolve han
   init       --dir <folder> [--channel <YouTube channel>] --model <model>
              [--base-url <HTTPS API base URL ending in /v1>]
   install    --target <workspace> [--format copilot|claude]
+             [--workflow resolve|non-resolve|both] (default: resolve)
              Install bundled skills and agents (default: copilot)
   doctor                         Check runtime/media-tool availability
   catalog    --project <folder> [--limit <count; 0=all>] [--tab videos|shorts|streams]
@@ -34,13 +36,18 @@ const HELP = `video-monk - evidence-based editing skills and DaVinci Resolve han
   production-review --manifest <production.json> --output <new review.json>
                     [--approve-plan]
   production-build --manifest <production.json> --review <approved review.json>
-                   --output <new folder> --allow-render
+                   --output <new folder> --allow-render [--finishing resolve|ffmpeg]
   production-verify --manifest <production.json> --media <Resolve export.mp4>
                     --output <new verification.json> --target-lufs=<number>
                     --max-true-peak=<number> [--approve-playback]
   stock-search --query <words> --output <new candidates.json> --allow-search
   stock-fetch --catalog <candidates.json> --id <video ID> --file-id <file ID>
               --output <new folder> --allow-download --rights-confirmed
+  transcribe --media <local recording> --output <new folder> --allow-transcribe
+             --allow-tool-network
+  animate    --project <HyperFrames project> --composition <relative HTML>
+             --output <new folder> --fps <24|25|30|50|60> --width <pixels>
+             --height <pixels> --seconds <duration> --allow-render --allow-tool-network
 
 API key: OPENAI_API_KEY environment variable (configurable in video-monk.json).
 Only style --send-media uploads sampled images. Plan sends descriptions/brief/style
@@ -51,7 +58,7 @@ Run catalog separately for videos, shorts, and streams for full tab coverage.
 
 const definitions = {
   init: { dir: 'string', channel: 'string', model: 'string', 'base-url': 'string' },
-  install: { target: 'string', format: 'string' },
+  install: { target: 'string', format: 'string', workflow: 'string' },
   doctor: {},
   catalog: { project: 'string', limit: 'string', tab: 'string' },
   fetch: { project: 'string', id: 'string', 'allow-download': 'boolean' },
@@ -62,10 +69,12 @@ const definitions = {
   validate: { bundle: 'string' },
   handoff: { bundle: 'string', output: 'string' },
   'production-review': { manifest: 'string', output: 'string', 'approve-plan': 'boolean' },
-  'production-build': { manifest: 'string', review: 'string', output: 'string', 'allow-render': 'boolean' },
+  'production-build': { manifest: 'string', review: 'string', output: 'string', 'allow-render': 'boolean', finishing: 'string' },
   'production-verify': { manifest: 'string', media: 'string', output: 'string', 'target-lufs': 'string', 'max-true-peak': 'string', 'approve-playback': 'boolean' },
   'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean' },
-  'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' }
+  'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' },
+  transcribe: { media: 'string', output: 'string', 'allow-transcribe': 'boolean', 'allow-tool-network': 'boolean' },
+  animate: { project: 'string', composition: 'string', output: 'string', fps: 'string', width: 'string', height: 'string', seconds: 'string', 'allow-render': 'boolean', 'allow-tool-network': 'boolean' }
 };
 
 function required(options, key) {
@@ -82,9 +91,18 @@ function claudeAgent(text) {
   const end = normalized.indexOf('\n---\n', 4);
   if (!normalized.startsWith('---\n') || end < 0) throw new Error('Invalid bundled agent frontmatter.');
   const fields = normalized.slice(4, end).split('\n');
-  const readOnly = fields.includes('tools: [read, search]');
+  const toolLine = fields.find(line => line.startsWith('tools: '));
+  if (!toolLine || !/^tools: \[[a-z, ]+\]$/.test(toolLine)) throw new Error('Invalid bundled agent tool allowlist.');
+  const tools = toolLine.slice(8, -1).split(',').map(tool => tool.trim());
+  if (tools.some(tool => !['read', 'search', 'edit', 'execute', 'agent'].includes(tool))) throw new Error('Unknown bundled agent tool.');
+  const mapped = [
+    ...(tools.includes('read') ? ['Read'] : []),
+    ...(tools.includes('search') ? ['Grep', 'Glob'] : []),
+    ...(tools.includes('edit') ? ['Write', 'Edit'] : []),
+    ...(tools.includes('execute') ? ['Bash'] : [])
+  ];
   const header = fields.filter(line => !line.startsWith('tools:') && !line.startsWith('agents:'));
-  header.push(`tools: ${readOnly ? 'Read, Grep, Glob' : 'Read, Grep, Glob, Write, Edit, Bash'}`);
+  header.push(`tools: ${mapped.join(', ')}`);
   return `---\n${header.join('\n')}\n---\n` +
     'Claude Code: read the linked skill files directly; no nested subagent delegation. ' +
     'Return any coordination requests to the main conversation. ' +
@@ -92,8 +110,9 @@ function claudeAgent(text) {
     normalized.slice(end + 5);
 }
 
-export async function install(target, format = 'copilot') {
+export async function install(target, format = 'copilot', workflow = 'resolve') {
   if (!['copilot', 'claude'].includes(format)) throw new Error('Install format must be copilot or claude.');
+  if (!['resolve', 'non-resolve', 'both'].includes(workflow)) throw new Error('Workflow must be resolve, non-resolve or both.');
   const files = [];
   async function walk(source, destination) {
     for (const entry of await readdir(source, { withFileTypes: true })) {
@@ -105,8 +124,18 @@ export async function install(target, format = 'copilot') {
     }
   }
   const customization = format === 'claude' ? '.claude' : '.github';
-  await walk(path.join(templates, 'skills'), path.join(target, customization, 'skills'));
-  await walk(path.join(templates, 'agents'), path.join(target, customization, 'agents'));
+  const skills = path.join(target, customization, 'skills');
+  const agents = path.join(target, customization, 'agents');
+  await walk(path.join(templates, 'skills', 'channel-editing-study'), path.join(skills, 'channel-editing-study'));
+  await walk(path.join(templates, 'skills', 'original-edit-planning'), path.join(skills, 'original-edit-planning'));
+  if (workflow !== 'non-resolve') {
+    await walk(path.join(templates, 'skills', 'resolve-assisted-finishing'), path.join(skills, 'resolve-assisted-finishing'));
+    await walk(path.join(templates, 'agents'), agents);
+  }
+  if (workflow !== 'resolve') {
+    await walk(path.join(templates, 'workflows', 'non-resolve', 'skills'), skills);
+    await walk(path.join(templates, 'workflows', 'non-resolve', 'agents'), agents);
+  }
   for (const file of files) await unusedOutput(file.to);
   for (const file of files) {
     const text = await readFile(file.from, 'utf8');
@@ -162,6 +191,21 @@ export async function main(args) {
   const { values: opts } = parseArgs({ args: rest, options, allowPositionals: false, strict: true });
   if (opts.help) { console.log(HELP); return; }
   switch (command) {
+    case 'transcribe': {
+      await transcribeParakeet(required(opts, 'media'), path.resolve(required(opts, 'output')), {
+        allowTranscribe: opts['allow-transcribe'], allowToolNetwork: opts['allow-tool-network']
+      });
+      console.log('Parakeet transcript draft created. Verify words and timestamps before captions or cuts.');
+      break;
+    }
+    case 'animate': {
+      await renderHyperframes(required(opts, 'project'), required(opts, 'composition'), path.resolve(required(opts, 'output')), {
+        fps: Number(required(opts, 'fps')), width: Number(required(opts, 'width')), height: Number(required(opts, 'height')),
+        seconds: Number(required(opts, 'seconds')), allowRender: opts['allow-render'], allowToolNetwork: opts['allow-tool-network']
+      });
+      console.log('HyperFrames animation decoded and metadata checked. Review visual content before production approval.');
+      break;
+    }
     case 'production-verify': {
       const report = await verifyProduction(required(opts, 'media'), required(opts, 'manifest'), required(opts, 'output'), {
         targetLufs: Number(required(opts, 'target-lufs')), maxTruePeak: Number(required(opts, 'max-true-peak')),
@@ -189,8 +233,10 @@ export async function main(args) {
     }
     case 'production-build': {
       await buildProduction(required(opts, 'manifest'), required(opts, 'review'),
-        path.resolve(required(opts, 'output')), opts['allow-render']);
-      console.log('Draft assembly and Resolve audio/picture XML created. Read REVIEW.txt; final export and whole-video approval must happen in Resolve.');
+        path.resolve(required(opts, 'output')), opts['allow-render'], undefined, opts.finishing);
+      console.log(opts.finishing === 'ffmpeg'
+        ? 'FFmpeg delivery candidate created. Read REVIEW.txt, verify the actual candidate and complete whole-video human acceptance before delivery.'
+        : 'Draft assembly and Resolve audio/picture XML created. Read REVIEW.txt; final export and whole-video approval must happen in Resolve.');
       break;
     }
     case 'init': {
@@ -219,7 +265,7 @@ export async function main(args) {
       break;
     }
     case 'install': {
-      const files = await install(path.resolve(required(opts, 'target')), opts.format);
+      const files = await install(path.resolve(required(opts, 'target')), opts.format, opts.workflow);
       console.log(`Installed ${files.length} ${opts.format || 'copilot'} skill/agent files. Start a fresh assistant session to discover them.`);
       break;
     }
