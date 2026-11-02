@@ -78,6 +78,18 @@ pre code { background: none; padding: 0; color: inherit; }
 .step p { margin: 0; color: var(--muted); font-size: 14.5px; }
 .note { border-left: 4px solid var(--c-motion); background: var(--surface); border-radius: 0 10px 10px 0; padding: 12px 16px; color: var(--muted); margin: 16px 0; }
 .note b { color: var(--text); }
+nav.toc .g { display: inline-flex; flex-wrap: nowrap; gap: 4px 14px; align-items: baseline; white-space: nowrap; margin-right: 8px; }
+nav.toc .grp { color: var(--muted); font-weight: 700; font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; margin-left: 10px; opacity: .8; }
+.ver { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin: 14px 0; }
+.ver h3 { margin: 0 0 4px; font-size: 20px; }
+.ver .tag { display: inline-block; font-size: 12px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding: 2px 9px; border-radius: 99px; background: var(--accent); color: var(--bg); margin-right: 8px; vertical-align: 2px; }
+.ver .tag.old { background: var(--surface2); color: var(--muted); }
+.ver ul { margin: 8px 0 0; padding-left: 20px; } .ver li { margin: 5px 0; }
+.ver li b { color: var(--text); }
+.chip { display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 99px; background: var(--surface2); color: var(--accent); margin-left: 6px; }
+.how { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin: 14px 0 6px; }
+.how div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 14.5px; color: var(--muted); }
+.how b { display: block; color: var(--text); margin-bottom: 2px; }
 footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
 </style>
 </head>
@@ -86,17 +98,120 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 <header class="hero">
   <span class="pill">@amailath/video-monk · v0.4.0</span>
   <h1>How Video Monk works</h1>
-  <p>An automated video editing toolkit. Give it a recording and it analyzes, transcribes, cuts, adds motion graphics and infographics, mixes, masters and delivers a verified <code>final.mp4</code>. This page explains every part: the architecture, each pipeline stage, the motion engine, the audio graph, the approval gates and every command.</p>
+  <p>Video Monk turns a recording into a finished explainer video: it cuts the dead air, adds captions, plans and animates graphics that explain what you say, mixes and masters the sound, and checks its own work at every step. Everything runs on your computer except two optional steps that use Claude.</p>
+  <p style="margin-top:10px"><b>New here?</b> Read <a href="#whatsnew">What's new</a> and <a href="#bigpicture">The big picture</a> first (5 minutes). The rest of the page is reference: each part in detail, in the order it runs.</p>
+</header>
+
 </header>
 
 <nav class="toc"><div>
-  <a href="#overview">Overview</a><a href="#architecture">Architecture</a><a href="#auto">Auto pipeline</a><a href="#autocut">Autocut</a>
-  <a href="#loops">Review loops</a><a href="#library">Asset library</a><a href="#explain">Explainer graphics</a><a href="#typography">Typography</a><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build pipeline</a>
-  <a href="#audio">Audio graph</a><a href="#gates">Approval gates</a><a href="#outputs">Outputs</a><a href="#commands">Commands</a>
-  <a href="#claude">Claude Code</a><a href="#tests">Testing</a><a href="#limits">Limits</a>
-</div></nav>
+  <span class="g"><span class="grp">Start</span><a href="#whatsnew">What's new</a><a href="#bigpicture">Big picture</a><a href="#overview">Overview</a><a href="#architecture">Architecture</a></span><span class="g"><span class="grp">The pipeline</span><a href="#auto">auto</a><a href="#autocut">Cutting</a><a href="#explain">Graphics planner</a><a href="#typography">Typography</a><a href="#style">House style</a></span><span class="g"><span class="grp">Quality</span><a href="#loops">Review loops</a><a href="#gates">Approval gates</a><a href="#library">Asset library</a></span><span class="g"><span class="grp">Rendering</span><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build</a><a href="#audio">Audio</a><a href="#outputs">Outputs</a></span><span class="g"><span class="grp">Reference</span><a href="#commands">Commands</a><a href="#claude">Claude Code</a><a href="#tests">Testing</a><a href="#limits">Limits</a>
+</div></span></nav>
+</nav>
 
 <main>
+
+<section id="whatsnew">
+  <h2>What's new</h2>
+  <p class="lead">Three releases turned a rough-cut helper into an automated editor that explains, checks itself and remembers what it made. Full list: <code>CHANGELOG.md</code>.</p>
+
+  <div class="ver">
+    <h3><span class="tag">0.4</span>Checked, reusable and on-style <span class="chip">latest</span></h3>
+    <ul>
+      <li><b>Pacing that fits your recording.</b> It measures the room noise and your voice level, then cuts pauses, breaths and hums. On a real quiet recording the quiet time in the edit fell from 8.9% to 0.3% while every clearly voiced sound was kept. <code>--pace natural|tight|extra</code>, <code>--speed 1.1</code>.</li>
+      <li><b>Review loops.</b> Each of the four stages (transcript, cut, storyboard, render) has a separate reviewer that approves or sends findings back. The maker changes only what was flagged, up to 3 rounds, then asks you. Everything is logged in <code>REVIEW-LOOP.md</code>.</li>
+      <li><b>Asset library.</b> Rendered graphics, transcripts and paid Claude storyboards are indexed and reused by other projects. Your licensed music, SFX and fonts are indexed with their rights. <code>video-monk assets</code>.</li>
+      <li><b>House style (ByteMonk-inspired).</b> Dark calm cards, diagrams before pull-text, schematics labelled, a ducked music bed, a structure that opens with a question and ends with a recap. <code>--style bytemonk</code> is the default.</li>
+      <li><b>Safer audio.</b> The rare AAC overshoot that pushed the true peak over the limit is now measured on the real file and fixed with a brief local dip, keeping loudness on target.</li>
+      <li><b>Two new agents</b> for Claude Code: <code>video-monk-stage-reviewer</code> and <code>video-monk-asset-librarian</code>.</li>
+    </ul>
+  </div>
+
+  <div class="ver">
+    <h3><span class="tag old">0.3</span>Explains with graphics, modern type</h3>
+    <ul>
+      <li><b>Explainer graphics planner.</b> Reads the transcript and places a graphic wherever an idea can be shown: definitions, flows between systems, steps, lists, numbers, comparisons, chapters. Offline rules, or <code>--engine claude</code> for real diagrams. Writes a reviewable <code>STORYBOARD.md</code>.</li>
+      <li><b>Kinetic typography.</b> Stressed words switch to an italic serif in the accent colour (<code>*like this*</code>), captions are word-by-word with automatic stress, and every item can appear on the exact spoken word.</li>
+      <li><b>Cutaway, panel or overlay</b> per idea, with face-time rules so graphics never bury the speaker. New <code>term</code> (definition) template, opaque side panels, bundled open-licensed fonts.</li>
+    </ul>
+  </div>
+
+  <div class="ver">
+    <h3><span class="tag old">0.2</span>Automated editing</h3>
+    <ul>
+      <li><b>One command from recording to video:</b> <code>auto</code>, with local transcription, cuts, 17 motion templates, transitions, camera moves, music ducking, loudness mastering and a verified <code>final.mp4</code>.</li>
+      <li><b>No FFmpeg text filter needed:</b> all text and graphics render in headless Chrome. Version-2 manifest, Resolve XML export, approval gates by content hash.</li>
+    </ul>
+  </div>
+
+  <h3>Defaults that changed (and how to get the old behaviour)</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Default now</th><th>Before</th><th>Switch back</th></tr>
+    <tr><td>Cut pace <code>tight</code>, threshold measured from your recording</td><td>fixed −35 dB, 0.35 s pauses</td><td><code>--pace natural</code></td></tr>
+    <tr><td>House style <code>bytemonk</code>: dark theme, calm motion, diagram-first graphics</td><td>no style; theme by footage brightness</td><td><code>--style plain</code>, or <code>--theme paper|auto</code></td></tr>
+    <tr><td>Review loops on in <code>auto</code></td><td>straight-line pipeline</td><td><code>--review-loop off</code></td></tr>
+    <tr><td>Asset library on, stored in <code>~/.video-monk/library</code></td><td>no shared storage</td><td><code>VIDEO_MONK_LIBRARY=off</code></td></tr>
+    <tr><td>Graphics planned by default (<code>--graphics medium</code>)</td><td>cuts and captions only</td><td><code>--graphics off</code></td></tr>
+    <tr><td>Kinetic captions (stress words in italic serif)</td><td>highlight-pill captions</td><td><code>captions.style: "karaoke"</code> in the manifest</td></tr>
+  </table></div>
+
+  <h3>Try it</h3>
+<pre><code># Everything, offline rules for graphics (free, private)
+video-monk auto --media talk.mp4 --output talk-v1 --transcribe \
+  --allow-render --approve-plan --rights-confirmed
+
+# Same, with Claude designing the diagrams and reviewing the frames (sends text/frames to Anthropic)
+video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
+  --review-agent claude --allow-llm --allow-render --approve-plan --rights-confirmed
+
+# Then read: talk-v1/REVIEW-LOOP.md (what was checked and changed) and talk-v1/render/REVIEW.txt</code></pre>
+</section>
+
+<section id="bigpicture">
+  <h2>The big picture</h2>
+  <p class="lead">Four stages in a row. Each stage has a maker and a separate reviewer, and a problem found late is sent back to the stage that caused it.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 520" role="img" aria-label="Big picture: recording through four stages, each made then reviewed, with feedback to earlier stages, shared services below and outputs on the right">
+    <defs><marker id="a0" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box in" x="20" y="95" width="170" height="100" rx="12"/><text class="t fin" x="105" y="128" text-anchor="middle">Your recording</text><text class="s" x="105" y="150" text-anchor="middle">screen or talking head</text><text class="s" x="105" y="166" text-anchor="middle">.mov · .mp4 · .mkv</text>
+    <path class="ln" d="M190 145H228" marker-end="url(#a0)"/>
+
+    <rect class="box plan" x="230" y="40" width="190" height="210" rx="12"/><text class="t fplan" x="325" y="68" text-anchor="middle">1  Transcript</text>
+    <text class="s" x="325" y="94" text-anchor="middle" font-weight="700">MAKES</text><text class="s" x="325" y="112" text-anchor="middle">words with times (whisper.cpp)</text><text class="s" x="325" y="128" text-anchor="middle">reused if seen before</text>
+    <text class="s" x="325" y="158" text-anchor="middle" font-weight="700">REVIEWER CHECKS</text><text class="s" x="325" y="176" text-anchor="middle">order · pace · stutters</text><text class="s" x="325" y="192" text-anchor="middle">misheard terms (glossary)</text><text class="s" x="325" y="228" text-anchor="middle">↻ fix only flagged words</text>
+    <path class="ln" d="M420 145H448" marker-end="url(#a0)"/>
+    <rect class="box plan" x="450" y="40" width="190" height="210" rx="12"/><text class="t fplan" x="545" y="68" text-anchor="middle">2  Cut</text>
+    <text class="s" x="545" y="94" text-anchor="middle" font-weight="700">MAKES</text><text class="s" x="545" y="112" text-anchor="middle">pauses, breaths, fillers removed</text><text class="s" x="545" y="128" text-anchor="middle">optional speed-up</text>
+    <text class="s" x="545" y="158" text-anchor="middle" font-weight="700">REVIEWER CHECKS</text><text class="s" x="545" y="176" text-anchor="middle">quiet time left · speech kept</text><text class="s" x="545" y="192" text-anchor="middle">choppiness</text><text class="s" x="545" y="228" text-anchor="middle">↻ fix only flagged segments</text>
+    <path class="ln" d="M640 145H668" marker-end="url(#a0)"/>
+    <rect class="box motion" x="670" y="40" width="190" height="210" rx="12"/><text class="t fmotion" x="765" y="68" text-anchor="middle">3  Storyboard</text>
+    <text class="s" x="765" y="94" text-anchor="middle" font-weight="700">MAKES</text><text class="s" x="765" y="112" text-anchor="middle">graphics that explain each idea</text><text class="s" x="765" y="128" text-anchor="middle">rules or Claude</text>
+    <text class="s" x="765" y="158" text-anchor="middle" font-weight="700">REVIEWER CHECKS</text><text class="s" x="765" y="176" text-anchor="middle">nothing invented · no overlaps</text><text class="s" x="765" y="192" text-anchor="middle">cutaway share · empty stretches</text><text class="s" x="765" y="228" text-anchor="middle">↻ fix only flagged graphics</text>
+    <path class="ln" d="M860 145H888" marker-end="url(#a0)"/>
+    <rect class="box build" x="890" y="40" width="190" height="210" rx="12"/><text class="t fbuild" x="985" y="68" text-anchor="middle">4  Render</text>
+    <text class="s" x="985" y="94" text-anchor="middle" font-weight="700">MAKES</text><text class="s" x="985" y="112" text-anchor="middle">animation, mix, master, final.mp4</text><text class="s" x="985" y="128" text-anchor="middle">graphics reused from library</text>
+    <text class="s" x="985" y="158" text-anchor="middle" font-weight="700">REVIEWER CHECKS</text><text class="s" x="985" y="176" text-anchor="middle">loudness · black frames</text><text class="s" x="985" y="192" text-anchor="middle">dead air · captions</text><text class="s" x="985" y="228" text-anchor="middle">↻ rebuild or route upstream</text>
+
+    <path class="ln opt" d="M935 250V288H545V252" marker-end="url(#a0)"/><text class="s" x="560" y="306">A problem owned by an earlier stage goes back to it</text><text class="s" x="560" y="322">(e.g. dead air → Cut), then later stages rerun.</text>
+    <path class="ln" d="M1040 250V318" marker-end="url(#a0)"/>
+    <rect class="box out" x="830" y="320" width="250" height="66" rx="10"/><text class="t fout" x="955" y="346" text-anchor="middle">Delivered</text><text class="s" x="955" y="364" text-anchor="middle">final.mp4 · captions · chapters</text><text class="s" x="955" y="378" text-anchor="middle">stems · thumbnail · report</text>
+
+    <text class="s" x="20" y="338" font-weight="700">SHARED BY ALL FOUR STAGES</text>
+    <rect class="box in" x="20" y="348" width="250" height="76" rx="10"/><text class="t" x="145" y="374" text-anchor="middle">House style</text><text class="s" x="145" y="392" text-anchor="middle">dark calm cards, diagrams first,</text><text class="s" x="145" y="408" text-anchor="middle">recap and next step (bytemonk)</text>
+    <rect class="box in" x="290" y="348" width="250" height="76" rx="10"/><text class="t" x="415" y="374" text-anchor="middle">Asset library</text><text class="s" x="415" y="392" text-anchor="middle">graphics · transcripts · storyboards</text><text class="s" x="415" y="408" text-anchor="middle">+ your licensed music, SFX, fonts</text>
+    <rect class="box in" x="560" y="348" width="250" height="76" rx="10"/><text class="t" x="685" y="374" text-anchor="middle">Review ledger</text><text class="s" x="685" y="392" text-anchor="middle">every finding and every fix,</text><text class="s" x="685" y="408" text-anchor="middle">in REVIEW-LOOP.md</text>
+    <rect class="box ext" x="20" y="444" width="1060" height="54" rx="10"/><text class="t" x="550" y="468" text-anchor="middle">Runs locally with FFmpeg · headless Chrome · whisper.cpp</text><text class="s" x="550" y="486" text-anchor="middle">Optional, only when you pass --allow-llm: Claude Code CLI plans diagrams and reviews frames (text and frames are sent to Anthropic)</text>
+  </svg>
+  <figcaption>The detailed module-level diagram is in <a href="#architecture">System architecture</a>.</figcaption>
+  </figure>
+  <h3>How to read the rest of this page</h3>
+  <div class="how">
+    <div><b>Want to use it?</b>Read <a href="#auto">auto</a>, then <a href="#commands">Commands</a> and <a href="#limits">Limits</a>.</div>
+    <div><b>Want to trust it?</b>Read <a href="#loops">Review loops</a>, <a href="#gates">Approval gates</a> and <a href="#limits">Limits</a>.</div>
+    <div><b>Want to change the look?</b>Read <a href="#style">House style</a>, <a href="#typography">Typography</a> and <a href="#templates">Templates</a>.</div>
+    <div><b>Want to extend it?</b>Read <a href="#architecture">Architecture</a>, <a href="#motion">Motion engine</a> and <a href="#manifest">Manifest</a>.</div>
+  </div>
+</section>
 
 <section id="overview">
   <h2>Overview</h2>
@@ -216,17 +331,31 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 
 <section id="auto">
   <h2>The one-shot pipeline: <code>auto</code></h2>
-  <p class="lead">For a talking-head or screen recording, one command runs five stages and writes everything into a new folder.</p>
+  <p class="lead">One command runs the four stages, each under its review loop, and writes everything into a new folder.</p>
 <pre><code>video-monk auto --media talk.mp4 --output talk-v1 --transcribe \
   --allow-render --approve-plan --rights-confirmed</code></pre>
   <div class="steps">
-    <div class="step"><h4>Inspect</h4><p><code>analyzeFootage</code> measures duration, resolution, fps, scene changes, integrated loudness, true peak and speech ratio, then writes <code>analysis.json</code> with suggestions.</p></div>
-    <div class="step"><h4>Transcribe</h4><p>whisper.cpp runs locally on 16 kHz mono audio. Word times are refined against measured silences. Output: <code>transcript/words.json</code>.</p></div>
-    <div class="step"><h4>Autocut</h4><p>Removes pauses and filler words, adds punch-ins on alternating cuts, remaps captions and writes a version-2 <code>production.json</code>.</p></div>
-    <div class="step"><h4>Review</h4><p>Hashes the manifest, media and caption words into a fingerprint. Approval requires <code>--approve-plan</code>.</p></div>
-    <div class="step"><h4>Render</h4><p>The build pipeline produces <code>final.mp4</code> and every deliverable, then verifies the real file.</p></div>
+    <div class="step"><h4>Inspect</h4><p>Measures duration, size, fps, loudness, true peak and pauses; writes <code>analysis.json</code> with suggestions.</p></div>
+    <div class="step"><h4>Transcript</h4><p>Local whisper.cpp words with times, refined against measured silences. Reused from the library when the same recording was transcribed before.</p></div>
+    <div class="step"><h4>Cut</h4><p>Measures your noise floor, removes pauses, breaths, hums and filler words, trims quiet edges, adds punch-ins, remaps captions, writes a version-2 manifest.</p></div>
+    <div class="step"><h4>Storyboard</h4><p>Plans graphics from the transcript in the house style and writes <code>STORYBOARD.md</code> plus an editable <code>storyboard.json</code>.</p></div>
+    <div class="step"><h4>Render</h4><p>Approves the plan by content hash, renders (reusing library graphics), mixes, masters, verifies the real file and writes every deliverable.</p></div>
   </div>
-  <div class="note"><b>Without <code>--transcribe</code></b>, auto still cuts pauses and adds punch-ins, but there are no captions and no filler removal. Without <code>--allow-render</code> it stops after the plan so you can add graphics first.</div>
+  <p>After <b>each</b> of the last four stages a reviewer approves or rejects, and the maker fixes only what was flagged (see <a href="#loops">Review loops</a>). If a stage is still rejected after 3 rounds, <code>auto</code> stops with <code>needs-human</code> and lists what is open.</p>
+  <h3>Options you will actually use</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Flag</th><th>Effect</th></tr>
+    <tr><td><code>--transcribe</code> or <code>--words file.json</code></td><td>Needed for captions, filler removal and graphics.</td></tr>
+    <tr><td><code>--graphics off|light|medium|heavy</code></td><td>How many graphics (3 / 6 / 10 per minute).</td></tr>
+    <tr><td><code>--engine rules|claude --allow-llm</code></td><td>Offline pattern rules, or Claude designs real diagrams (sends the transcript to Anthropic).</td></tr>
+    <tr><td><code>--review-agent claude --allow-llm</code></td><td>Adds an independent Claude reviewer, including a look at sampled frames.</td></tr>
+    <tr><td><code>--pace natural|tight|extra</code>, <code>--speed 1.1</code></td><td>How hard to tighten pauses, and optional speech speed-up.</td></tr>
+    <tr><td><code>--format vertical|landscape|square</code></td><td>Reframe for Shorts and Reels.</td></tr>
+    <tr><td><code>--style bytemonk|plain</code>, <code>--theme night|paper|auto</code></td><td>House style and colour theme.</td></tr>
+    <tr><td><code>--quality draft</code></td><td>Faster encode while iterating.</td></tr>
+    <tr><td><code>--review-loop off</code>, <code>--max-rounds N</code></td><td>Straight-line run, or a different round limit.</td></tr>
+  </table></div>
+  <div class="note"><b>Without <code>--transcribe</code></b> auto still cuts pauses and adds punch-ins, but there are no captions, no filler removal and no graphics. Without <code>--allow-render</code> it stops after planning so you can edit the manifest or storyboard first.</div>
 </section>
 
 <section id="autocut">
@@ -292,6 +421,22 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <div class="card"><h4>Licensed assets</h4><p>Music, SFX, images and fonts with rights, attribution and source URL recorded once; checked out with a ready manifest entry. Never auto-approved, never pruned.</p></div>
   </div>
   <p>Commands: <code>assets --search</code>, <code>--add</code>, <code>--get</code>, <code>--export</code> (cached graphic to .mov alpha / .mp4 / .png), <code>--stats</code>, <code>--prune</code>. The librarian agent searches before anything is generated or downloaded.</p>
+</section>
+
+<section id="style">
+  <h2>House style</h2>
+  <p class="lead">Every video follows one look unless you say otherwise. It is a creative direction taken from your ByteMonk study notes, not a verified description of the channel, and it never copies the channel's wording, branding or sponsor material.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Aspect</th><th>What the style does</th></tr>
+    <tr><td>Canvas and colour</td><td>Dark neutral background, rounded cards, one cyan accent plus a semantic palette. Colour is always paired with an icon or text.</td></tr>
+    <tr><td>Motion</td><td>Calm: smooth reveals with no overshoot, nodes and steps appear as the narration names them, no gratuitous transitions.</td></tr>
+    <tr><td>Graphics</td><td>Diagrams first. Flows, steps, comparisons, definitions and chapter cards are favoured; pull-text is capped at a quarter of the graphics.</td></tr>
+    <tr><td>Honesty</td><td>Conceptual diagrams are labelled “Conceptual schematic”. No invented numbers.</td></tr>
+    <tr><td>Pace</td><td>Tight cuts of dead air, but no fixed cutting formula; an idea is held until it is understood.</td></tr>
+    <tr><td>Audio</td><td>Narration first; a restrained licensed ambient bed ducked 14 dB under speech.</td></tr>
+    <tr><td>Structure</td><td>Concrete question first, mechanism built step by step, comparisons on one layout, implications kept separate, a recap that rebuilds the mental model, a practical next step.</td></tr>
+  </table></div>
+  <p>Switch with <code>--style plain</code>. A manifest's own theme settings always win over the style. The Claude planner receives the style as part of its brief, and the storyboard reviewer checks pull-text share against it.</p>
 </section>
 
 <section id="explain">
@@ -440,12 +585,12 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
   <p class="lead"><code>production-build</code> runs eight stages. Intermediate work lives in <code>work/</code>, and motion frames are deleted after a successful build unless you pass <code>--keep-work</code>.</p>
   <div class="steps">
     <div class="step"><h4>Gate</h4><p>Reload the manifest, recompute the fingerprint and require it to equal the approved review. Create the output folder only after this passes.</p></div>
-    <div class="step"><h4>Motion frames</h4><p>Render every graphic scene, overlay, global overlay and the caption layer in headless Chrome, in parallel.</p></div>
+    <div class="step"><h4>Motion frames</h4><p>Render every graphic and the caption layer in headless Chrome in parallel. Frames live in the asset library, so an identical graphic from any earlier project is reused instead of rendered.</p></div>
     <div class="step"><h4>Scene composites</h4><p>For each scene: fit or reframe the source, apply camera motion, overlay B-roll, then overlay motion PNGs in 4:4:4. Encode an intermediate and cut matching source-audio clips.</p></div>
     <div class="step"><h4>Join</h4><p>Hard-cut runs are stream-copied together. Scenes separated by transitions are joined with <code>xfade</code> at frame-exact offsets.</p></div>
     <div class="step"><h4>Audio mix</h4><p>Build voice, music and SFX buses, duck the music under speech and write stems.</p></div>
-    <div class="step"><h4>Mastering</h4><p>Two-pass gain to the loudness target with an oversampled peak limiter, written to <code>stems/master.wav</code>.</p></div>
-    <div class="step"><h4>Final encode</h4><p>One pass applies transitions, global overlays and burned-in captions, muxes the master as AAC and writes <code>final.mp4</code> with <code>+faststart</code>.</p></div>
+    <div class="step"><h4>Mastering</h4><p>Two-pass gain to the loudness target with an oversampled peak limiter, written to <code>stems/master.wav</code>. The video is encoded once; audio is muxed separately, so a fix costs seconds.</p></div>
+    <div class="step"><h4>Final encode</h4><p>One pass applies transitions, overlays and captions. The master is muxed as AAC, then the <b>decoded</b> file is measured: if AAC overshot the true-peak limit, only the offending 10 ms windows get a brief gain dip and the file is re-muxed.</p></div>
     <div class="step"><h4>Deliver and verify</h4><p>Write captions, chapters, thumbnail, contact sheet, Resolve XML and credits. Decode <code>final.mp4</code> and measure size, fps, duration, LUFS and true peak.</p></div>
   </div>
   <p><code>--quality draft</code> uses faster x264 settings for quick iterations; <code>final</code> (default) uses the manifest's <code>crf</code> and <code>preset</code>.</p>
@@ -527,6 +672,14 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <tr><td><code>report.json</code>, <code>REVIEW.txt</code>, <code>CREDITS.txt</code></td><td>Verification results, what a human must still check, and per-asset attribution.</td></tr>
     <tr><td><code>production.json</code></td><td>A copy of the manifest used, for reproducibility.</td></tr>
   </table></div>
+  <h3>What <code>auto</code> writes beside the render</h3>
+  <div class="tablewrap"><table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>REVIEW-LOOP.md</code>, <code>loop-ledger.json</code></td><td>Every review round: what was checked, what was rejected and why, what the maker changed.</td></tr>
+    <tr><td><code>edit/…STORYBOARD.md</code>, <code>….storyboard.json</code></td><td>The graphics plan as a table and as editable data (revisions are kept as <code>r2</code>, <code>r3</code>).</td></tr>
+    <tr><td><code>edit-r2/</code> …</td><td>A revised cut, written to a new folder so earlier versions stay intact.</td></tr>
+    <tr><td><code>analysis.json</code>, <code>transcript/</code></td><td>Footage measurements and the word list.</td></tr>
+  </table></div>
 </section>
 
 <section id="commands">
@@ -537,7 +690,10 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <tr><td><code>inspect</code></td><td>Measure loudness, true peak, pauses, speech ratio and pacing; print suggestions.</td></tr>
     <tr><td><code>transcribe</code></td><td>Local word timestamps (<code>--engine whisper</code>, or <code>parakeet</code> via HyperFrames).</td></tr>
     <tr><td><code>models</code></td><td>List or download whisper.cpp models into <code>~/.cache/video-monk/models</code>.</td></tr>
-    <tr><td><code>autocut</code></td><td>Silence and filler removal to a v2 manifest with remapped captions.</td></tr>
+    <tr><td><code>autocut</code></td><td>Measured pause, breath and filler removal to a v2 manifest with remapped captions (<code>--pace</code>, <code>--speed</code>).</td></tr>
+    <tr><td><code>storyboard</code></td><td>Plan explainer graphics from the transcript; writes the manifest, <code>.storyboard.json</code> and <code>.STORYBOARD.md</code>. <code>--from-storyboard</code> re-applies your edits.</td></tr>
+    <tr><td><code>review</code></td><td>Run one stage's reviewer on files (<code>--stage transcript|cut|storyboard|render</code>) and append to the loop ledger. Exit code 1 when rejected.</td></tr>
+    <tr><td><code>assets</code></td><td>Shared asset library: <code>--search</code>, <code>--add</code> (with rights), <code>--get</code>, <code>--export</code>, <code>--stats</code>, <code>--prune</code>.</td></tr>
     <tr><td><code>templates</code></td><td>List motion templates and their props (<code>--json</code> for tools).</td></tr>
     <tr><td><code>graphic</code></td><td>Render one template to <code>.png</code>, <code>.mp4</code> or alpha <code>.mov</code>.</td></tr>
     <tr><td><code>production-review</code></td><td>Validate a manifest and optionally record approval of its fingerprint.</td></tr>
@@ -550,7 +706,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <tr><td><code>doctor</code></td><td>Check required tools and FFmpeg filters, and report which optional tools are present.</td></tr>
   </table></div>
   <h3>Environment overrides</h3>
-  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>PEXELS_API_KEY</code> (stock search only).</p>
+  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>VIDEO_MONK_LIBRARY</code> (library folder, or <code>off</code>), <code>PEXELS_API_KEY</code> (stock search only).</p>
 </section>
 
 <section id="claude">
@@ -566,6 +722,8 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <div class="card"><h4>free-sound-designer</h4><p>Picks licensed music and SFX and records per-track license evidence.</p></div>
     <div class="card"><h4>obs-screen-recorder</h4><p>Guides original local capture. You operate OBS.</p></div>
     <div class="card"><h4>ffmpeg-finisher</h4><p>Builds from an approved review, inspects the contact sheet and reports verification.</p></div>
+    <div class="card"><h4>stage-reviewer <span class="chip">new</span></h4><p>Independently approves or rejects one stage with findings that name the owner stage, the target and a fix. Never edits the work.</p></div>
+    <div class="card"><h4>asset-librarian <span class="chip">new</span></h4><p>Searches the library before anything is generated or downloaded, indexes what is made, and records rights as given.</p></div>
   </div>
   <div class="note"><b>Design loop:</b> Claude writes overlay props, runs <code>video-monk graphic ... --output x.png</code>, reads the PNG to check layout, fixes problems, then reviews and builds. Subagents never nest; the main conversation coordinates.</div>
 </section>
@@ -590,6 +748,9 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <li>Silence detection is acoustic. Background music or a noisy room may need <code>--noise-db</code> tuning, and cuts should be watched.</li>
     <li><code>auto</code> plans graphics by default (offline rules). For richer diagrams use <code>--engine claude --allow-llm</code> or have Claude edit the storyboard.</li>
     <li>Each command takes one recording. Folder or batch input is not built yet.</li>
+    <li>Reviewers catch what can be measured (silence, lost speech, invented numbers, overlaps, loudness, black frames). Taste, facts and rights still need a person, and a finding they cannot fix stops the run for you.</li>
+    <li>Whisper does not transcribe “hm” or “um” for many speakers, so those sounds are removed as low-level stretches, not by name.</li>
+    <li>The asset library grows (rendered frames are PNG sequences). Check <code>assets --stats</code> and prune with <code>assets --prune --older-than-days N --yes</code>. Licensed assets you add are never pruned.</li>
     <li>The offline planner works from patterns in the words; on conversational speech it mostly yields pull-text and a few definition cards, lists and flows. The Claude engine (opt-in, sends the transcript to Anthropic) draws real diagrams. Always review the storyboard.</li>
     <li>Rights, attribution, factual accuracy and publishing are always human decisions.</li>
   </ul>

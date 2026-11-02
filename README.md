@@ -13,6 +13,17 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 - **Gated.** Nothing renders until a plan review approves the exact manifest, media and
   captions (by content hash). Rights and facts stay human decisions.
 
+## What's new
+
+- **0.4: checked, reusable, on-style.** Pacing measured from your recording's noise floor (quiet time in one real edit fell from 8.9% to
+  0.3%), an independent reviewer for every stage with fixes limited to what was flagged (`REVIEW-LOOP.md`), a shared asset library that
+  reuses graphics, transcripts and storyboards, and a ByteMonk-inspired house style by default.
+- **0.3: explains with graphics, modern type.** Graphics planned from the transcript, stressed words in italic serif, kinetic captions.
+- **0.2: automated editing.** One command from recording to a verified `final.mp4`.
+
+Defaults changed in 0.4 (pace, style, review loops, library); each has a switch back. See [CHANGELOG.md](CHANGELOG.md) for details and
+[docs/architecture.html](docs/architecture.html) for the big picture and every part explained.
+
 ## What it does
 
 | Stage | Command | Result |
