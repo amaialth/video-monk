@@ -214,6 +214,6 @@ test('documented skill CLI examples use supported commands and options', async (
     const { stdout } = await run(process.execPath, [
       path.join(root, 'bin', 'video-monk.js'), ...command.split(/\s+/), '--help'
     ]);
-    assert.match(stdout, /video-monk - evidence-based editing skills/);
+    assert.match(stdout, /video-monk - automated video editing/);
   }
 });

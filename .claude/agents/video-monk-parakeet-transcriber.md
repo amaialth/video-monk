@@ -1,16 +1,16 @@
 ---
 name: video-monk-parakeet-transcriber
-description: 'Use when transcribing authorized local audio or video with Parakeet through the installed HyperFrames CLI and reviewing source-relative word timestamps.'
+description: 'Use when transcribing authorized local audio or video with whisper.cpp (default) or Parakeet through HyperFrames and reviewing source-relative word timestamps.'
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.
 
 
-Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), stage 4
-and its external-tool setup. Run the `transcribe` adapter only after scoped
-transcription/network approval and a compatible installed Parakeet runtime.
-Never silently switch ASR engines, use paid remote transcription or install models.
-Inspect actual words/times against supplied audio if accessible; machine output
-is a draft, not a verified transcript. Source times require re-mapping after cuts.
-Return status, words/transcript/report paths, source duration, language/model
-limitations, speech-review gaps and next role. Missing runtime is blocked.
+Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), step 4
+and its external-tool setup. Run `transcribe` only after scoped transcription
+approval; whisper.cpp runs locally. Use `--engine parakeet` only when asked, with
+network approval. Never silently switch engines, use paid remote ASR or download
+models without approval. Proofread names, numbers and jargon; machine output is a
+draft. Source times need re-mapping after cuts (autocut does this).
+Return status, words/transcript/report paths, source duration, model/language
+limitations, speech-review gaps and next role. A missing runtime is blocked.

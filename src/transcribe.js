@@ -2,7 +2,7 @@
 // refined against measured silences so caption/cut boundaries do not bleed into pauses.
 import path from 'node:path';
 import os from 'node:os';
-import { mkdir, readFile, rm, mkdtemp, writeFile, rename } from 'node:fs/promises';
+import { mkdir, readFile, rm, mkdtemp, rename } from 'node:fs/promises';
 import { exists, run, writeJson, writeNew } from './core.js';
 import { inspectMedia } from './production.js';
 import { detectSilence, refineWords } from './autocut.js';
@@ -115,4 +115,3 @@ export async function transcribeWhisper(media, output, options = {}, execute = r
   }
 }
 
-export { writeFile };

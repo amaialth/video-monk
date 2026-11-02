@@ -1,0 +1,56 @@
+{
+  "version": 2,
+  "title": "How caching cuts latency",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "theme": { "accent": "#4cc9f0" },
+  "assets": [
+    { "id": "talk", "path": "media/talk.mp4", "kind": "video", "approved": true,
+      "rights": "REPLACE: original recording", "attribution": "REPLACE: presenter" },
+    { "id": "servers", "path": "media/servers.mp4", "kind": "video", "approved": true,
+      "rights": "REPLACE: license", "attribution": "REPLACE: creator", "sourceUrl": "https://example.com/replace" },
+    { "id": "bed", "path": "media/music.mp3", "kind": "audio", "approved": true,
+      "rights": "REPLACE: YouTube Audio Library license", "attribution": "REPLACE: track by artist" },
+    { "id": "whoosh", "path": "media/whoosh.wav", "kind": "audio", "approved": true,
+      "rights": "REPLACE: license", "attribution": "REPLACE: creator" }
+  ],
+  "scenes": [
+    {
+      "id": "hook", "kind": "graphic", "duration": 3, "chapter": "Intro",
+      "purpose": "Hook: state the promise",
+      "graphic": { "template": "title", "props": { "kicker": "System design", "title": "Caching in 60 seconds" } },
+      "transition": { "type": "fade", "duration": 0.5 }
+    },
+    {
+      "id": "problem", "kind": "video", "asset": "talk", "in": 2.4, "duration": 6, "chapter": "The problem",
+      "purpose": "Presenter explains slow database reads",
+      "audio": {}, "motion": { "type": "zoom-in", "amount": 0.06 },
+      "overlays": [
+        { "template": "lower-third", "start": 0.4, "duration": 3, "props": { "name": "REPLACE: Presenter", "role": "Engineer" } },
+        { "template": "bar-chart", "start": 3, "duration": 3, "placement": "right",
+          "props": { "title": "p99 read latency", "unit": "ms", "citation": "REPLACE: measured source",
+            "bars": [ { "label": "Database", "value": 120 }, { "label": "Cache", "value": 4 } ] } }
+      ],
+      "broll": [ { "asset": "servers", "in": 0, "start": 1.5, "duration": 1.5 } ],
+      "transition": { "type": "slideleft", "duration": 0.4 }
+    },
+    {
+      "id": "how", "kind": "graphic", "duration": 6, "chapter": "How it works",
+      "purpose": "Cache-aside request path",
+      "graphic": { "template": "flow", "props": {
+        "title": "Cache-aside",
+        "nodes": [ { "id": "app", "label": "App", "icon": "server" }, { "id": "cache", "label": "Redis", "icon": "bolt" },
+          { "id": "db", "label": "Postgres", "icon": "database" } ],
+        "edges": [ { "from": "app", "to": "cache", "label": "1. get" }, { "from": "cache", "to": "db", "label": "2. on miss", "dashed": true } ] } }
+    }
+  ],
+  "audio": {
+    "music": [ { "asset": "bed", "gainDb": -20, "fadeIn": 1, "fadeOut": 2 } ],
+    "sfx": [ { "asset": "whoosh", "at": 2.6, "gainDb": -8 } ],
+    "ducking": { "enabled": true, "amountDb": 12 }
+  },
+  "captions": { "words": "words.timeline.json", "style": "karaoke" },
+  "globalOverlays": [ { "template": "progress-bar", "start": 0, "duration": 14.1, "props": { "ticks": [0.18, 0.6] } } ],
+  "delivery": { "targetLufs": -14, "truePeak": -1 }
+}

@@ -38,7 +38,8 @@ export async function loadTimeline(file, execute = run) {
   const base = path.dirname(path.resolve(file));
   const local = p => path.resolve(base, p);
   const frames = seconds => Math.round(seconds * m.fps);
-  const aligned = (seconds, label) => check(Math.abs(seconds * m.fps - Math.round(seconds * m.fps)) < 0.001,
+  // Millisecond-rounded values are accepted (|error| <= 0.5ms worth of frames).
+  const aligned = (seconds, label) => check(Math.abs(seconds * m.fps - Math.round(seconds * m.fps)) <= m.fps * 0.0005 + 1e-6,
     `${label} must align to timeline frames (multiples of 1/${m.fps}s)`);
   const fingerprint = createHash('sha256').update(raw);
   const extraFiles = [];

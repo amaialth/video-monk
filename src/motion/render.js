@@ -63,7 +63,7 @@ export async function motionPage(job) {
 }
 
 export class MotionRenderer {
-  constructor() { this.browser = null; this.queue = Promise.resolve(); }
+  constructor() { this.browser = null; }
 
   async start() {
     if (!this.browser) this.browser = await launchChrome();

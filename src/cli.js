@@ -9,10 +9,40 @@ import { PLAN_SCHEMA, validateInventory, validatePlan, captionsSrt, resolveXml, 
 import { reviewProduction, buildProduction, verifyProduction } from './production.js';
 import { searchStock, downloadStock } from './stock.js';
 import { transcribeParakeet, renderHyperframes } from './external-tools.js';
+import { transcribeWhisper, downloadModel, findWhisper, findModel, MODELS, MODEL_DIR } from './transcribe.js';
+import { autocut, analyzeFootage, FORMATS } from './autocut.js';
+import { autoEdit } from './auto.js';
+import { templateCatalog } from './motion/templates.js';
+import { renderGraphic } from './motion/preview.js';
+import { findChrome } from './chrome.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
-const HELP = `video-monk - evidence-based editing skills and DaVinci Resolve handoffs
+const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
+AUTOMATED EDITING
+  auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
+             [--format source|landscape|vertical|square] [--allow-render --approve-plan
+             --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
+             One shot: inspect -> transcribe -> autocut -> review -> render final.mp4
+  inspect    --media <file> [--output <new analysis.json>]  Loudness, pauses, pacing, suggestions
+  transcribe --media <file> --output <new folder> --allow-transcribe
+             [--engine whisper|parakeet] [--model base.en] [--language en|auto]
+             (parakeet engine also needs --allow-tool-network and VIDEO_MONK_HYPERFRAMES)
+  models     [--download <name> --allow-download]  List/download local whisper.cpp models
+  autocut    --media <recording> --output <new folder> [--words <words.json>]
+             [--format ...] [--noise-db -35] [--min-silence 0.35] [--keep-fillers]
+             [--no-jump-zoom] [--rights-confirmed] [--rights <text>] [--attribution <text>]
+             Remove pauses/fillers -> version-2 production.json + remapped captions
+  templates  [--json]                     List motion-graphics templates and their props
+  graphic    --template <name> --props <json|file> --output <.mp4|.mov|.png>
+             [--seconds 5] [--width 1920] [--height 1080] [--fps 30] [--placement center]
+             [--background grid|gradient|plain|transparent] [--font <ttf>] [--theme <json>]
+             Render one motion graphic for review (.mov keeps alpha; .png = final still)
+
+PRODUCTION (version 1 or 2 manifests)
+
+
+REFERENCE STUDY AND RESOLVE HANDOFF
   init       --dir <folder> [--channel <YouTube channel>] --model <model>
              [--base-url <HTTPS API base URL ending in /v1>]
   install    --target <workspace> [--format copilot|claude]
@@ -37,14 +67,13 @@ const HELP = `video-monk - evidence-based editing skills and DaVinci Resolve han
                     [--approve-plan]
   production-build --manifest <production.json> --review <approved review.json>
                    --output <new folder> --allow-render [--finishing resolve|ffmpeg]
+                   [--quality draft|final] [--keep-work] [--concurrency 4]
   production-verify --manifest <production.json> --media <Resolve export.mp4>
                     --output <new verification.json> --target-lufs=<number>
                     --max-true-peak=<number> [--approve-playback]
   stock-search --query <words> --output <new candidates.json> --allow-search
   stock-fetch --catalog <candidates.json> --id <video ID> --file-id <file ID>
               --output <new folder> --allow-download --rights-confirmed
-  transcribe --media <local recording> --output <new folder> --allow-transcribe
-             --allow-tool-network
   animate    --project <HyperFrames project> --composition <relative HTML>
              --output <new folder> --fps <24|25|30|50|60> --width <pixels>
              --height <pixels> --seconds <duration> --allow-render --allow-tool-network
@@ -69,11 +98,23 @@ const definitions = {
   validate: { bundle: 'string' },
   handoff: { bundle: 'string', output: 'string' },
   'production-review': { manifest: 'string', output: 'string', 'approve-plan': 'boolean' },
-  'production-build': { manifest: 'string', review: 'string', output: 'string', 'allow-render': 'boolean', finishing: 'string' },
+  'production-build': { manifest: 'string', review: 'string', output: 'string', 'allow-render': 'boolean', finishing: 'string',
+    quality: 'string', 'keep-work': 'boolean', concurrency: 'string' },
   'production-verify': { manifest: 'string', media: 'string', output: 'string', 'target-lufs': 'string', 'max-true-peak': 'string', 'approve-playback': 'boolean' },
   'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean' },
   'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' },
-  transcribe: { media: 'string', output: 'string', 'allow-transcribe': 'boolean', 'allow-tool-network': 'boolean' },
+  transcribe: { media: 'string', output: 'string', 'allow-transcribe': 'boolean', 'allow-tool-network': 'boolean',
+    engine: 'string', model: 'string', language: 'string' },
+  models: { download: 'string', 'allow-download': 'boolean' },
+  inspect: { media: 'string', output: 'string' },
+  autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string',
+    'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
+  auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean',
+    'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
+    model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', title: 'string' },
+  templates: { json: 'boolean' },
+  graphic: { template: 'string', html: 'string', props: 'string', output: 'string', seconds: 'string', width: 'string', height: 'string',
+    fps: 'string', placement: 'string', background: 'string', font: 'string', theme: 'string', at: 'string' },
   animate: { project: 'string', composition: 'string', output: 'string', fps: 'string', width: 'string', height: 'string', seconds: 'string', 'allow-render': 'boolean', 'allow-tool-network': 'boolean' }
 };
 
@@ -178,6 +219,21 @@ async function checkedBundle(file) {
   return { ...bundle, inventory, plan: validatePlan(bundle.plan, inventory) };
 }
 
+function cutOptions(opts) {
+  const number = (key, min, max) => {
+    if (opts[key] === undefined) return undefined;
+    const value = Number(opts[key]);
+    if (!Number.isFinite(value) || value < min || value > max) throw new Error(`--${key} must be ${min}..${max}`);
+    return value;
+  };
+  if (opts.format && !Object.hasOwn(FORMATS, opts.format)) throw new Error(`--format must be one of ${Object.keys(FORMATS).join(', ')}`);
+  return {
+    words: opts.words ? path.resolve(opts.words) : undefined, format: opts.format, noiseDb: number('noise-db', -80, -10),
+    minSilence: number('min-silence', 0.1, 5), removeFillers: !opts['keep-fillers'], jumpZoom: !opts['no-jump-zoom'],
+    rightsConfirmed: opts['rights-confirmed'] === true, rights: opts.rights, attribution: opts.attribution, title: opts.title
+  };
+}
+
 export async function main(args) {
   const [command, ...rest] = args;
   if (!command || ['--help', '-h', 'help'].includes(command)) {
@@ -192,10 +248,69 @@ export async function main(args) {
   if (opts.help) { console.log(HELP); return; }
   switch (command) {
     case 'transcribe': {
-      await transcribeParakeet(required(opts, 'media'), path.resolve(required(opts, 'output')), {
-        allowTranscribe: opts['allow-transcribe'], allowToolNetwork: opts['allow-tool-network']
+      const engine = opts.engine || 'whisper';
+      if (!['whisper', 'parakeet'].includes(engine)) throw new Error('--engine must be whisper or parakeet');
+      if (engine === 'parakeet') {
+        await transcribeParakeet(required(opts, 'media'), path.resolve(required(opts, 'output')), {
+          allowTranscribe: opts['allow-transcribe'], allowToolNetwork: opts['allow-tool-network']
+        });
+        console.log('Parakeet transcript draft created. Verify words and timestamps before captions or cuts.');
+      } else {
+        const { report } = await transcribeWhisper(required(opts, 'media'), path.resolve(required(opts, 'output')), {
+          allowTranscribe: opts['allow-transcribe'], model: opts.model, language: opts.language
+        });
+        console.log(`whisper.cpp (${report.model}): ${report.wordCount} words -> ${path.resolve(opts.output, 'words.json')}. Proofread before publishing captions.`);
+      }
+      break;
+    }
+    case 'models': {
+      if (opts.download) {
+        const file = await downloadModel(opts.download, opts['allow-download']);
+        console.log(`Model ready: ${file}`);
+      } else {
+        const rows = [];
+        for (const name of MODELS) rows.push(`${(await exists(path.join(MODEL_DIR, `ggml-${name}.bin`))) ? '[installed]' : '           '} ${name}`);
+        console.log(`whisper.cpp models in ${MODEL_DIR}:\n${rows.join('\n')}\nDownload: video-monk models --download base.en --allow-download`);
+      }
+      break;
+    }
+    case 'inspect': {
+      const result = await analyzeFootage(required(opts, 'media'));
+      if (opts.output) { await unusedOutput(path.resolve(opts.output)); await writeJson(path.resolve(opts.output), result); }
+      console.log(JSON.stringify(result, (k, v) => (k === 'sceneChanges' ? `${v.length} changes` : v), 2));
+      break;
+    }
+    case 'autocut': {
+      const result = await autocut(required(opts, 'media'), path.resolve(required(opts, 'output')), cutOptions(opts));
+      const r = result.report;
+      console.log(`Auto-cut: ${r.sourceDuration}s -> ${r.editedDuration}s (${r.cuts} segments, ${r.fillersRemoved} fillers removed, ${r.captionWords} caption words).`);
+      console.log(`Manifest: ${path.resolve(opts.output, 'production.json')}\nNext:\n- ${r.next.join('\n- ')}`);
+      break;
+    }
+    case 'auto': {
+      const result = await autoEdit(required(opts, 'media'), path.resolve(required(opts, 'output')), {
+        ...cutOptions(opts), words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language,
+        render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message)
       });
-      console.log('Parakeet transcript draft created. Verify words and timestamps before captions or cuts.');
+      if (result.rendered) {
+        console.log(`Rendered: ${path.resolve(opts.output, 'render', 'final.mp4')} (${result.rendered.status}). Read REVIEW.txt and watch it end to end.`);
+        if (result.rendered.status === 'failed-technical-checks') process.exitCode = 1;
+      } else console.log(`Plan ready: ${result.manifest}. Add overlays/music, then production-review and production-build.`);
+      break;
+    }
+    case 'templates': {
+      const list = templateCatalog();
+      if (opts.json) console.log(JSON.stringify(list, null, 2));
+      else console.log(list.map(t => `${t.name.padEnd(14)} ${t.description}\n${' '.repeat(15)}placement: ${t.placement}\n${Object.entries(t.props).map(([k, v]) => `${' '.repeat(15)}${k}: ${v}`).join('\n')}`).join('\n\n'));
+      break;
+    }
+    case 'graphic': {
+      if (!opts.template && !opts.html) throw new Error('Pass --template <name> (see video-monk templates) or --html <seekable page>.');
+      const num = key => (opts[key] === undefined ? undefined : Number(opts[key]));
+      const result = await renderGraphic({ template: opts.template, html: opts.html, props: opts.props, output: path.resolve(required(opts, 'output')),
+        seconds: num('seconds'), width: num('width'), height: num('height'), fps: num('fps'), placement: opts.placement,
+        background: opts.background, font: opts.font, theme: opts.theme, at: num('at') });
+      console.log(`Rendered ${result.output} (${result.frames} frames, ${result.captured} captured).`);
       break;
     }
     case 'animate': {
@@ -207,6 +322,21 @@ export async function main(args) {
       break;
     }
     case 'production-verify': {
+      if ((await readJson(required(opts, 'manifest'))).version === 2) {
+        const { loadTimeline } = await import('./timeline.js');
+        const { verifyMedia } = await import('./build.js');
+        const output = path.resolve(required(opts, 'output'));
+        await unusedOutput(output);
+        const loaded = await loadTimeline(opts.manifest);
+        if (opts['target-lufs'] !== undefined) loaded.delivery.targetLufs = Number(opts['target-lufs']);
+        if (opts['max-true-peak'] !== undefined) loaded.delivery.truePeak = Number(opts['max-true-peak']);
+        const result = await verifyMedia(path.resolve(required(opts, 'media')), loaded);
+        result.checks.wholeVideoPlayback = opts['approve-playback'] ? 'USER ATTESTED' : 'NOT VERIFIED';
+        await writeJson(output, { version: 2, status: result.passed ? 'technical-checks-passed' : 'failed-technical-checks', ...result });
+        console.log(`Export verification: ${result.passed ? 'PASSED' : 'FAILED'} ${JSON.stringify(result.checks)}`);
+        if (!result.passed) process.exitCode = 1;
+        break;
+      }
       const report = await verifyProduction(required(opts, 'media'), required(opts, 'manifest'), required(opts, 'output'), {
         targetLufs: Number(required(opts, 'target-lufs')), maxTruePeak: Number(required(opts, 'max-true-peak')),
         playbackApproved: opts['approve-playback']
@@ -232,8 +362,16 @@ export async function main(args) {
       break;
     }
     case 'production-build': {
-      await buildProduction(required(opts, 'manifest'), required(opts, 'review'),
-        path.resolve(required(opts, 'output')), opts['allow-render'], undefined, opts.finishing);
+      const built = await buildProduction(required(opts, 'manifest'), required(opts, 'review'),
+        path.resolve(required(opts, 'output')), opts['allow-render'], undefined, opts.finishing, {
+          quality: opts.quality === 'draft' ? 'draft' : 'final', keepWork: opts['keep-work'],
+          concurrency: opts.concurrency ? integer(opts.concurrency, 'concurrency', 1, 16) : undefined, log: message => console.error(message)
+        });
+      if (built.version === 2) {
+        console.log(`${built.status}: ${path.resolve(opts.output, 'final.mp4')}. Read REVIEW.txt and watch it end to end before publishing.`);
+        if (built.status === 'failed-technical-checks') process.exitCode = 1;
+        break;
+      }
       console.log(opts.finishing === 'ffmpeg'
         ? 'FFmpeg delivery candidate created. Read REVIEW.txt, verify the actual candidate and complete whole-video human acceptance before delivery.'
         : 'Draft assembly and Resolve audio/picture XML created. Read REVIEW.txt; final export and whole-video approval must happen in Resolve.');
@@ -272,8 +410,7 @@ export async function main(args) {
     case 'doctor': {
       const results = [{ tool: 'node', available: true, detail: process.version }];
       for (const [tool, args] of [
-        ['ffmpeg', ['-version']], ['ffprobe', ['-version']],
-        ['yt-dlp', ['--version']], ['python', ['--version']]
+        [process.env.VIDEO_MONK_FFMPEG || 'ffmpeg', ['-version']], [process.env.VIDEO_MONK_FFPROBE || 'ffprobe', ['-version']]
       ]) {
         try {
           const result = await run(tool, args, { timeout: 10000 });
@@ -282,12 +419,41 @@ export async function main(args) {
           results.push({ tool, available: false, detail: error.message });
         }
       }
+      const ffmpegOk = results[1].available;
+      if (ffmpegOk) {
+        const ff = process.env.VIDEO_MONK_FFMPEG || 'ffmpeg';
+        const filters = (await run(ff, ['-hide_banner', '-filters'], { timeout: 10000 })).stdout;
+        const encoders = (await run(ff, ['-hide_banner', '-encoders'], { timeout: 10000 })).stdout;
+        for (const f of ['zoompan', 'xfade', 'overlay', 'sidechaincompress', 'loudnorm', 'alimiter', 'silencedetect', 'tpad']) {
+          results.push({ tool: `ffmpeg filter ${f}`, available: new RegExp(`\\s${f}\\s`).test(filters), detail: 'required' });
+        }
+        results.push({ tool: 'ffmpeg encoder libx264', available: /\slibx264\s/.test(encoders), detail: 'required' });
+        results.push({ tool: 'ffmpeg filter drawtext', available: /\sdrawtext\s/.test(filters), optional: true,
+          detail: 'optional: not needed (text and graphics render in headless Chrome)' });
+      }
+      try { results.push({ tool: 'chrome (motion graphics)', available: true, detail: await findChrome() }); }
+      catch (error) { results.push({ tool: 'chrome (motion graphics)', available: false, detail: error.message }); }
+      const whisper = await findWhisper();
+      results.push({ tool: 'whisper.cpp (transcription)', available: Boolean(whisper), optional: true,
+        detail: whisper || 'optional: brew install whisper-cpp (or build github.com/ggml-org/whisper.cpp); needed for captions/filler removal' });
+      const model = await findModel();
+      results.push({ tool: 'whisper model', available: Boolean(model), optional: true,
+        detail: model || 'optional: video-monk models --download base.en --allow-download' });
+      for (const [tool, args] of [['yt-dlp', ['--version']]]) {
+        try {
+          const result = await run(tool, args, { timeout: 10000 });
+          results.push({ tool, available: true, optional: true, detail: (result.stdout || result.stderr).trim().split(/\r?\n/)[0] });
+        } catch (error) {
+          results.push({ tool, available: false, optional: true, detail: 'optional: only for reference-channel study' });
+        }
+      }
       console.log(JSON.stringify({
         tools: results,
-        resolve: 'Not tested. Run the generated resolve_bridge.py --probe on a machine with Resolve scripting enabled.',
-        llm: 'Not tested. Configure your own endpoint and approve data transmission.'
+        resolve: 'Optional. Not tested here; timeline.xml imports into DaVinci Resolve for manual finishing.',
+        llm: 'Optional. Only the reference style/plan commands use an LLM endpoint.'
       }, null, 2));
-      if (results.some(result => !result.available)) process.exitCode = 1;
+      const missing = results.filter(result => !result.available && !result.optional);
+      if (missing.length) { console.error(`Missing required: ${missing.map(r => r.tool).join(', ')}`); process.exitCode = 1; }
       break;
     }
     case 'catalog': {

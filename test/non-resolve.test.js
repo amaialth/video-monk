@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,8 @@ const roles = {
 };
 
 async function temporary(t) {
-  const folder = await mkdtemp(path.join(tmpdir(), 'video-monk-no-resolve-'));
+  // realpath: macOS tmpdir() is a /var -> /private/var symlink; adapters resolve real paths.
+  const folder = await realpath(await mkdtemp(path.join(tmpdir(), 'video-monk-no-resolve-')));
   t.after(() => rm(folder, { recursive: true, force: true }));
   return folder;
 }

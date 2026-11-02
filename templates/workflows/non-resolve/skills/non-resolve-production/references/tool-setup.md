@@ -1,11 +1,39 @@
 # External tools: installation and verified command contracts
 
-The toolkit wraps existing HyperFrames CLI commands; no dependency, model,
-browser, account or paid service is auto-installed. Review the chosen upstream
-version and its license, privacy/telemetry settings, hardware and language support.
-Installation/model downloads require approval and can be large.
+No dependency, model, browser, account or paid service is auto-installed.
+Installation and model downloads require approval and can be large.
+`video-monk doctor` reports what is present and what each missing tool blocks.
 
-## HyperFrames + Parakeet
+## Required for automated editing
+
+| Tool | Why | Install |
+|---|---|---|
+| Node.js 22+ | CLI runtime (no npm dependencies) | nodejs.org |
+| FFmpeg + ffprobe | compositing, transitions, mixing, mastering | macOS `brew install ffmpeg`; Windows `winget install Gyan.FFmpeg`; Linux distro package |
+| Google Chrome or Chromium | renders text, motion graphics, charts and captions headlessly | google.com/chrome; or set `VIDEO_MONK_CHROME` |
+
+FFmpeg needs `zoompan`, `xfade`, `overlay`, `sidechaincompress`, `loudnorm`,
+`alimiter`, `silencedetect` and libx264 (standard builds have all of them).
+`drawtext`/freetype is **not** needed: all text renders in Chrome, offline,
+with DNS blocked, from local self-contained pages.
+
+## Local transcription: whisper.cpp (default)
+
+```
+brew install whisper-cpp                      # macOS; other OS: build github.com/ggml-org/whisper.cpp
+video-monk models --download base.en --allow-download   # ~150 MB into ~/.cache/video-monk/models
+video-monk transcribe --media rec.mp4 --output transcript --allow-transcribe --language en
+```
+
+Audio never leaves the machine. `small.en`/`medium.en` are more accurate and slower;
+`large-v3-turbo` handles other languages. Set `VIDEO_MONK_WHISPER` (binary) or
+`VIDEO_MONK_WHISPER_MODEL` (model path) to override discovery. Word ends are
+refined against measured silence so cuts and captions do not bleed into pauses.
+
+## Optional: HyperFrames + Parakeet route
+
+Kept for teams already using HyperFrames (`transcribe --engine parakeet`, `animate`).
+The built-in motion templates replace HyperFrames for most graphics.
 
 Official upstream: [HyperFrames](https://github.com/heygen-com/hyperframes).
 Check its current README and CLI help. The adapter uses:

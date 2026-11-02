@@ -424,7 +424,9 @@ export const TEMPLATES = {
         const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
         if (!e.dashed) line.setAttribute('stroke-dasharray', VM.r(len, 1) + ' ' + VM.r(len, 1));
         else line.setAttribute('stroke-dasharray', VM.r(ctx.u, 1) + ' ' + VM.r(ctx.u, 1));
-        const label = e.label ? VM.svg('text', { x: (s.x1 + s.x2) / 2, y: (s.y1 + s.y2) / 2 - ctx.u * 1.2, fill: ctx.theme.muted, 'font-size': ctx.u * 2.8, 'text-anchor': 'middle' }, svg, e.label) : null;
+        const steep = Math.abs(s.y2 - s.y1) > Math.abs(s.x2 - s.x1);
+        const label = e.label ? VM.svg('text', { x: (s.x1 + s.x2) / 2 + (steep ? ctx.u * 1.8 : 0), y: (s.y1 + s.y2) / 2 + (steep ? ctx.u : -ctx.u * 1.2),
+          fill: ctx.theme.muted, 'font-size': ctx.u * 2.8, 'text-anchor': steep ? 'start' : 'middle' }, svg, e.label) : null;
         const packet = props.packets !== false ? VM.svg('circle', { r: ctx.u * 0.9, fill: b.c }, svg) : null;
         return { e, s, line, len, label, packet, start: Math.max(nodeStart(a.i), nodeStart(b.i)) + 0.3 };
       });

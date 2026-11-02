@@ -67,9 +67,13 @@ export function pagesToVtt(pages) {
 export function remapWords(words, ranges) {
   const out = [];
   for (const word of words) {
-    const mid = (word.start + word.end) / 2;
-    const range = ranges.find(r => mid >= r.in && mid < r.out);
-    if (!range) continue;
+    // Use the kept range with the greatest overlap; words wholly inside removed spans are dropped.
+    let range = null, best = 0;
+    for (const r of ranges) {
+      const overlap = Math.min(r.out, word.end) - Math.max(r.in, word.start);
+      if (overlap > best) { best = overlap; range = r; }
+    }
+    if (!range || best < Math.min(0.03, (word.end - word.start) / 2)) continue;
     const start = Math.max(range.in, word.start) - range.in + range.start;
     const end = Math.min(range.out, word.end) - range.in + range.start;
     if (end > start) out.push({ text: word.text, start: round(start), end: round(end) });
