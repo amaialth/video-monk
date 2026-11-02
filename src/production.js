@@ -5,6 +5,9 @@ import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { exists, readJson, run, writeJson, writeNew } from './core.js';
 import { resolveXml } from './plan.js';
+import { MotionRenderer } from './motion/render.js';
+
+const manifestVersion = async file => { try { return JSON.parse(await readFile(file)).version; } catch { return undefined; } };
 
 const rates = [24, 25, 30, 50, 60];
 const fail = message => { throw new Error(`Production: ${message}`); };
@@ -29,7 +32,7 @@ export async function inspectMedia(file, execute = run) {
   };
 }
 
-async function digest(file) {
+export async function digest(file) {
   const hash = createHash('sha256');
   for await (const chunk of createReadStream(file)) hash.update(chunk);
   return hash.digest('hex');
@@ -129,6 +132,10 @@ export async function loadProduction(file, execute = run) {
 
 export async function reviewProduction(file, output, approve = false, execute = run) {
   check(!(await exists(output)), 'review output exists');
+  if (await manifestVersion(file) === 2) {
+    const { reviewTimeline } = await import('./build.js');
+    return reviewTimeline(file, output, approve, execute);
+  }
   const loaded = await loadProduction(file, execute);
   const report = {
     version: 1, fingerprint: loaded.fingerprint, decision: approve ? 'approved' : 'pending',
@@ -150,7 +157,11 @@ const scale = (m, fit) => fit === 'cover'
   ? `scale=${m.width}:${m.height}:force_original_aspect_ratio=increase,crop=${m.width}:${m.height}`
   : `scale=${m.width}:${m.height}:force_original_aspect_ratio=decrease,pad=${m.width}:${m.height}:(ow-iw)/2:(oh-ih)/2:color=0x080c14`;
 
-export async function buildProduction(file, approval, output, allowRender, execute = run, finishing = 'resolve') {
+export async function buildProduction(file, approval, output, allowRender, execute = run, finishing = 'resolve', options = {}) {
+  if (await manifestVersion(file) === 2) {
+    const { buildTimeline } = await import('./build.js');
+    return buildTimeline(file, approval, output, { allowRender, execute, ...options });
+  }
   check(['resolve', 'ffmpeg'].includes(finishing), 'finishing must be resolve or ffmpeg');
   check(allowRender === true, 'draft rendering requires --allow-render');
   check(!(await exists(output)), 'production output already exists');
@@ -164,36 +175,33 @@ export async function buildProduction(file, approval, output, allowRender, execu
   const ffmpeg = args => execute(mediaTool('ffmpeg'),
     ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n',
       ...args.flatMap(arg => arg === '-i' ? ['-protocol_whitelist', 'file,pipe', '-i'] : [arg])], { cwd: output });
-  await copyFile(loaded.font, path.join(output, 'font.ttf'));
+  // Graphic scenes render through the headless-Chrome motion engine (no FFmpeg drawtext/freetype needed).
+  const graphics = new Map();
+  if (m.scenes.some(scene => scene.kind === 'graphic')) {
+    const renderer = new MotionRenderer();
+    try {
+      for (const [index, scene] of m.scenes.entries()) {
+        if (scene.kind !== 'graphic') continue;
+        graphics.set(index, await renderer.render({
+          template: 'bar-chart', width: m.width, height: m.height, fps: m.fps, duration: scene.duration,
+          font: loaded.font, background: 'grid', exit: false,
+          props: { title: scene.graphic.title, max: 1, hideValues: true, citation: scene.graphic.citation,
+            bars: scene.graphic.rows.map(row => ({ label: row.label, value: row.value })) }
+        }, path.join(output, 'motion')));
+      }
+    } finally {
+      await renderer.close();
+    }
+  }
   const segments = [];
   for (const [index, scene] of m.scenes.entries()) {
     const name = `scene-${String(index + 1).padStart(3, '0')}.mp4`;
     const input = scene.kind === 'graphic'
-      ? ['-f', 'lavfi', '-i', `color=c=0x080c14:s=${m.width}x${m.height}:r=${m.fps}:d=${scene.duration}`]
+      ? ['-framerate', String(m.fps), '-i', graphics.get(index).pattern]
       : scene.kind === 'image'
         ? ['-loop', '1', '-i', assets.get(scene.asset).path]
         : ['-ss', String(scene.in), '-i', assets.get(scene.asset).path];
-    let filters = `${scale(m, scene.fit)},fps=${m.fps},setsar=1,setpts=PTS-STARTPTS`;
-    if (scene.kind === 'graphic') {
-      const fontSize = Math.round(Math.min(m.width / 22, m.height / 18));
-      const writeText = async (label, textValue) => {
-        const filename = `text-${index}-${label}.txt`;
-        await writeNew(path.join(output, filename), textValue);
-        return filename;
-      };
-      const title = await writeText('title', scene.graphic.title);
-      filters += `,drawtext=fontfile=font.ttf:textfile=${title}:expansion=none:fontsize=${fontSize}:fontcolor=white:x=w*0.08:y=h*0.1`;
-      for (const [rowIndex, row] of scene.graphic.rows.entries()) {
-        const label = await writeText(`row${rowIndex}`, row.label);
-        const y = Math.round(m.height * (0.25 + rowIndex * 0.12));
-        const reveal = Math.min(scene.duration * 0.6, (rowIndex + 1) * scene.duration / (scene.graphic.rows.length + 2));
-        filters += `,drawtext=fontfile=font.ttf:textfile=${label}:expansion=none:fontsize=${Math.round(fontSize * 0.72)}:fontcolor=white:x=w*0.08:y=${y}:enable='gte(t,${reveal})'`;
-        if (row.value > 0) filters += `,drawbox=x=iw*0.08:y=${y + fontSize}:w=${Math.max(1, Math.round(m.width * 0.8 * row.value))}:h=${Math.max(3, Math.round(m.height * 0.016))}:color=0x48c9ef:t=fill:enable='gte(t,${reveal})'`;
-      }
-      const citation = await writeText('citation', scene.graphic.citation);
-      const citationSize = Math.max(1, Math.floor(Math.min(fontSize * 0.4, m.width * 0.84 / (scene.graphic.citation.length * 0.7))));
-      filters += `,drawtext=fontfile=font.ttf:textfile=${citation}:expansion=none:fontsize=${citationSize}:fontcolor=0xaaaaaa:x=w*0.08:y=h*0.92`;
-    }
+    const filters = `${scale(m, scene.fit)},fps=${m.fps},setsar=1,setpts=PTS-STARTPTS,format=yuv420p`;
     if (scene.broll) {
       const b = scene.broll;
       input.push('-ss', String(b.in), '-t', String(b.duration), '-i', assets.get(b.asset).path);
