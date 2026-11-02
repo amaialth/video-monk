@@ -74,8 +74,9 @@ export function remapWords(words, ranges) {
       if (overlap > best) { best = overlap; range = r; }
     }
     if (!range || best < Math.min(0.03, (word.end - word.start) / 2)) continue;
-    const start = Math.max(range.in, word.start) - range.in + range.start;
-    const end = Math.min(range.out, word.end) - range.in + range.start;
+    const speed = range.speed || 1;
+    const start = (Math.max(range.in, word.start) - range.in) / speed + range.start;
+    const end = (Math.min(range.out, word.end) - range.in) / speed + range.start;
     if (end > start) out.push({ text: word.text, start: round(start), end: round(end) });
   }
   return out;

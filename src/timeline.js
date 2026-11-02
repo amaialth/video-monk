@@ -115,7 +115,7 @@ export async function loadTimeline(file, execute = run) {
   let cursor = 0;
   for (const [index, scene] of m.scenes.entries()) {
     const label = `scene ${index}${scene.id ? ` (${scene.id})` : ''}`;
-    keys(scene, ['id', 'kind', 'purpose', 'chapter', 'asset', 'in', 'duration', 'fit', 'color', 'graphic', 'motion',
+    keys(scene, ['id', 'kind', 'purpose', 'chapter', 'asset', 'in', 'duration', 'speed', 'fit', 'color', 'graphic', 'motion',
       'audio', 'broll', 'overlays', 'transition'], label);
     check(['video', 'image', 'graphic', 'color'].includes(scene.kind), `${label}: kind must be video, image, graphic or color`);
     check(text(scene.purpose, 500), `${label} needs a purpose`);
@@ -124,13 +124,15 @@ export async function loadTimeline(file, execute = run) {
     aligned(scene.duration, `${label}.duration`);
     check(opt(scene.fit, v => ['cover', 'contain'].includes(v)), `${label}.fit must be cover or contain`);
     motion(scene.motion, `${label}.motion`);
+    check(scene.kind === 'video' || scene.speed === undefined, `${label}: only video scenes can have a speed`);
     if (scene.kind === 'video' || scene.kind === 'image') {
       const asset = assets.get(scene.asset);
       check(asset?.kind === scene.kind, `${label}: asset must reference a ${scene.kind} asset`);
       check(scene.graphic === undefined && scene.color === undefined, `${label}: ${scene.kind} scenes take no graphic/color`);
       if (scene.kind === 'video') {
         check(finite(scene.in ?? 0, 0, 1e7), `${label}.in must be nonnegative`);
-        check((scene.in ?? 0) + scene.duration <= asset.metadata.duration + 0.05, `${label} exceeds source duration (${asset.metadata.duration.toFixed(3)}s)`);
+        check(opt(scene.speed, v => finite(v, 0.5, 2)), `${label}.speed must be 0.5-2 (pitch-preserved)`);
+        check((scene.in ?? 0) + scene.duration * (scene.speed ?? 1) <= asset.metadata.duration + 0.05, `${label} exceeds source duration (${asset.metadata.duration.toFixed(3)}s)`);
       } else check(scene.in === undefined || scene.in === 0, `${label}: image scenes take no in point`);
     } else {
       check(scene.asset === undefined && scene.in === undefined, `${label}: ${scene.kind} scenes take no asset/in`);

@@ -19,7 +19,7 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 |---|---|---|
 | Analyze | `inspect` | Loudness, true peak, pauses, speech ratio, scene-change pacing and suggestions |
 | Transcribe | `transcribe` | Local whisper.cpp word timestamps, refined against measured silence |
-| Plan / cut | `autocut` | Removes pauses and filler words ("um", "uh"), adds jump-cut punch-ins, remaps captions, writes a version-2 timeline |
+| Plan / cut | `autocut` | Measures the recording's noise floor, removes pauses, breaths, hums and filler words, trims quiet edges, optionally speeds speech up (`--pace`, `--speed`), adds jump-cut punch-ins, remaps captions, writes a version-2 timeline |
 | Explain | `storyboard` (also run by `auto`) | Reads the transcript and places motion graphics wherever an idea can be shown: definitions, flows, steps, lists, numbers, comparisons, chapters, pull-text. Offline rules, or Claude designs the diagrams (`--engine claude`) |
 | Design | edit `production.json`; `templates`, `graphic` | 18 motion and infographic templates, B-roll layers, camera moves, 25 transitions |
 | Build | `production-build` | Composites, transitions, karaoke captions, music ducking, SFX, two-pass loudness mastering, final encode |
@@ -188,8 +188,9 @@ Typical speed on an M-series Mac: about 55 ms per captured 1080p motion frame; a
 
 - ASR output is a draft. Proofread names, numbers and jargon before publishing captions.
 - Charts show the numbers you give them. The toolkit checks structure, not truth.
-- `autocut` judges pauses acoustically. Music under speech or a noisy room needs
-  `--noise-db` tuning, and cuts should be watched.
+- `autocut` judges pauses acoustically (threshold measured from the recording). Whisper never transcribes "hm" or "um"
+  for many speakers, so those are removed only as low-level stretches, not by name. Music under speech or a
+  noisy room needs `--noise-db` tuning, and cuts should be watched.
 - Ducking uses a sidechain compressor; very dense music may still need manual gain.
 - The offline `rules` planner works from patterns in the words. On conversational speech it mostly yields
   pull-text plus a few definition cards, lists and flows; `--engine claude` (or Claude editing the

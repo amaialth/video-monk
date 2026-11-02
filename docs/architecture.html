@@ -232,10 +232,10 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
   <figure class="diagram">
   <svg viewBox="0 0 1100 250" role="img" aria-label="Autocut flow from silence detection to a manifest">
     <defs><marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
-    <rect class="box plan" x="20" y="30" width="190" height="78" rx="10"/><text class="t" x="115" y="58" text-anchor="middle">silencedetect</text><text class="s" x="115" y="76" text-anchor="middle">noise −35 dB</text><text class="s" x="115" y="92" text-anchor="middle">min pause 0.35 s</text>
-    <rect class="box plan" x="236" y="30" width="190" height="78" rx="10"/><text class="t" x="331" y="58" text-anchor="middle">Subtract silences</text><text class="s" x="331" y="76" text-anchor="middle">keep = whole file</text><text class="s" x="331" y="92" text-anchor="middle">minus each pause</text>
+    <rect class="box plan" x="20" y="30" width="190" height="78" rx="10"/><text class="t" x="115" y="58" text-anchor="middle">Measure + detect</text><text class="s" x="115" y="76" text-anchor="middle">threshold from noise floor</text><text class="s" x="115" y="92" text-anchor="middle">pauses ≥ 0.15 s, quiet ≥ 0.3 s</text>
+    <rect class="box plan" x="236" y="30" width="190" height="78" rx="10"/><text class="t" x="331" y="58" text-anchor="middle">Subtract blanks</text><text class="s" x="331" y="76" text-anchor="middle">pauses, breaths, hums</text><text class="s" x="331" y="92" text-anchor="middle">quiet stretches below speech</text>
     <rect class="box plan" x="452" y="30" width="190" height="78" rx="10"/><text class="t" x="547" y="58" text-anchor="middle">Subtract fillers</text><text class="s" x="547" y="76" text-anchor="middle">um · uh · erm · hmm</text><text class="s" x="547" y="92" text-anchor="middle">from word timestamps</text>
-    <rect class="box plan" x="668" y="30" width="190" height="78" rx="10"/><text class="t" x="763" y="58" text-anchor="middle">Pad and merge</text><text class="s" x="763" y="76" text-anchor="middle">0.08 s before, 0.14 s after</text><text class="s" x="763" y="92" text-anchor="middle">merge gaps ≤ 0.12 s</text>
+    <rect class="box plan" x="668" y="30" width="190" height="78" rx="10"/><text class="t" x="763" y="58" text-anchor="middle">Pad and merge</text><text class="s" x="763" y="76" text-anchor="middle">0.05 s before, 0.08 s after</text><text class="s" x="763" y="92" text-anchor="middle">merge ≤ 0.06 s · trim quiet edges</text>
     <rect class="box plan" x="884" y="30" width="186" height="78" rx="10"/><text class="t" x="977" y="58" text-anchor="middle">Frame-align</text><text class="s" x="977" y="76" text-anchor="middle">snap in/out to fps grid</text><text class="s" x="977" y="92" text-anchor="middle">drop empty ranges</text>
     <path class="ln" d="M210 69H234" marker-end="url(#a2)"/><path class="ln" d="M426 69H450" marker-end="url(#a2)"/><path class="ln" d="M642 69H666" marker-end="url(#a2)"/><path class="ln" d="M858 69H882" marker-end="url(#a2)"/>
     <path class="ln" d="M977 108V148H170V168" marker-end="url(#a2)"/>
@@ -246,7 +246,15 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
   </svg>
   <figcaption>On the test recording, 13.7 s of speech with four pauses and one “um” became 9.6 s in 5 cuts.</figcaption>
   </figure>
-  <p>Tuning: <code>--noise-db</code> (louder noise floor needs a higher value), <code>--min-silence</code>, <code>--keep-fillers</code> and <code>--no-jump-zoom</code>. <code>--format vertical|landscape|square</code> reframes with a cover fit.</p>
+  <h3>Pace presets and speed</h3>
+  <p>The silence threshold is measured from the recording itself: a 20 ms level histogram has a noise-floor peak and a speech peak, and the valley between them (Otsu split, clamped −48 to −30 dB) becomes the threshold. Sounds that stay below speech level for 0.3 s (breaths, hums, mouth noise) are cut as quiet stretches, and quiet lead-ins and tails are trimmed from each kept segment, only when they last long enough not to be soft consonants.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Preset</th><th>Threshold</th><th>Min pause</th><th>Padding</th><th>Use</th></tr>
+    <tr><td><code>natural</code></td><td>−35 dB fixed</td><td>0.35 s</td><td>0.08 / 0.14 s</td><td>Gentle, relaxed delivery</td></tr>
+    <tr><td><code>tight</code> (default)</td><td>measured</td><td>0.15 s</td><td>0.05 / 0.08 s</td><td>Explainers and tutorials</td></tr>
+    <tr><td><code>extra</code></td><td>measured + 2 dB</td><td>0.10 s</td><td>0.04 / 0.06 s</td><td>Fast-paced shorts (may nick soft word endings)</td></tr>
+  </table></div>
+  <p><code>--speed 1.1</code> to <code>1.5</code> speeds speech up with pitch preserved; captions and cues are retimed. Other tuning: <code>--noise-db</code>, <code>--min-silence</code>, <code>--keep-fillers</code>, <code>--no-jump-zoom</code>, and <code>--format vertical|landscape|square</code>. Whisper rarely transcribes "hm", so those sounds are removed acoustically rather than by name.</p>
 </section>
 
 <section id="explain">

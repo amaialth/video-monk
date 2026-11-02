@@ -21,7 +21,7 @@ export async function autoEdit(media, output, options = {}, execute = run) {
     if (!(await findWhisper(execute)) || !(await findModel(options.model))) {
       throw new Error('Auto: --transcribe needs whisper.cpp and a model. Run `video-monk doctor` and `video-monk models --download base.en --allow-download`.');
     }
-    await transcribeWhisper(media, path.join(output, 'transcript'), { allowTranscribe: true, model: options.model, language: options.language }, execute);
+    await transcribeWhisper(media, path.join(output, 'transcript'), { allowTranscribe: true, model: options.model, language: options.language, prompt: options.asrPrompt }, execute);
     words = path.join(output, 'transcript', 'words.json');
   } else log(words ? '2/5 Using supplied word timestamps.' : '2/5 Skipping transcription (no captions; pass --transcribe for captions and filler removal).');
 

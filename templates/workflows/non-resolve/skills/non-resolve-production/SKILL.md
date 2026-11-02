@@ -29,7 +29,8 @@ an explicit not-needed decision, never a faked output.
 ## Fast path (talking head / screen recording)
 
 `video-monk auto --media <recording> --output <new-folder> --transcribe --allow-render --approve-plan --rights-confirmed`
-inspects, transcribes locally, removes pauses and filler words, adds jump-cut
+inspects, transcribes locally, removes pauses, breaths and filler words (`--pace natural|tight|extra`,
+default tight, threshold measured from the recording's own noise floor; `--speed 1.1` lifts slow speech), adds jump-cut
 punch-ins, plans explainer graphics from the transcript (`--graphics off|light|medium|heavy`),
 burns kinetic captions (stressed words in italic serif), masters loudness and writes final.mp4. Add
 `--format vertical` for Shorts/Reels (center reframe), `--quality draft` for speed.

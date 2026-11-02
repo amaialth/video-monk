@@ -24,6 +24,7 @@ AUTOMATED EDITING
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
+             [--pace natural|tight|extra (default tight)] [--speed 1-1.5] [--asr-prompt <text>]
              [--graphics off|light|medium|heavy (default medium)] [--graphics-mode mixed|cutaway|panel]
              [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--presenter <name> --role <text>]
              One shot: inspect -> transcribe -> autocut -> explainer graphics -> review -> render final.mp4
@@ -34,11 +35,11 @@ AUTOMATED EDITING
              Plan motion graphics from the transcript: writes the manifest, <name>.storyboard.json and <name>.STORYBOARD.md
   inspect    --media <file> [--output <new analysis.json>]  Loudness, pauses, pacing, suggestions
   transcribe --media <file> --output <new folder> --allow-transcribe
-             [--engine whisper|parakeet] [--model base.en] [--language en|auto]
+             [--engine whisper|parakeet] [--model base.en] [--language en|auto] [--asr-prompt <text>]
              (parakeet engine also needs --allow-tool-network and VIDEO_MONK_HYPERFRAMES)
   models     [--download <name> --allow-download]  List/download local whisper.cpp models
   autocut    --media <recording> --output <new folder> [--words <words.json>]
-             [--format ...] [--noise-db -35] [--min-silence 0.35] [--keep-fillers]
+             [--format ...] [--pace natural|tight|extra] [--speed 1-1.5] [--noise-db <dB>] [--min-silence <s>] [--keep-fillers]
              [--no-jump-zoom] [--rights-confirmed] [--rights <text>] [--attribution <text>]
              Remove pauses/fillers -> version-2 production.json + remapped captions
   templates  [--json]                     List motion-graphics templates and their props
@@ -112,14 +113,14 @@ const definitions = {
   'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean' },
   'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' },
   transcribe: { media: 'string', output: 'string', 'allow-transcribe': 'boolean', 'allow-tool-network': 'boolean',
-    engine: 'string', model: 'string', language: 'string' },
+    engine: 'string', model: 'string', language: 'string', 'asr-prompt': 'string' },
   models: { download: 'string', 'allow-download': 'boolean' },
   inspect: { media: 'string', output: 'string' },
-  autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string',
+  autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string', pace: 'string', speed: 'string',
     'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
     'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string' },
-  auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean',
+  auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', title: 'string' },
@@ -240,7 +241,8 @@ function cutOptions(opts) {
   if (opts.format && !Object.hasOwn(FORMATS, opts.format)) throw new Error(`--format must be one of ${Object.keys(FORMATS).join(', ')}`);
   return {
     words: opts.words ? path.resolve(opts.words) : undefined, format: opts.format, noiseDb: number('noise-db', -80, -10),
-    minSilence: number('min-silence', 0.1, 5), removeFillers: !opts['keep-fillers'], jumpZoom: !opts['no-jump-zoom'],
+    minSilence: number('min-silence', 0.05, 5), removeFillers: !opts['keep-fillers'], jumpZoom: !opts['no-jump-zoom'],
+    pace: opts.pace, speed: number('speed', 1, 1.5),
     rightsConfirmed: opts['rights-confirmed'] === true, rights: opts.rights, attribution: opts.attribution, title: opts.title
   };
 }
@@ -268,7 +270,7 @@ export async function main(args) {
         console.log('Parakeet transcript draft created. Verify words and timestamps before captions or cuts.');
       } else {
         const { report } = await transcribeWhisper(required(opts, 'media'), path.resolve(required(opts, 'output')), {
-          allowTranscribe: opts['allow-transcribe'], model: opts.model, language: opts.language
+          allowTranscribe: opts['allow-transcribe'], model: opts.model, language: opts.language, prompt: opts['asr-prompt']
         });
         console.log(`whisper.cpp (${report.model}): ${report.wordCount} words -> ${path.resolve(opts.output, 'words.json')}. Proofread before publishing captions.`);
       }
@@ -300,7 +302,7 @@ export async function main(args) {
     }
     case 'auto': {
       const result = await autoEdit(required(opts, 'media'), path.resolve(required(opts, 'output')), {
-        ...cutOptions(opts), words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language,
+        ...cutOptions(opts), words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
         graphics: opts.graphics, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         presenter: opts.presenter, role: opts.role

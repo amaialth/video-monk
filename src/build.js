@@ -39,16 +39,17 @@ export async function reviewTimeline(file, output, approve = false, execute = ru
 }
 
 // Fit a visual stream to the frame, with optional camera motion. `frames` = output frame count of that layer.
-function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames) {
+function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames, speed = 1) {
   const type = motion?.type || 'none';
+  const retime = speed === 1 ? '' : `setpts=(PTS-STARTPTS)/${speed},`;
   const cover = (w, h) => `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}`;
   const contain = (w, h, bg) => `scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${bg}`;
   const fitTo = (w, h) => (fit === 'contain' ? contain(w, h, '0x0b1020') : cover(w, h));
-  if (type === 'none') return `fps=${fps},${fitTo(W, H)},setsar=1`;
+  if (type === 'none') return `${retime}fps=${fps},${fitTo(W, H)},setsar=1`;
   if (type === 'punch-in') {
     const a = motion.amount ?? 0.12;
     const w = Math.ceil(W * (1 + a) / 2) * 2, h = Math.ceil(H * (1 + a) / 2) * 2;
-    return `fps=${fps},${fitTo(w, h)},crop=${W}:${H},setsar=1`;
+    return `${retime}fps=${fps},${fitTo(w, h)},crop=${W}:${H},setsar=1`;
   }
   // Smooth (cosine-eased) zoom/pan via zoompan on a 2x canvas for sub-pixel precision.
   const a = motion.amount ?? (type.startsWith('zoom') ? 0.1 : 0.15);
@@ -58,7 +59,7 @@ function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames) {
   const cx = 'iw/2-iw/zoom/2', cy = 'ih/2-ih/zoom/2';
   const x = type === 'pan-left' ? `(iw-iw/zoom)*(1-${e})` : type === 'pan-right' ? `(iw-iw/zoom)*${e}` : cx;
   const y = type === 'pan-up' ? `(ih-ih/zoom)*(1-${e})` : type === 'pan-down' ? `(ih-ih/zoom)*${e}` : cy;
-  return `fps=${fps},${fitTo(W * 2, H * 2)},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${W}x${H}:fps=${fps},setsar=1`;
+  return `${retime}fps=${fps},${fitTo(W * 2, H * 2)},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${W}x${H}:fps=${fps},setsar=1`;
 }
 
 async function ffmpeg(args, execute, cwd) {
@@ -159,11 +160,12 @@ export async function buildTimeline(file, approval, output, options = {}) {
     const add = args => { inputs.push(...args); return inputs.filter(a => a === '-i').length - 1; };
     const graph = [];
     const asset = s.asset ? assets.get(s.asset) : null;
-    if (s.kind === 'video') add(['-ss', sec(s.in ?? 0), '-t', sec(s.duration + 0.5), '-i', asset.path]);
+    const speed = s.speed ?? 1;
+    if (s.kind === 'video') add(['-ss', sec(s.in ?? 0), '-t', sec(s.duration * speed + 0.5), '-i', asset.path]);
     else if (s.kind === 'image') add(['-loop', '1', '-framerate', String(m.fps), '-t', sec(s.duration), '-i', asset.path]);
     else if (s.kind === 'graphic') add(['-framerate', String(m.fps), '-i', rendered.get(`g${t.index}`).pattern]);
     else add(['-f', 'lavfi', '-i', `color=c=${hex(s.color)}:s=${m.width}x${m.height}:r=${m.fps}:d=${sec(s.duration)}`]);
-    const baseFit = s.kind === 'graphic' ? `fps=${m.fps},setsar=1` : fitChain(m, s.fit, s.motion, t.frames);
+    const baseFit = s.kind === 'graphic' ? `fps=${m.fps},setsar=1` : fitChain(m, s.fit, s.motion, t.frames, speed);
     graph.push(`[0:v]${baseFit},tpad=stop_mode=clone:stop_duration=2,trim=end_frame=${t.frames},setpts=PTS-STARTPTS,format=yuv444p[l0]`);
     let current = 'l0';
     t.broll.forEach((b, i) => {
@@ -187,8 +189,8 @@ export async function buildTimeline(file, approval, output, options = {}) {
     if (s.audio) {
       const fadeIn = s.audio.fadeIn ?? Math.max(0.012, timeline[t.index - 1]?.transition?.duration ?? 0);
       const fadeOut = s.audio.fadeOut ?? Math.max(0.012, t.transition?.duration ?? 0);
-      await ffmpeg(['-ss', sec(s.in ?? 0), '-t', sec(s.duration), '-i', asset.path, '-vn',
-        '-af', `aresample=48000,aformat=channel_layouts=stereo,volume=${s.audio.gainDb ?? 0}dB,apad,atrim=0:${sec(s.duration)},` +
+      await ffmpeg(['-ss', sec(s.in ?? 0), '-t', sec(s.duration * speed + 0.2), '-i', asset.path, '-vn',
+        '-af', `${speed === 1 ? '' : `atempo=${speed},`}aresample=48000,aformat=channel_layouts=stereo,volume=${s.audio.gainDb ?? 0}dB,apad,atrim=0:${sec(s.duration)},` +
           `afade=t=in:d=${sec(fadeIn)},afade=t=out:st=${sec(Math.max(0, s.duration - fadeOut))}:d=${sec(fadeOut)}`,
         '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s24le', `scene-${pad3(t.index + 1)}.wav`], execute, work);
     }
@@ -267,23 +269,29 @@ export async function buildTimeline(file, approval, output, options = {}) {
     '-map', '[xstem]', ...pcm, path.join(output, 'stems', 'sfx.wav'),
     '-map', '[mix]', ...pcm, 'mix.wav'], execute, work);
 
-  // 5. Two-pass loudness mastering to the delivery target
+  // 5. Two-pass loudness mastering to the delivery target (re-run with more headroom if the AAC encode overshoots)
   const target = loaded.delivery;
   const measured = await measureLoudness(path.join(work, 'mix.wav'), execute, target);
   const master = path.join(output, 'stems', 'master.wav');
-  if (Number.isFinite(measured.input_i) && measured.input_i > -70) {
-    // Gain to target, then an oversampled peak limiter; a second corrective pass absorbs limiter loss.
-    const ceiling = Math.pow(10, (target.truePeak - 0.8) / 20).toFixed(4);
-    const limit = gain => `volume=${gain.toFixed(2)}dB,aresample=192000,alimiter=limit=${ceiling}:level=false:attack=1:release=60:latency=1,aresample=48000`;
-    let gain = target.targetLufs - measured.input_i;
-    const pass = path.join(work, 'master-pass1.wav');
-    await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, pass], execute, work);
-    const check1 = await measureLoudness(pass, execute, target);
-    if (Math.abs(check1.input_i - target.targetLufs) > 0.3) gain += target.targetLufs - check1.input_i;
-    await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, master], execute, work);
-  } else {
-    await copyFile(path.join(work, 'mix.wav'), master);
-  }
+  const masterAudio = async (headroomDb, dips = []) => {
+    if (Number.isFinite(measured.input_i) && measured.input_i > -70) {
+      // Gain to target, then an oversampled peak limiter; a second corrective pass absorbs limiter loss.
+      const ceiling = Math.pow(10, (target.truePeak - 0.8 - headroomDb) / 20).toFixed(4);
+      // Brief local gain dips (from earlier encode checks) are applied last so loudness stays on target.
+      const dip = dips.map(d => `,volume=${d.gain.toFixed(2)}dB:enable='between(t,${sec(d.from)},${sec(d.to)})'`).join('');
+      const limit = gain => `volume=${gain.toFixed(2)}dB,aresample=192000,alimiter=limit=${ceiling}:level=false:attack=1:release=60:latency=1,aresample=48000${dip}`;
+      let gain = target.targetLufs - measured.input_i;
+      const pass = path.join(work, 'master-pass1.wav');
+      await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, pass], execute, work);
+      const check1 = await measureLoudness(pass, execute, target);
+      if (Math.abs(check1.input_i - target.targetLufs) > 0.3) gain += target.targetLufs - check1.input_i;
+      await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, master], execute, work);
+    } else {
+      await copyFile(path.join(work, 'mix.wav'), master);
+    }
+  };
+  await masterAudio(0);
+  let dips = [];
 
   // 6. Final encode: transitions + captions + global overlays + mastered audio in one pass
   log('Encoding final video...');
@@ -312,12 +320,41 @@ export async function buildTimeline(file, approval, output, options = {}) {
     cur = `go${k}`;
   });
   fg.push(`[${cur}]format=yuv420p[vout]`);
-  const ai = fAdd(['-i', master]);
-  const finalFile = path.join(output, 'final.mp4');
-  await ffmpeg([...fIn, '-filter_complex', fg.join(';'), '-map', '[vout]', '-map', `${ai}:a`, '-frames:v', String(totalFrames),
+  const videoFile = path.join(work, 'video.mp4');
+  await ffmpeg([...fIn, '-filter_complex', fg.join(';'), '-map', '[vout]', '-an', '-frames:v', String(totalFrames),
     '-c:v', 'libx264', '-preset', draft ? 'veryfast' : target.preset, '-crf', String(draft ? 26 : target.crf), '-pix_fmt', 'yuv420p',
-    '-r', String(m.fps), '-g', String(m.fps * 2), '-c:a', 'aac', '-b:a', `${target.audioBitrate}k`, '-ar', '48000',
-    '-movflags', '+faststart', '-metadata', `title=${m.title}`, '-shortest', finalFile], execute, work);
+    '-r', String(m.fps), '-g', String(m.fps * 2), videoFile], execute, work);
+  const finalFile = path.join(output, 'final.mp4');
+  const mux = () => ffmpeg(['-i', videoFile, '-i', master, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', `${target.audioBitrate}k`,
+    '-ar', '48000', '-movflags', '+faststart', '-metadata', `title=${m.title}`, '-shortest', finalFile], execute, work);
+  // AAC can overshoot a limited master on a transient by 1-3 dB. Measure the real file; first fix only the offending 10 ms windows
+  // with brief local gain dips (loudness stays on target), and fall back to more overall headroom if that is not enough.
+  let headroom = 0;
+  let remasters = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await mux();
+    const encoded = await measureLoudness(finalFile, execute, target);
+    if (!(encoded.input_i > -70) || encoded.input_tp <= target.truePeak + 0.1) break;
+    if (attempt === 3) break;
+    remasters++;
+    const limitDb = target.truePeak - 0.6;
+    const hot = attempt < 2 ? await overshootWindows(finalFile, limitDb, execute) : [];
+    if (hot.length && hot.length <= 60) {
+      const merged = [];
+      for (const h of hot) {
+        const from = Math.max(0, h.t - 0.02), to = h.t + 0.03;
+        const last = merged.at(-1);
+        if (last && from <= last.to) { last.to = Math.max(last.to, to); last.gain = Math.min(last.gain, limitDb - h.peak - 0.6); }
+        else merged.push({ from, to, gain: limitDb - h.peak - 0.6 });
+      }
+      dips = dips.concat(merged);
+      log(`  AAC overshoot (${encoded.input_tp.toFixed(1)} dBTP) in ${hot.length} short window(s): applying local gain dips`);
+    } else {
+      headroom += encoded.input_tp - target.truePeak + 0.3;
+      log(`  AAC overshoot (${encoded.input_tp.toFixed(1)} dBTP): re-mastering with ${headroom.toFixed(1)} dB more headroom`);
+    }
+    await masterAudio(headroom, dips);
+  }
 
   // 7. Deliverables
   log('Writing captions, chapters, thumbnail, contact sheet and verification...');
@@ -339,7 +376,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
     outputs: { video: 'final.mp4', captions: captionPages ? ['captions.srt', 'captions.vtt'] : [], chapters: chapterList.length ? 'chapters.txt' : null,
       thumbnail: 'thumbnail.png', contactSheet: 'contact-sheet.png', stems: ['stems/voice.wav', 'stems/music.wav', 'stems/sfx.wav', 'stems/master.wav'],
       resolveTimeline: 'timeline.xml' },
-    timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length },
+    timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters },
     verification,
     humanReview: { facts: 'NOT VERIFIED', captionsWording: captionPages ? 'NOT VERIFIED' : 'N/A', rights: 'USER ATTESTED', wholeVideoPlayback: 'NOT VERIFIED' },
     credits
@@ -361,6 +398,23 @@ export async function buildTimeline(file, approval, output, options = {}) {
   if (!keepWork) await rm(path.join(work, 'motion'), { recursive: true, force: true });
   log(`Done in ${report.renderSeconds}s: ${finalFile}`);
   return report;
+}
+
+// 10 ms windows of the decoded file whose sample peak exceeds limitDb (decoded from the start, as players do).
+export async function overshootWindows(media, limitDb, execute = run) {
+  const { stdout } = await execute(tool('ffmpeg'), ['-hide_banner', '-nostdin', '-i', media, '-vn', '-af',
+    'aresample=48000,asetnsamples=n=480:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.Peak_level:file=-', '-f', 'null', '-'],
+  { timeout: 6 * 3600_000, maxBuffer: 512 * 1024 * 1024 });
+  const hot = [];
+  let index = 0;
+  for (const line of String(stdout).split(/\r?\n/)) {
+    const m = line.match(/Peak_level=(-?[0-9.]+|-inf)/);
+    if (!m) continue;
+    const peak = Number(m[1]);
+    if (Number.isFinite(peak) && peak > limitDb) hot.push({ t: index * 0.01, peak });
+    index++;
+  }
+  return hot;
 }
 
 export async function measureLoudness(media, execute = run, target = { targetLufs: -14, truePeak: -1 }) {
