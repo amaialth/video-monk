@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { exists, readJson, run, writeJson, writeNew } from './core.js';
 import { inspectMedia, digest } from './production.js';
 import { loadTimeline, chapters } from './timeline.js';
-import { MotionRenderer, pool } from './motion/render.js';
+import { MotionRenderer, pool, resolveTheme } from './motion/render.js';
 import { pageWords, pagesToSrt, pagesToVtt } from './captions.js';
 import { markStress } from './stress.js';
 import { Library, textPreview } from './library.js';
@@ -332,6 +332,42 @@ export async function buildTimeline(file, approval, output, options = {}) {
     length += runFiles[i].frames - d;
   }
   check(length === totalFrames, `internal frame accounting mismatch (${length} vs ${totalFrames})`);
+  // Split layouts: while a side panel is up, the picture scales down (eased) beside it so the content being explained stays fully
+  // visible, then expands back. Only the panel windows are processed, each on the theme's background.
+  const SPLIT_SCALE = 0.47;
+  const windows = (m.globalOverlays || []).filter(o => o.layout === 'split' && ['left', 'right'].includes(o.placement) && o.duration >= 1.5)
+    .map(o => ({ from: Math.round(o.start * m.fps), to: Math.round((o.start + o.duration) * m.fps), side: o.placement })).sort((a, b) => a.from - b.from)
+    .filter((w, i, all) => w.to <= totalFrames && (i === 0 || w.from >= all[i - 1].to));
+  let splitCount = 0;
+  if (windows.length) {
+    const bg = `0x${resolveTheme(m.theme).background.replace('#', '')}`;
+    const parts = [];
+    let at = 0;
+    for (const w of windows) {
+      if (w.from > at) parts.push({ type: 'normal', from: at, to: w.from });
+      parts.push({ type: 'split', from: w.from, to: w.to, side: w.side });
+      at = w.to;
+    }
+    if (at < totalFrames) parts.push({ type: 'normal', from: at, to: totalFrames });
+    fg.push(`[${cur}]format=yuv444p,split=${parts.length}${parts.map((_, i) => `[p${i}]`).join('')}`);
+    parts.forEach((part, i) => {
+      const trim = `trim=start_frame=${part.from}:end_frame=${part.to},setpts=PTS-STARTPTS`;
+      if (part.type === 'normal') { fg.push(`[p${i}]${trim},setsar=1[t${i}]`); return; }
+      splitCount++;
+      const d = (part.to - part.from) / m.fps;
+      const a = Math.min(0.45, d / 3);
+      const P = `clip(min(t/${sec(a)},(${sec(d)}-t)/${sec(a)}),0,1)`;
+      const Q = `(${P}*${P}*(3-2*${P}))`;
+      const W = m.width, H = m.height;
+      const xTarget = part.side === 'right' ? (W * 0.5 - W * SPLIT_SCALE) / 2 : W * 0.5 + (W * 0.5 - W * SPLIT_SCALE) / 2;
+      const yTarget = (H - H * SPLIT_SCALE) / 2;
+      fg.push(`[p${i}]${trim},scale=w='trunc(iw*(1-${1 - SPLIT_SCALE}*${Q})/2)*2':h='trunc(ih*(1-${1 - SPLIT_SCALE}*${Q})/2)*2':eval=frame:flags=bicubic[sv${i}]`);
+      fg.push(`color=c=${bg}:s=${W}x${H}:r=${m.fps}:d=${sec(d)},format=yuv444p[cv${i}]`);
+      fg.push(`[cv${i}][sv${i}]overlay=x='${xTarget.toFixed(2)}*${Q}':y='${yTarget.toFixed(2)}*${Q}':shortest=1:format=yuv444,setsar=1[t${i}]`);
+    });
+    fg.push(`${parts.map((_, i) => `[t${i}]`).join('')}concat=n=${parts.length}:v=1:a=0[spl]`);
+    cur = 'spl';
+  }
   const overlaysFinal = [];
   (m.globalOverlays || []).forEach((o, i) => overlaysFinal.push({ key: `global-${i}`, start: o.start, duration: o.duration }));
   for (const chunk of captionChunks) overlaysFinal.push({ key: chunk.key, start: chunk.start, duration: chunk.duration });
@@ -399,7 +435,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
     outputs: { video: 'final.mp4', captions: captionPages ? ['captions.srt', 'captions.vtt'] : [], chapters: chapterList.length ? 'chapters.txt' : null,
       thumbnail: 'thumbnail.png', contactSheet: 'contact-sheet.png', stems: ['stems/voice.wav', 'stems/music.wav', 'stems/sfx.wav', 'stems/master.wav'],
       resolveTimeline: 'timeline.xml' },
-    timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters },
+    timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters, splitLayouts: splitCount },
     library: libraryStats,
     verification,
     humanReview: { facts: 'NOT VERIFIED', captionsWording: captionPages ? 'NOT VERIFIED' : 'N/A', rights: 'USER ATTESTED', wholeVideoPlayback: 'NOT VERIFIED' },

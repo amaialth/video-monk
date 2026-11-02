@@ -43,7 +43,7 @@ AUTOMATED EDITING
   models     [--download <name> --allow-download]  List/download local whisper.cpp models
   autocut    --media <recording> --output <new folder> [--words <words.json>]
              [--format ...] [--pace natural|tight|extra] [--speed 1-1.5] [--noise-db <dB>] [--min-silence <s>] [--keep-fillers]
-             [--no-jump-zoom] [--rights-confirmed] [--rights <text>] [--attribution <text>]
+             [--jump-zoom | --no-jump-zoom] [--fit cover|contain] [--rights-confirmed] [--rights <text>] [--attribution <text>]
              Remove pauses/fillers -> version-2 production.json + remapped captions
   templates  [--json]                     List motion-graphics templates and their props
   graphic    --template <name> --props <json|file> --output <.mp4|.mov|.png>
@@ -137,7 +137,7 @@ const definitions = {
   models: { download: 'string', 'allow-download': 'boolean' },
   inspect: { media: 'string', output: 'string' },
   autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string', pace: 'string', speed: 'string', style: 'string',
-    'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
+    'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
   review: { stage: 'string', words: 'string', glossary: 'string', manifest: 'string', media: 'string', storyboard: 'string', 'render-dir': 'string', style: 'string', pace: 'string',
     output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
@@ -145,7 +145,7 @@ const definitions = {
   auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
-    model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', title: 'string' },
+    model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', title: 'string' },
   assets: { list: 'boolean', search: 'string', add: 'string', get: 'string', export: 'string', stats: 'boolean', prune: 'boolean', kind: 'string', tags: 'string',
     name: 'string', description: 'string', rights: 'string', attribution: 'string', 'source-url': 'string', approved: 'boolean', output: 'string',
     'older-than-days': 'string', 'max-gb': 'string', yes: 'boolean', limit: 'string' },
@@ -266,7 +266,7 @@ function cutOptions(opts) {
   if (opts.format && !Object.hasOwn(FORMATS, opts.format)) throw new Error(`--format must be one of ${Object.keys(FORMATS).join(', ')}`);
   return {
     words: opts.words ? path.resolve(opts.words) : undefined, format: opts.format, noiseDb: number('noise-db', -80, -10),
-    minSilence: number('min-silence', 0.05, 5), removeFillers: !opts['keep-fillers'], jumpZoom: !opts['no-jump-zoom'],
+    minSilence: number('min-silence', 0.05, 5), removeFillers: !opts['keep-fillers'], jumpZoom: opts['jump-zoom'] ? true : opts['no-jump-zoom'] ? false : undefined, fit: opts.fit,
     pace: opts.pace, speed: number('speed', 1, 1.5), style: opts.style,
     rightsConfirmed: opts['rights-confirmed'] === true, rights: opts.rights, attribution: opts.attribution, title: opts.title
   };

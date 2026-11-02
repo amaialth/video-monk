@@ -31,6 +31,8 @@ Re-apply an edited table with `--from-storyboard <storyboard.json>` (new output 
   deserves 3-8 s; a **panel** (right half, ends above the captions) for ideas that run long
   (up to 26 s) so the speaker or slide stays visible; **overlay** strips for short pull-text;
   nothing when the line is personal, emotional or a greeting.
+- **Split layout:** a side panel does not cover the picture. The video eases down to about 47% width beside it and back (manifest
+  `layout: "split"`, left or right only). No camera zoom runs under any graphic. For slides in vertical videos use `autocut --fit contain`.
 - **Face time:** at least 2 s (medium) between cutaways; nothing overlaps; none in the first second
   (except the title card).
 - **One idea per graphic**, short labels (1-4 words), pacing about one change per spoken beat.

@@ -96,7 +96,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 <body>
 
 <header class="hero">
-  <span class="pill">@amailath/video-monk · v0.4.0</span>
+  <span class="pill">@amailath/video-monk · v0.4.1</span>
   <h1>How Video Monk works</h1>
   <p>Video Monk turns a recording into a finished explainer video: it cuts the dead air, adds captions, plans and animates graphics that explain what you say, mixes and masters the sound, and checks its own work at every step. Everything runs on your computer except two optional steps that use Claude.</p>
   <p style="margin-top:10px"><b>New here?</b> Read <a href="#whatsnew">What's new</a> and <a href="#bigpicture">The big picture</a> first (5 minutes). The rest of the page is reference: each part in detail, in the order it runs.</p>
@@ -116,7 +116,16 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
   <p class="lead">Three releases turned a rough-cut helper into an automated editor that explains, checks itself and remembers what it made. Full list: <code>CHANGELOG.md</code>.</p>
 
   <div class="ver">
-    <h3><span class="tag">0.4</span>Checked, reusable and on-style <span class="chip">latest</span></h3>
+    <h3><span class="tag">0.4.1</span>Calm framing, content always visible <span class="chip">latest</span></h3>
+    <ul>
+      <li><b>No zoom flicker.</b> The punch-in on every other cut is gone by default; if enabled it holds for 8 seconds or more, and nothing zooms while a graphic is on screen.</li>
+      <li><b>The slide stays visible beside a panel.</b> The picture eases down next to the panel and back, instead of being covered. <code>--fit contain</code> shows the whole frame for slides in vertical videos.</li>
+      <li><b>Reviewer check:</b> the cut reviewer flags zoom flicker and the reviser removes it.</li>
+    </ul>
+  </div>
+
+  <div class="ver">
+    <h3><span class="tag old">0.4</span>Checked, reusable and on-style</h3>
     <ul>
       <li><b>Pacing that fits your recording.</b> It measures the room noise and your voice level, then cuts pauses, breaths and hums. On a real quiet recording the quiet time in the edit fell from 8.9% to 0.3% while every clearly voiced sound was kept. <code>--pace natural|tight|extra</code>, <code>--speed 1.1</code>.</li>
       <li><b>Review loops.</b> Each of the four stages (transcript, cut, storyboard, render) has a separate reviewer that approves or sends findings back. The maker changes only what was flagged, up to 3 rounds, then asks you. Everything is logged in <code>REVIEW-LOOP.md</code>.</li>
@@ -465,9 +474,10 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
   <figcaption>Dashed parts are optional. Both engines feed the same scheduler, so the safety rules hold whichever one plans.</figcaption>
   </figure>
   <h3>Cutaway, panel or overlay</h3>
+  <p><b>Split layout.</b> A side panel does not cover the picture. While it is up, the video eases down to about 47% of the frame width beside the panel, on the theme background, and expands back when the panel leaves, so the content being explained stays fully visible. No camera zoom runs under any graphic, and the per-cut zoom is off by default (<code>--jump-zoom</code> holds each zoom for at least 8 s). Manifest overlays use <code>layout: "split"</code> with placement left or right.</p>
   <div class="grid">
     <div class="card"><h4>Cutaway</h4><p>Opaque full frame for a diagram or card that deserves 3–8 seconds. Audio keeps playing. Needs two seconds of speaker or slide between cutaways.</p></div>
-    <div class="card"><h4>Panel</h4><p>A box on the right half that ends above the captions. Long ideas (up to 26 s) become panels so the slide stays visible.</p></div>
+    <div class="card"><h4>Panel</h4><p>A box on the right half that ends above the captions. Long ideas (up to 26 s) become panels, and the picture shrinks beside it so the slide stays fully visible.</p></div>
     <div class="card"><h4>Overlay</h4><p>A short pull-text strip at the top of the frame for a key phrase, question or claim.</p></div>
     <div class="card"><h4>Nothing</h4><p>Greetings, personal remarks and anything that would only restate the caption get no graphic.</p></div>
   </div>
@@ -750,6 +760,7 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
     <li>Each command takes one recording. Folder or batch input is not built yet.</li>
     <li>Reviewers catch what can be measured (silence, lost speech, invented numbers, overlaps, loudness, black frames). Taste, facts and rights still need a person, and a finding they cannot fix stops the run for you.</li>
     <li>Whisper does not transcribe “hm” or “um” for many speakers, so those sounds are removed as low-level stretches, not by name.</li>
+    <li>Split layouts are filtered and scaled separately, so renders with many panels take longer (about 100 s more on a 6-minute 1080p60 video).</li>
     <li>The asset library grows (rendered frames are PNG sequences). Check <code>assets --stats</code> and prune with <code>assets --prune --older-than-days N --yes</code>. Licensed assets you add are never pruned.</li>
     <li>The offline planner works from patterns in the words; on conversational speech it mostly yields pull-text and a few definition cards, lists and flows. The Claude engine (opt-in, sends the transcript to Anthropic) draws real diagrams. Always review the storyboard.</li>
     <li>Rights, attribution, factual accuracy and publishing are always human decisions.</li>
@@ -757,6 +768,6 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
 </section>
 
 </main>
-<footer>Video Monk 0.4.0 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
+<footer>Video Monk 0.4.1 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
 </body>
 </html>

@@ -12,6 +12,7 @@ approved it as the style every video should follow. Never copy the channel's wor
 | Color | cyan accent plus a semantic palette (warm, green, blue, violet...). Pair color with icons or text; never color alone |
 | Motion | `calm`: expo-out easing, no overshoot; nodes, edges and steps reveal as the narration names them; no gratuitous transitions |
 | Graphics | diagrams first: flow, steps, comparison, term, chapter and table are boosted; pull-text is capped at 25% of graphics |
+| Framing | no per-cut zoom; when a side panel appears the picture scales down beside it so the whole slide stays visible, then expands back |
 | Honesty | flow, steps and comparison cards carry "Conceptual schematic"; no invented numbers; charts need data, units and sources |
 | Pace | `tight` (measured noise floor); no fixed cutting formula: hold each idea until it is understood |
 | Audio | narration first; a restrained licensed ambient bed ducked 14 dB under speech; sparse UI cues only at meaningful state changes |

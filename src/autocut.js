@@ -50,6 +50,7 @@ export const PACE = {
   extra: { noiseDb: 'auto+2', minSilence: 0.1, padBefore: 0.04, padAfter: 0.06, mergeGap: 0.04, trim: true, quiet: { aboveDb: 4, minLen: 0.25 } }
 };
 export const LEVEL_STEP = 0.02;
+export const ZOOM_HOLD = 8; // seconds a zoom state is held before it may change
 
 // RMS level (dB) of every 20 ms window. Used to measure the noise floor and to trim low-level breaths/hums at cut edges.
 export async function levelProfile(media, execute = run) {
@@ -247,14 +248,23 @@ export async function materializeEdit(context, ranges, output, execute = run) {
   });
   await mkdir(output, { recursive: true });
   const rel = p => path.relative(output, p).split(path.sep).join('/');
+  // Zoom changes at most once per ZOOM_HOLD seconds and then persists across many cuts, so framing never flickers.
+  const zoomOn = options.jumpZoom ?? style.jumpZoom;
+  const zoomPlan = [];
+  let zoomState = false;
+  let lastFlip = 0;
+  placed.forEach(r => {
+    if (zoomOn && r.start - lastFlip >= ZOOM_HOLD) { zoomState = !zoomState; lastFlip = r.start; }
+    zoomPlan.push(zoomOn && zoomState);
+  });
   const manifest = {
     version: 2, title: options.title || path.basename(source, path.extname(source)), fps, width, height,
     assets: [{ id: 'recording', path: rel(source), kind: 'video', approved: options.rightsConfirmed === true,
       rights: options.rights || 'Original recording by the creator (confirm before approval)', attribution: options.attribution || 'Creator' }],
     scenes: placed.map((r, i) => ({
       id: `cut-${String(i + 1).padStart(3, '0')}`, kind: 'video', asset: 'recording', in: r.in, duration: round(r.timelineFrames / fps),
-      ...(speed !== 1 ? { speed } : {}), fit: 'cover', audio: {}, purpose: `Speech segment ${i + 1} (auto-cut ${r.in.toFixed(2)}–${r.out.toFixed(2)}s)`,
-      ...(options.jumpZoom !== false && i % 2 === 1 ? { motion: { type: 'punch-in', amount: 0.08 } } : {})
+      ...(speed !== 1 ? { speed } : {}), fit: options.fit || 'cover', audio: {}, purpose: `Speech segment ${i + 1} (auto-cut ${r.in.toFixed(2)}–${r.out.toFixed(2)}s)`,
+      ...(zoomPlan[i] ? { motion: { type: 'punch-in', amount: 0.06 } } : {})
     })),
     audio: { ducking: { enabled: true, amountDb: style.audio.duckingDb } },
     notes: `style: ${style.name}`,

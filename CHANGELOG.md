@@ -3,6 +3,21 @@
 Each entry says what changed, why it matters, and how to use or undo it. The full explanation of every part is in
 [docs/architecture.html](docs/architecture.html).
 
+## 0.4.1: calm framing, content always visible
+
+**Why:** the picture zoomed in and out constantly behind panels (a punch-in on every other cut), and a panel covered the slide being explained.
+
+### Changed
+- **No zoom by default.** The per-cut punch-in is off in the house style. With `--jump-zoom` it now changes at most once every 8 seconds and
+  holds across cuts, and no scene keeps any camera motion while a graphic is on screen.
+- **Split layout for side panels.** While a panel is up, the picture eases down to fit beside it (about 47% width, centred, on the theme
+  background) so the whole slide stays visible, then expands back. Cutaways and pull-text strips are unchanged. Manifest overlays take
+  `layout: "split"` (needs placement left or right); the house style sets it for panels, `--style plain` keeps overlays.
+- `--fit contain` shows the whole frame instead of cropping when the output aspect differs (use it for slides in vertical videos).
+- The cut reviewer flags zoom flicker (more than 12 flips a minute) and the reviser removes it.
+
+Split windows are filtered and scaled separately, so a render with many panels takes longer (about 100 s more on a 6-minute 1080p60 video).
+
 ## 0.4.0: checked, reusable and on-style
 
 **Why:** the edit still had dead air, nothing checked the result, work was regenerated every time, and videos had no consistent look.

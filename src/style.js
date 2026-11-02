@@ -13,6 +13,9 @@ export const STYLES = {
     density: 'medium',
     graphicsMode: 'mixed',
     pace: 'tight',
+    // Calm framing: no zoom flicker. When a side panel appears the picture scales down beside it so the content stays fully visible.
+    jumpZoom: false,
+    panelLayout: 'split',
     // Explanations are built from diagrams, causal flows and comparisons; pull-text is seasoning, not the meal.
     scoreBoost: { flow: 2, steps: 1.5, comparison: 1.5, term: 1, chapter: 1, bullets: 0.5, table: 1, 'kinetic-text': -1.5 },
     maxShare: { 'kinetic-text': 0.25 },
@@ -28,7 +31,7 @@ practical next step. Mark conceptual schematics as such. Never rely on color alo
 transitions or overshoot. Do not copy any creator's wording, branding or sponsor material.`
   },
   plain: {
-    name: 'plain', status: 'neutral defaults', theme: null, density: 'medium', graphicsMode: 'mixed', pace: 'tight',
+    name: 'plain', status: 'neutral defaults', theme: null, density: 'medium', graphicsMode: 'mixed', pace: 'tight', jumpZoom: true, panelLayout: 'overlay',
     scoreBoost: {}, maxShare: {}, labelSchematic: false, audio: { duckingDb: 12, musicGainDb: -18 }, structure: [], brief: ''
   }
 };

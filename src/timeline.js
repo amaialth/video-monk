@@ -87,7 +87,7 @@ export async function loadTimeline(file, execute = run) {
     check(opt(value.amount, v => finite(v, 0.01, 0.5)), `${label}.amount must be 0.01-0.5`);
   };
   const motionJob = async (value, label, { overlay }) => {
-    if (overlay) keys(value, ['id', 'note', 'template', 'html', 'props', 'start', 'duration', 'placement', 'panel', 'background'], label);
+    if (overlay) keys(value, ['id', 'note', 'template', 'html', 'props', 'start', 'duration', 'placement', 'panel', 'background', 'layout'], label);
     else keys(value, ['template', 'html', 'props', 'background'], label);
     check(Boolean(value.template) !== Boolean(value.html), `${label} needs exactly one of template or html`);
     if (value.template) {
@@ -105,6 +105,8 @@ export async function loadTimeline(file, execute = run) {
       check(opt(value.panel, v => typeof v === 'boolean'), `${label}.panel must be boolean`);
       check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent (opaque backgrounds make a full-frame cutaway)`);
       check(opt(value.id, v => text(v, 64)) && opt(value.note, v => text(v, 300)), `${label}.id/note must be short text`);
+      check(opt(value.layout, v => ['overlay', 'split'].includes(v)), `${label}.layout must be overlay (covers the picture) or split (the picture scales down beside the panel)`);
+      check(value.layout !== 'split' || ['left', 'right'].includes(value.placement), `${label}: layout split needs placement left or right`);
     } else {
       check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent`);
     }

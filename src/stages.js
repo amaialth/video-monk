@@ -143,14 +143,21 @@ export function reviewCut(artifact) {
       if (idx < ranges.length - 1 && ranges[idx + 1].in - ranges[idx].out <= 0.5) findings.push(finding({ id: `cut-choppy-${idx + 1}`, severity: 'major', owner: 'cut', target: { scene: idx + 1 }, message: `scene ${idx + 1} is only ${d.toFixed(2)} s; the edit is choppy (median ${median.toFixed(2)} s)`, suggestion: 'merge with the next segment', fix: { op: 'mergeNeighbors', range: idx } }));
     });
   }
+  // Camera zoom that flips on and off between cuts reads as flicker (and crops the slide being explained).
+  const scenes = result.manifest?.scenes || [];
+  let flips = 0;
+  for (let i = 1; i < scenes.length; i++) if (Boolean(scenes[i].motion) !== Boolean(scenes[i - 1].motion)) flips++;
+  const flipsPerMinute = flips / Math.max(1 / 60, result.report.editedDuration / 60);
+  if (flipsPerMinute > 12) findings.push(finding({ id: 'cut-zoom-flicker', severity: 'major', owner: 'cut', message: `the picture zooms in or out ${flips} times (${Math.round(flipsPerMinute)} per minute)`,
+    suggestion: 'remove the per-cut zoom; hold any framing for several seconds', fix: { op: 'calmZoom' } }));
   const timelineSeconds = result.report.editedDuration;
   const wpm = words?.length ? words.length / Math.max(1, timelineSeconds) * 60 : null;
   if (wpm && wpm < 115) findings.push(finding({ id: 'cut-pace-slow', severity: 'minor', owner: 'cut', message: `speech pace is ${Math.round(wpm)} words per minute`, suggestion: 'consider --speed 1.1' }));
-  return verdict({ stage: 'cut', round: 0, reviewer: 'cut-reviewer (code)', findings, metrics: { segments: ranges.length, editedSeconds: round(timelineSeconds), quietPercent: round(100 * quietTotal / Math.max(1, editedTotal)), voicedKeptPercent: round(keptPct), medianSegment: round(median), wordsPerMinute: wpm ? Math.round(wpm) : null } });
+  return verdict({ stage: 'cut', round: 0, reviewer: 'cut-reviewer (code)', findings, metrics: { segments: ranges.length, zoomFlipsPerMinute: round(flipsPerMinute), editedSeconds: round(timelineSeconds), quietPercent: round(100 * quietTotal / Math.max(1, editedTotal)), voicedKeptPercent: round(keptPct), medianSegment: round(median), wordsPerMinute: wpm ? Math.round(wpm) : null } });
 }
 
 export async function reviseCut(artifact, findings, ctx) {
-  const { context, result } = artifact;
+  let { context, result } = artifact;
   const pad = 0.06;
   let list = result.ranges.map((r, i) => ({ in: r.in, out: r.out, uid: i }));
   let nextUid = list.length;
@@ -177,11 +184,12 @@ export async function reviseCut(artifact, findings, ctx) {
     changed.push(`split segment ${fx.range + 1}: removed ${(fx.to - fx.from).toFixed(2)} s of quiet at ${fx.from.toFixed(2)} s`);
   }
   for (const fx of fixes.filter(x => x.op === 'restore')) { list.push({ in: Math.max(0, fx.from - 0.04), out: fx.to + 0.04, uid: nextUid++ }); changed.push(`restored ${fx.from.toFixed(2)}–${fx.to.toFixed(2)} s`); }
+  if (fixes.some(x => x.op === 'calmZoom')) { context = { ...context, options: { ...context.options, jumpZoom: false } }; changed.push('removed the per-cut zoom'); }
   const aligned = alignRanges(merge(list.map(r => ({ in: r.in, out: r.out })), 0.06), context.fps, context.info.duration);
   const version = (artifact.version || 1) + 1;
   const outputDir = path.join(ctx.root, `edit-r${version}`);
   const next = await materializeEdit(context, aligned, outputDir);
-  return { artifact: { ...artifact, result: next, outputDir, manifestFile: path.join(outputDir, 'production.json'), version }, changed };
+  return { artifact: { ...artifact, context, result: next, outputDir, manifestFile: path.join(outputDir, 'production.json'), version }, changed };
 }
 
 // ---------------------------------------------------------------- storyboard

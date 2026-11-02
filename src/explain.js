@@ -526,7 +526,17 @@ export function applyStoryboard(manifest, storyboard, style = null) {
       overlay.placement = it.placement || (it.mode === 'panel' ? 'right' : (it.template === 'kinetic-text' ? 'strip-top' : OVERLAY_PLACEMENT[it.mode]));
       overlay.panel = true;
     }
+    if (style?.panelLayout === 'split' && overlay.placement === 'right' && it.mode === 'panel') overlay.layout = 'split';
     out.globalOverlays.push(overlay);
+  }
+  // No camera motion under a graphic: a zoom behind a panel or card reads as flicker and crops the content being explained.
+  {
+    let at = 0;
+    const spans = out.scenes.map((scene, i) => { const start = at; at += scene.duration - (scene.transition?.duration ?? 0); return [start, start + scene.duration]; });
+    const windows = storyboard.items.map(i => [i.start, i.start + i.duration]);
+    out.scenes.forEach((scene, i) => {
+      if (scene.motion && windows.some(([a, b]) => spans[i][0] < b && spans[i][1] > a)) delete scene.motion;
+    });
   }
   // Chapter cards double as YouTube chapter labels on the scene they fall in.
   let cursor = 0;
