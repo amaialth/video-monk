@@ -5,6 +5,7 @@ import { mkdir } from 'node:fs/promises';
 import { exists, readJson, run, writeJson } from './core.js';
 import { inspectMedia } from './production.js';
 import { remapWords, validateWords } from './captions.js';
+import { resolveStyle } from './style.js';
 
 const fail = message => { throw new Error(`Autocut: ${message}`); };
 const tool = name => process.env[`VIDEO_MONK_${name.toUpperCase()}`] || name;
@@ -179,6 +180,15 @@ export function planCuts({ duration, fps, silences = [], words = null, removeFil
     .filter(r => r.frames >= 1 && (r.out - r.in >= minKeep || hasWords(r)) && hasWords(r));
 }
 
+// Snap source ranges to the frame grid and drop anything shorter than a frame.
+export function alignRanges(ranges, fps, duration) {
+  return ranges.map(r => {
+    const start = Math.ceil(r.in * fps - 1e-6) / fps;
+    const frames = Math.floor((Math.min(r.out, duration) - start) * fps + 1e-6);
+    return { in: round(start), out: round(start + frames / fps), frames };
+  }).filter(r => r.frames >= 1);
+}
+
 const nearestRate = fps => [24, 25, 30, 50, 60].reduce((best, r) => (Math.abs(r - fps) < Math.abs(best - fps) ? r : best), 30);
 export const FORMATS = { landscape: [1920, 1080], vertical: [1080, 1920], square: [1080, 1080], source: null };
 
@@ -193,7 +203,8 @@ export async function autocut(media, output, options = {}, execute = run) {
   if (!Object.hasOwn(FORMATS, format)) fail(`format must be ${Object.keys(FORMATS).join(', ')}`);
   let [width, height] = FORMATS[format] || [info.video.width, info.video.height];
   width = Math.min(3840, width - (width % 2)); height = Math.min(3840, height - (height % 2));
-  const paceName = options.pace || 'tight';
+  const style = resolveStyle(options.style || 'bytemonk');
+  const paceName = options.pace || style.pace || 'tight';
   const pace = PACE[paceName];
   if (!pace) fail(`pace must be ${Object.keys(PACE).join(', ')}`);
   const speed = options.speed ?? 1;
@@ -216,6 +227,16 @@ export async function autocut(media, output, options = {}, execute = run) {
     padBefore: options.padBefore ?? pace.padBefore, padAfter: options.padAfter ?? pace.padAfter, mergeGap: pace.mergeGap,
     levels, trim: pace.trim ? { onsetDb: noiseDb + 4, offsetDb: noiseDb + 3 } : null });
   if (!ranges.length) fail('no speech found; adjust --noise-db/--min-silence or check the audio');
+  const context = { source, info, fps, width, height, format, options, speed, style, paceName, pace, noiseDb, minSilence, silences, quiet, quietSeconds, levels, noise, words };
+  const result = await materializeEdit(context, ranges, output);
+  return { ...result, context };
+}
+
+// Turn kept source ranges into the version-2 manifest, remapped caption words and reports. Called by autocut and, with revised
+// ranges, by the review loop (into a new output folder each time).
+export async function materializeEdit(context, ranges, output, execute = run) {
+  const { source, info, fps, width, height, format, options, speed, style, paceName, pace, noiseDb, minSilence, silences, quiet, quietSeconds, levels, noise, words } = context;
+  void execute;
   // With speed > 1 each segment lasts duration/speed on the timeline while consuming `duration` seconds of source.
   let cursor = 0;
   const placed = ranges.map(r => {
@@ -235,6 +256,8 @@ export async function autocut(media, output, options = {}, execute = run) {
       ...(speed !== 1 ? { speed } : {}), fit: 'cover', audio: {}, purpose: `Speech segment ${i + 1} (auto-cut ${r.in.toFixed(2)}–${r.out.toFixed(2)}s)`,
       ...(options.jumpZoom !== false && i % 2 === 1 ? { motion: { type: 'punch-in', amount: 0.08 } } : {})
     })),
+    audio: { ducking: { enabled: true, amountDb: style.audio.duckingDb } },
+    notes: `style: ${style.name}`,
     delivery: { targetLufs: options.targetLufs ?? -14, truePeak: -1 }
   };
   let timelineWords = null;

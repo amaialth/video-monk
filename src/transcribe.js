@@ -6,6 +6,9 @@ import { mkdir, readFile, rm, mkdtemp, rename } from 'node:fs/promises';
 import { exists, run, writeJson, writeNew } from './core.js';
 import { inspectMedia } from './production.js';
 import { detectSilence, refineWords } from './autocut.js';
+import { Library, fileSha256 } from './library.js';
+import { createHash } from 'node:crypto';
+import { cp } from 'node:fs/promises';
 
 const fail = message => { throw new Error(`Transcribe: ${message}`); };
 export const MODEL_DIR = path.join(os.homedir(), '.cache', 'video-monk', 'models');
@@ -85,6 +88,17 @@ export async function transcribeWhisper(media, output, options = {}, execute = r
   const source = path.resolve(media);
   const info = await inspectMedia(source, execute);
   if (!info.audio || !(info.duration > 0)) fail('input needs an audio stream with finite duration');
+  // Identical media + model + language + prompt reuses the stored transcript instead of running the model again.
+  const library = options.useLibrary === false ? null : await Library.open();
+  const cacheKey = library ? createHash('sha256').update(await fileSha256(source)).update(`${path.basename(model)}|${options.language || 'auto'}|${options.prompt || ''}`).digest('hex').slice(0, 16) : null;
+  if (library && library.get(`transcript-${cacheKey}`)) {
+    const hit = library.get(`transcript-${cacheKey}`);
+    await cp(library.absolute(hit), output, { recursive: true });
+    await library.touch(hit.id);
+    const words = JSON.parse(await readFile(path.join(output, 'words.json'), 'utf8'));
+    const report = { ...JSON.parse(await readFile(path.join(output, 'transcription-report.json'), 'utf8')), cached: true, source };
+    return { report, words };
+  }
   const temp = await mkdtemp(path.join(os.tmpdir(), 'video-monk-asr-'));
   try {
     const wav = path.join(temp, 'audio.wav');
@@ -109,6 +123,10 @@ export async function transcribeWhisper(media, output, options = {}, execute = r
       note: 'Source-relative word times. autocut remaps them onto the edited timeline for captions.'
     };
     await writeJson(path.join(output, 'transcription-report.json'), report);
+    if (library) {
+      await library.add({ id: `transcript-${cacheKey}`, kind: 'transcript', source: output, name: path.basename(source), tags: ['transcript', path.basename(model).replace(/^ggml-|\.bin$/g, ''), options.language || 'auto'],
+        description: `${words.length} words, ${Math.round(info.duration)} s`, meta: { text: words.slice(0, 40).map(w => w.text).join(' '), duration: info.duration, wordCount: words.length, model: path.basename(model) }, createdBy: 'transcribe' });
+    }
     return { report, words };
   } finally {
     await rm(temp, { recursive: true, force: true });

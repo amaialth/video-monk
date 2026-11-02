@@ -1,10 +1,13 @@
 // Storyboard command logic: plan graphics for a version-2 manifest and write a new manifest plus a reviewable table.
 import path from 'node:path';
-import { rm } from 'node:fs/promises';
+import { rm, readFile } from 'node:fs/promises';
 import { exists, readJson, run, writeJson, writeNew } from './core.js';
 import { loadTimeline } from './timeline.js';
 import { planStoryboard, applyStoryboard, storyboardMarkdown, pickTheme, DENSITY, GRAPHIC_MODES } from './explain.js';
 import { planWithClaude } from './explain-llm.js';
+import { Library, textPreview } from './library.js';
+import { resolveStyle } from './style.js';
+import { createHash } from 'node:crypto';
 
 const fail = message => { throw new Error(`Storyboard: ${message}`); };
 
@@ -15,17 +18,21 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
   if (await exists(output)) fail(`output already exists: ${output}`);
   const stem = output.replace(/\.json$/i, '');
   for (const extra of [`${stem}.storyboard.json`, `${stem}.STORYBOARD.md`]) if (await exists(extra)) fail(`output already exists: ${extra}`);
-  const density = options.density || 'medium';
-  const graphics = options.graphicsMode || 'mixed';
+  const style = resolveStyle(options.style || 'bytemonk');
+  const density = options.density || style.density;
+  const graphics = options.graphicsMode || style.graphicsMode;
   if (!DENSITY[density]) fail(`density must be ${Object.keys(DENSITY).join(', ')}`);
   if (!GRAPHIC_MODES.includes(graphics)) fail(`graphics mode must be ${GRAPHIC_MODES.join(', ')}`);
   const engine = options.engine || 'rules';
   if (!['rules', 'claude'].includes(engine)) fail('engine must be rules or claude');
 
+  const library = await Library.open();
+  let cacheNote = null;
+  let claudeKey = null;
   const loaded = await loadTimeline(manifestPath, execute);
   if (!loaded.words) fail('the manifest needs captions.words (a timeline-relative word file); run transcribe + autocut first');
   const base = await readJson(manifestPath);
-  let theme = options.theme || base.theme?.preset || 'auto';
+  let theme = options.theme || base.theme?.preset || style.theme?.preset || 'auto';
   if (theme === 'auto') {
     const video = [...loaded.assets.values()].find(a => a.kind === 'video');
     theme = video ? await pickTheme(video.path, execute) : 'night';
@@ -36,12 +43,22 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
     storyboard = await readJson(path.resolve(options.fromStoryboard));
     if (options.theme) storyboard.theme = theme;
   } else if (engine === 'claude') {
-    storyboard = await planWithClaude(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role,
-      model: options.model, allowLlm: options.allowLlm }, execute);
+    // A paid model call is reused when the same transcript, settings and model come back.
+    const key = createHash('sha256').update(JSON.stringify([loaded.words, density, graphics, theme, options.model || '', options.presenter || '', options.role || '', style.name])).digest('hex').slice(0, 16);
+    const cached = library?.get(`storyboard-claude-${key}`);
+    if (cached) {
+      storyboard = JSON.parse(await readFile(library.absolute(cached), 'utf8'));
+      await library.touch(cached.id);
+      cacheNote = `reused from the asset library (${cached.id})`;
+    } else {
+      storyboard = await planWithClaude(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role,
+        model: options.model, allowLlm: options.allowLlm, style }, execute);
+      claudeKey = key;
+    }
   } else {
-    storyboard = planStoryboard(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role });
+    storyboard = planStoryboard(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role, style });
   }
-  const applied = applyStoryboard(base, storyboard);
+  const applied = applyStoryboard(base, storyboard, style);
   await writeJson(output, applied);
   try {
     await loadTimeline(output, execute);
@@ -51,5 +68,11 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
   }
   await writeJson(`${stem}.storyboard.json`, storyboard);
   await writeNew(`${stem}.STORYBOARD.md`, storyboardMarkdown(storyboard, `Storyboard: ${base.title}`));
-  return { storyboard, manifest: output, storyboardFile: `${stem}.storyboard.json`, table: `${stem}.STORYBOARD.md` };
+  if (library) {
+    const id = claudeKey ? `storyboard-claude-${claudeKey}` : undefined;
+    await library.add({ id, kind: 'storyboard', source: `${stem}.storyboard.json`, name: `${base.title} (${storyboard.engine})`, tags: ['storyboard', storyboard.engine, storyboard.theme, density],
+      description: `${storyboard.items.length} graphics: ${Object.keys(storyboard.stats.byTemplate || {}).join(', ')}`,
+      meta: { engine: storyboard.engine, text: storyboard.items.slice(0, 12).map(i => textPreview(i.props, 60)).join(' | '), items: storyboard.items.length, density }, createdBy: 'storyboard', project: base.title });
+  }
+  return { storyboard, manifest: output, storyboardFile: `${stem}.storyboard.json`, table: `${stem}.STORYBOARD.md`, cacheNote };
 }

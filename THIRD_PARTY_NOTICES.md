@@ -33,6 +33,16 @@ bundles them under the same license. The fonts are unmodified and are not sold o
   motion-graphics briefs are structured were used, rewritten in original words in
   `.../references/graphic-briefs.md` and in the brief that `--engine claude` sends.
 
+- **awesome-claude-video-skills** by zhuyansen. https://github.com/zhuyansen/awesome-claude-video-skills
+  The list itself is dedicated to the public domain (CC0 1.0); each listed project keeps its own license. Used to survey how existing
+  video-editing skills work. Ideas only, no code or text copied, restated in `.../original-edit-planning/references/editing-craft.md`:
+  staged approval gates (jtxvideo-skill, MIT), understand the footage and look at your own cut (smart-video-editor, MIT; SeeCut),
+  audio-measured tightening with tone presets, preserving laughs and pauses, and checking cut timing (cut-video, MIT), and the community
+  test's basic render checks (plays, length and size, copy readable, picture moves).
+- **ByteMonk** study notes are user-supplied, unverified reports; the `bytemonk` style profile is a provisional creative direction
+  derived from them (see `.../references/style-bytemonk.md`), not a verified description of the channel. No ByteMonk wording, branding,
+  sponsor material or footage is included.
+
 ## Dev and runtime tools (not bundled)
 
 FFmpeg, Google Chrome / Chromium, whisper.cpp and its models, and the Claude Code CLI are separate programs under

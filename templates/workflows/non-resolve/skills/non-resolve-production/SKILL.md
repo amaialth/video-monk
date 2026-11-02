@@ -9,7 +9,9 @@ Read the [shared contract](../channel-editing-study/references/workflow-contract
 the [timeline reference](./references/timeline-v2.md) and
 [tool setup](./references/tool-setup.md). Run `video-monk doctor` first. For graphics read
 [explainer graphics](./references/explainer-graphics.md), [kinetic typography](./references/kinetic-typography.md)
-and [graphic briefs](./references/graphic-briefs.md).
+and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
+[review loop](./references/review-loop.md); generated and licensed assets live in the
+[asset library](./references/asset-library.md). Style: `--style bytemonk` (default).
 
 ## Team and handoff
 
@@ -22,6 +24,8 @@ and [graphic briefs](./references/graphic-briefs.md).
 | video-monk-obs-screen-recorder | OBS Studio; optional Shotcut | Original local captures |
 | video-monk-free-sound-designer | YouTube Audio Library; optional Pixabay | Licensed music/SFX, cue sheet, credits |
 | video-monk-ffmpeg-finisher | FFmpeg | final.mp4, verification report, deliverables |
+| video-monk-stage-reviewer | `video-monk review` + judgment | Independent approve/reject findings per stage |
+| video-monk-asset-librarian | `video-monk assets` | Indexed, searchable, reusable assets with rights |
 
 The main conversation coordinates; subagents never nest. Skip a stage only with
 an explicit not-needed decision, never a faked output.
@@ -67,6 +71,13 @@ Use `--approve-plan`/`--rights-confirmed` only after the user approves.
 10. Read REVIEW.txt and contact-sheet.png; the user watches final.mp4 end to end.
     Revise the manifest, re-review and rebuild into a new folder. Publishing,
     chapter text and caption upload remain user actions.
+
+## Review and reuse
+
+After each stage the stage reviewer approves or rejects with findings; the producer fixes only the flagged
+targets and the reviewer re-checks (max 3 rounds, then ask the user). Findings owned by an earlier stage go back
+to that stage. `video-monk auto` does this itself and writes `loop-ledger.json`. Search the asset library before
+generating or downloading anything, and index what you create (rights recorded, never auto-approved).
 
 ## Output contract
 

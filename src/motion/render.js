@@ -115,7 +115,7 @@ export class MotionRenderer {
       .update(`${job.width}x${job.height}@${job.fps}:${frames}`).digest('hex').slice(0, 20);
     const dir = path.join(cacheRoot, key);
     const done = path.join(dir, 'done.json');
-    if (await exists(done)) return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, ...JSON.parse(await readFile(done, 'utf8')) };
+    if (await exists(done)) return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, ...JSON.parse(await readFile(done, 'utf8')), cached: true };
     await rm(dir, { recursive: true, force: true });
     await mkdir(dir, { recursive: true });
     let page;
@@ -147,7 +147,7 @@ export class MotionRenderer {
       await page.close().catch(() => {});
     }
     await writeFile(done, JSON.stringify({ captured }));
-    return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, captured };
+    return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, captured, cached: false };
   }
 
   async #open(file, job) {

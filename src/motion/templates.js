@@ -197,7 +197,7 @@ export const TEMPLATES = {
         return { b, value, fill, row };
       });
       const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', right: pad + 'px', bottom: (ctx.u * 3) + 'px',
-        color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+        color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         if (title) VM.set(title, { opacity: VM.r(VM.tw(t, 0, 0.4, 0, 1) * out) });
@@ -260,7 +260,7 @@ export const TEMPLATES = {
       lines.forEach(l => { const it = VM.el('span', { style: { display: 'flex', alignItems: 'center', gap: ctx.u + 'px' } }, legend);
         VM.el('span', { style: { width: (ctx.u * 2.5) + 'px', height: (ctx.u * 0.6) + 'px', background: l.path.getAttribute('stroke'), borderRadius: '9px' } }, it);
         VM.el('span', {}, it, l.s.name); });
-      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         root.style.opacity = VM.r(out);
@@ -321,7 +321,7 @@ export const TEMPLATES = {
         VM.el('span', { style: { color: ctx.theme.muted } }, row, s.s.label);
         return row;
       });
-      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         root.style.opacity = VM.r(out);
@@ -351,7 +351,7 @@ export const TEMPLATES = {
       const label = VM.el('div', { style: { fontWeight: '700', fontSize: (ctx.u * 5) + 'px', marginTop: (ctx.u * 2) + 'px', maxWidth: (ctx.w * 0.85) + 'px' } }, wrap);
       VM.rich(label, props.label, { stressColor: ctx.theme.accent });
       const note = props.note ? VM.el('div', { style: { color: ctx.theme.muted, fontSize: (ctx.u * 3.2) + 'px', marginTop: (ctx.u * 1.5) + 'px', maxWidth: (ctx.w * 0.8) + 'px' } }, wrap, props.note) : null;
-      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', bottom: (ctx.u * 3) + 'px', left: '0', right: '0', textAlign: 'center', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', bottom: (ctx.u * 3) + 'px', left: '0', right: '0', textAlign: 'center', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         const k = VM.ease.expo(VM.p(t, 0.1, Math.min(1.8, ctx.duration * 0.55)));
@@ -390,7 +390,7 @@ export const TEMPLATES = {
         });
         return { col, items };
       });
-      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       const total = cols.reduce((a, c) => a + c.items.length, 0);
       const step = Math.min(0.35, Math.max(0.12, (ctx.duration * 0.55) / total));
       return t => {
@@ -470,7 +470,7 @@ export const TEMPLATES = {
         const packet = props.packets !== false ? VM.svg('circle', { r: ctx.u * 0.9, fill: b.c }, svg) : null;
         return { e, s, line, len, label, packet, start: Math.max(nodeStart(a.i), nodeStart(b.i)) + 0.3 };
       });
-      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;
         root.style.opacity = VM.r(out);
@@ -698,7 +698,7 @@ export const TEMPLATES = {
         color: head ? ctx.theme.background : ctx.theme.text, borderBottom: '1px solid ' + VM.hexToRgba(ctx.theme.text, 0.08) } }, parent, text);
       const header = props.columns.map((c, i) => cell(c, tbl, true, false, i));
       const rows = props.rows.map((r, ri) => props.columns.map((_, i) => cell(r[i] ?? '', tbl, false, props.highlight === ri, i)));
-      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, 'Source: ' + props.citation) : null;
+      const cite = props.citation ? VM.el('div', { style: { position: 'absolute', left: pad + 'px', bottom: (ctx.u * 3) + 'px', color: ctx.theme.muted, fontSize: (ctx.u * 2.6) + 'px' } }, root, VM.cite(props.citation)) : null;
       const step = Math.min(0.3, (ctx.duration * 0.6) / rows.length);
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.35, 0.35)) : 1;

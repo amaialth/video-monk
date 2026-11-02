@@ -77,7 +77,9 @@ test('all customization resources install unchanged with exact discovery identit
     path.join(references, 'study-index.md'),
     path.join('skills', 'resolve-assisted-finishing', 'references', 'manual-recipes.md'),
     path.join('skills', 'original-edit-planning', 'references', 'production.md'),
-    path.join('skills', 'original-edit-planning', 'references', 'production.example.json')
+    path.join('skills', 'original-edit-planning', 'references', 'production.example.json'),
+    path.join('skills', 'original-edit-planning', 'references', 'editing-craft.md'),
+    path.join('skills', 'original-edit-planning', 'references', 'style-bytemonk.md')
   ];
   assert.deepEqual([...installed.keys()].sort(), expected.sort());
   for (const file of expected) {

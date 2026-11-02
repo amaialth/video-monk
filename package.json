@@ -1,6 +1,6 @@
 {
   "name": "@amailath/video-monk",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Automated video editing toolkit: auto-cut, local transcription, Chrome-rendered motion graphics and infographics, transitions, captions, music ducking, loudness mastering and verified delivery.",
   "type": "module",
   "license": "MIT",

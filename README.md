@@ -37,6 +37,31 @@ word-timed karaoke captions. Each template has a validated props schema
 boxed in any of ten placements over footage. You can also supply your own seekable
 HTML page for fully custom animation.
 
+### Review loops
+
+Every stage has an independent reviewer. `auto` runs **transcript → cut → storyboard → render**; after each stage the reviewer approves or
+rejects with structured findings (blocker / major / minor, an owner stage, a target and, when mechanical, a fix). The producer revises
+**only the flagged parts**, the reviewer checks again (3 rounds, then a human decides), and findings owned by an earlier stage are routed
+back to it with downstream stages re-produced. Reviewers measure rather than guess: quiet stretches and lost speech from the audio, numbers
+and labels checked against the transcript, cutaway share, empty stretches, black frames, dead air and loudness in the rendered file. An
+optional Claude reviewer (`--review-agent claude --allow-llm`) adds judgment, including a look at sampled frames. Every round is written to
+`loop-ledger.json` and `REVIEW-LOOP.md`. Subagents use the same schema through `video-monk review`. See
+[review-loop.md](templates/workflows/non-resolve/skills/non-resolve-production/references/review-loop.md).
+
+### Asset library
+
+Everything generated is indexed in a shared library (`~/.video-monk/library`) so other projects reuse it: rendered graphics are cached and
+searchable, the same recording is never transcribed twice, and a paid Claude storyboard is not repeated for the same transcript. Add licensed
+music, SFX, images and fonts with rights recorded once, then `video-monk assets --search`, `--get` and `--export`. See
+[asset-library.md](templates/workflows/non-resolve/skills/non-resolve-production/references/asset-library.md).
+
+### House style
+
+`--style bytemonk` (default) applies the approved provisional ByteMonk-inspired direction: dark neutral cards, calm reveals tied to the
+narration, diagram-first graphics, conceptual schematics labelled, a ducked ambient bed, and a structure that opens with a concrete question
+and ends with a recap and next step. It is creative direction derived from unverified notes, never a copy of the channel.
+See [style-bytemonk.md](templates/skills/original-edit-planning/references/style-bytemonk.md).
+
 ### Typography
 
 Text follows modern kinetic-type practice. Headlines are bold Geist; **stressed words switch to an italic
@@ -155,6 +180,8 @@ Run `video-monk --help` for every option.
 | `models` | List/download whisper.cpp models |
 | `autocut` | Silence/filler removal to a version-2 manifest with remapped captions |
 | `storyboard` | Plan explainer graphics from the transcript; writes the manifest, `.storyboard.json` and `.STORYBOARD.md` |
+| `review` | Run one stage's reviewer on files (transcript, cut, storyboard, render); appends to the loop ledger |
+| `assets` | Search, add, check out, export and prune the shared asset library |
 | `templates` | Motion template catalog and props |
 | `graphic` | Render one template to `.png` (still), `.mp4` or `.mov` (ProRes 4444 with alpha) |
 | `production-review` | Validate a v1/v2 manifest; `--approve-plan` records approval of its fingerprint |
@@ -196,6 +223,7 @@ Typical speed on an M-series Mac: about 55 ms per captured 1080p motion frame; a
   pull-text plus a few definition cards, lists and flows; `--engine claude` (or Claude editing the
   storyboard) is what turns ideas into real diagrams. Always review the storyboard table.
 - Graphics show what was said. They never add facts, but a transcription error becomes a labelling error.
+- Reviewers catch what can be measured. Judgment of taste, facts and rights still needs a person, and an unfixable finding stops the run.
 - Rights, attribution, factual accuracy and publishing are always human decisions.
 
 ## Reference study, Resolve handoff and version-1 manifests

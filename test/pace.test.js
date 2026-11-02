@@ -1,3 +1,4 @@
+import './setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, realpath, rm } from 'node:fs/promises';
@@ -113,4 +114,16 @@ test('real run: tight pace removes quiet gaps and breaths, speed shortens the vi
   assert.ok(await exists(path.join(out, 'stems', 'master.wav')));
   await assert.rejects(autocut(path.join(folder, 'rec.mp4'), path.join(folder, 'bad'), { speed: 3 }), /speed must be/);
   await assert.rejects(autocut(path.join(folder, 'rec.mp4'), path.join(folder, 'bad2'), { pace: 'wild' }), /pace must be/);
+});
+
+test('timeline frame totals are exact for many millisecond-rounded scenes (regression: 22143 vs 22144 frames)', async t => {
+  const folder = await temporary(t);
+  const { writeFile } = await import('node:fs/promises');
+  await writeFile(path.join(folder, 'rec.mp4'), 'x');
+  const scenes = Array.from({ length: 150 }, () => ({ kind: 'video', asset: 'rec', in: 0, duration: 0.017, purpose: 'x', audio: {} }));
+  await writeJson(path.join(folder, 'm.json'), { version: 2, title: 't', fps: 60, width: 640, height: 360,
+    assets: [{ id: 'rec', path: 'rec.mp4', kind: 'video', approved: true, rights: 'Own', attribution: 'Me' }], scenes });
+  const loaded = await loadTimeline(path.join(folder, 'm.json'), async () => ({ stdout: JSON.stringify({ format: { duration: '20' }, streams: [{ codec_type: 'video', width: 640, height: 360, avg_frame_rate: '60/1' }, { codec_type: 'audio' }] }) }));
+  assert.equal(loaded.totalFrames, 150, 'sum of per-scene frames, not round(sum of rounded seconds * fps)');
+  assert.equal(loaded.timeline.at(-1).startFrame + loaded.timeline.at(-1).frames, 150);
 });

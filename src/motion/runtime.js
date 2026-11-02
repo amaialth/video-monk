@@ -150,7 +150,9 @@ const VM = (() => {
     }
     return out;
   }
-  return { clamp, ease, p, tw, el, svg, set, r, fmt, fit, life, hexToRgba, icon, ICONS, tokens, parseRich, words, rich, stressify };
+  // Citations read "Source: ..." unless they are a note about the graphic itself (conceptual schematic, illustrative data).
+  const cite = text => (/^(conceptual|illustrative|synthetic|schematic)/i.test(text) ? text : 'Source: ' + text);
+  return { clamp, ease, p, tw, el, svg, set, r, fmt, fit, life, hexToRgba, icon, ICONS, tokens, parseRich, words, rich, stressify, cite };
 })();
 `;
 
@@ -197,6 +199,7 @@ const __template = (${templateSource});
       borderRadius: (__ctx.unit * 2.2) + 'px', boxShadow: '0 ' + __ctx.unit + 'px ' + (__ctx.unit * 4) + 'px rgba(0,0,0,0.35)',
       border: '1px solid ' + VM.hexToRgba(__ctx.theme.text, 0.12) });
     const ctx = Object.assign({}, __ctx, { w: box.w, h: box.h, u: Math.min(box.w, box.h) / 100, narrow: box.w < box.h * 1.25, strip: box.w > box.h * 3 });
+    if (__ctx.theme.calm) VM.ease.back = VM.ease.expo; // restrained style: no overshoot
     const update = __template(stage, __props, ctx, VM);
     const frame = document.getElementById('frame');
     window.__seek = t => {

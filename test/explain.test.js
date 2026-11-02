@@ -1,3 +1,4 @@
+import './setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, realpath, rm, readFile, stat } from 'node:fs/promises';
@@ -226,4 +227,51 @@ test('stress markup renders differently from plain text (italic serif face)', { 
   assert.notDeepEqual(plain, stressed);
   assert.ok((await stat(path.join(folder, 'stress.png'))).size > 2000);
   await run('ffmpeg', ['-v', 'error', '-i', path.join(folder, 'stress.png'), '-f', 'null', '-']);
+});
+
+// ---- house style ----
+import { resolveStyle, STYLES, styleTheme } from '../src/style.js';
+
+test('bytemonk style: dark calm theme, diagram-first scoring, pull-text capped, schematics labelled', () => {
+  const style = resolveStyle('bytemonk');
+  assert.equal(style.theme.preset, 'night');
+  assert.equal(style.theme.calm, true);
+  assert.match(style.status, /provisional/);
+  assert.throws(() => resolveStyle('nope'), /Style must be/);
+  assert.equal(styleTheme(STYLES.plain, 'paper').preset, 'paper');
+  const words = timed(TRANSCRIPT);
+  const duration = words.at(-1).end + 1;
+  const styled = planStoryboard(words, { duration, density: 'heavy', style });
+  const plain = planStoryboard(words, { duration, density: 'heavy', style: STYLES.plain });
+  const share = sb => sb.items.filter(i => i.template === 'kinetic-text').length / Math.max(1, sb.items.length);
+  assert.ok(share(styled) <= 0.34, `pull-text share ${share(styled)}`);
+  assert.equal(styled.style, 'bytemonk');
+  for (const item of styled.items.filter(i => ['flow', 'steps', 'comparison'].includes(i.template))) assert.equal(item.props.citation, 'Conceptual schematic');
+  assert.ok(plain.items.length >= 1);
+  const manifest = applyStoryboard({ scenes: [{ duration: 30, kind: 'video' }], theme: { accent: '#2f6fed' } }, styled, style);
+  assert.equal(manifest.theme.accent, '#2f6fed', 'manifest tokens win over the style');
+  assert.equal(manifest.theme.calm, true);
+  assert.equal(manifest.theme.preset, 'night');
+  assert.equal(applyStoryboard({ scenes: [{ duration: 30, kind: 'video' }], theme: { preset: 'paper' } }, styled, style).theme.preset, 'paper', 'explicit manifest preset wins');
+});
+
+test('the Claude brief carries the house style and the calm theme renders without overshoot', () => {
+  const words = timed(TRANSCRIPT);
+  const prompt = buildPrompt(words, { density: 'medium', duration: 40, theme: 'night', style: resolveStyle('bytemonk') });
+  assert.match(prompt, /<style>[\s\S]*dark neutral canvas[\s\S]*recap/);
+  assert.doesNotMatch(buildPrompt(words, { density: 'medium', duration: 40, theme: 'night', style: resolveStyle('plain') }), /<style>/);
+});
+
+test('a conceptual-schematic note is not labelled as a source, real citations still are', { skip: chromeAvailable ? false : 'needs Chrome', timeout: 120000 }, async t => {
+  const folder = await temporary(t);
+  const render = async (citation, name) => {
+    const out = path.join(folder, name);
+    await renderGraphic({ template: 'flow', props: { nodes: [{ id: 'a', label: 'A' }, { id: 'b', label: 'B' }], citation }, output: out, seconds: 2, width: 960, height: 540, at: 1.8, background: 'plain' });
+    return readFile(out);
+  };
+  const schematic = await render('Conceptual schematic', 's.png');
+  const sourced = await render('Conceptual schematic', 's2.png');
+  assert.deepEqual(schematic, sourced, 'deterministic');
+  const real = await render('Benchmark, Oct 2026', 'r.png');
+  assert.notDeepEqual(schematic, real);
 });

@@ -84,14 +84,14 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 <body>
 
 <header class="hero">
-  <span class="pill">@amailath/video-monk · v0.3.0</span>
+  <span class="pill">@amailath/video-monk · v0.4.0</span>
   <h1>How Video Monk works</h1>
   <p>An automated video editing toolkit. Give it a recording and it analyzes, transcribes, cuts, adds motion graphics and infographics, mixes, masters and delivers a verified <code>final.mp4</code>. This page explains every part: the architecture, each pipeline stage, the motion engine, the audio graph, the approval gates and every command.</p>
 </header>
 
 <nav class="toc"><div>
   <a href="#overview">Overview</a><a href="#architecture">Architecture</a><a href="#auto">Auto pipeline</a><a href="#autocut">Autocut</a>
-  <a href="#explain">Explainer graphics</a><a href="#typography">Typography</a><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build pipeline</a>
+  <a href="#loops">Review loops</a><a href="#library">Asset library</a><a href="#explain">Explainer graphics</a><a href="#typography">Typography</a><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build pipeline</a>
   <a href="#audio">Audio graph</a><a href="#gates">Approval gates</a><a href="#outputs">Outputs</a><a href="#commands">Commands</a>
   <a href="#claude">Claude Code</a><a href="#tests">Testing</a><a href="#limits">Limits</a>
 </div></nav>
@@ -197,6 +197,9 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <tr><td><code>src/cli.js</code></td><td>Argument parsing, every command, skill/agent installer, <code>doctor</code>.</td></tr>
     <tr><td><code>src/auto.js</code>, <code>autocut.js</code>, <code>transcribe.js</code></td><td>Inspect, transcribe, cut and orchestrate.</td></tr>
     <tr><td><code>src/explain.js</code>, <code>explain-llm.js</code>, <code>storyboard.js</code></td><td>Explainer planner: transcript rules, optional Claude engine, scheduler, storyboard files, applying graphics to a manifest.</td></tr>
+    <tr><td><code>src/loop.js</code>, <code>stages.js</code>, <code>review-llm.js</code>, <code>review-cli.js</code></td><td>Review loops: finding schema, ledger, producer⇄reviewer loop, lead loop with routing; stage reviewers and targeted revisers; optional Claude reviewer; the <code>review</code> command.</td></tr>
+    <tr><td><code>src/library.js</code></td><td>Shared asset library: index, search, checkout, export, prune; reused by build, transcription and storyboard.</td></tr>
+    <tr><td><code>src/style.js</code></td><td>House style profiles (<code>bytemonk</code>, <code>plain</code>).</td></tr>
     <tr><td><code>src/stress.js</code></td><td>Decides which spoken words get the italic-serif stress treatment.</td></tr>
     <tr><td><code>assets/fonts/</code></td><td>Bundled OFL fonts: Geist Variable, Geist Mono, Instrument Serif Italic, with their license texts.</td></tr>
     <tr><td><code>src/timeline.js</code></td><td>Version-2 manifest validation, frame accounting, chapters, content fingerprint.</td></tr>
@@ -207,7 +210,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <tr><td><code>src/motion/</code></td><td><code>runtime.js</code> (page shell), <code>templates.js</code> (18 templates, schemas), <code>render.js</code> (frame rendering and cache), <code>preview.js</code>.</td></tr>
     <tr><td><code>src/media.js</code>, <code>plan.js</code>, <code>llm.js</code>, <code>stock.js</code>, <code>external-tools.js</code>, <code>core.js</code></td><td>Reference study and probing, picture-only plans and Resolve XML, optional LLM, Pexels, HyperFrames/Parakeet wrappers, shared helpers.</td></tr>
     <tr><td><code>templates/</code></td><td>Skills and agents that <code>install</code> copies into a workspace, including the v2 schema reference.</td></tr>
-    <tr><td><code>test/</code></td><td>108 tests, including real FFmpeg and Chrome renders.</td></tr>
+    <tr><td><code>test/</code></td><td>149 tests, including real FFmpeg and Chrome renders and a full reviewed pipeline run.</td></tr>
   </table></div>
 </section>
 
@@ -255,6 +258,40 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
     <tr><td><code>extra</code></td><td>measured + 2 dB</td><td>0.10 s</td><td>0.04 / 0.06 s</td><td>Fast-paced shorts (may nick soft word endings)</td></tr>
   </table></div>
   <p><code>--speed 1.1</code> to <code>1.5</code> speeds speech up with pitch preserved; captions and cues are retimed. Other tuning: <code>--noise-db</code>, <code>--min-silence</code>, <code>--keep-fillers</code>, <code>--no-jump-zoom</code>, and <code>--format vertical|landscape|square</code>. Whisper rarely transcribes "hm", so those sounds are removed acoustically rather than by name.</p>
+</section>
+
+<section id="loops">
+  <h2>Review loops</h2>
+  <p class="lead">Every stage has a producer and an independent reviewer. A reviewer rejects with structured findings; the producer fixes only what was flagged; a lead loop sends feedback to the stage that owns the problem.</p>
+  <figure class="diagram">
+  <svg viewBox="0 0 1100 430" role="img" aria-label="Review loops: four stages in a row, each with a producer and reviewer loop, and feedback routed back to earlier stages">
+    <defs><marker id="a7" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="ah"/></marker></defs>
+    <rect class="box plan" x="20" y="40" width="230" height="150" rx="12"/><text class="t fplan" x="135" y="66" text-anchor="middle">1 transcript</text><text class="s" x="135" y="88" text-anchor="middle">producer: whisper.cpp (cached)</text><text class="s" x="135" y="108" text-anchor="middle">reviewer: order, pace, stutters,</text><text class="s" x="135" y="124" text-anchor="middle">glossary near-misses</text><text class="s" x="135" y="150" text-anchor="middle">fix: replaceWord · dropWord</text>
+    <rect class="box plan" x="290" y="40" width="230" height="150" rx="12"/><text class="t fplan" x="405" y="66" text-anchor="middle">2 cut</text><text class="s" x="405" y="88" text-anchor="middle">producer: autocut (measured pace)</text><text class="s" x="405" y="108" text-anchor="middle">reviewer: quiet stretches, voiced</text><text class="s" x="405" y="124" text-anchor="middle">audio kept ≥ 99.5%, choppiness</text><text class="s" x="405" y="150" text-anchor="middle">fix: removeQuiet · restore · merge</text>
+    <rect class="box motion" x="560" y="40" width="230" height="150" rx="12"/><text class="t fmotion" x="675" y="66" text-anchor="middle">3 storyboard</text><text class="s" x="675" y="88" text-anchor="middle">producer: rules or Claude</text><text class="s" x="675" y="108" text-anchor="middle">reviewer: invented numbers, overlaps,</text><text class="s" x="675" y="124" text-anchor="middle">cutaway share, empty stretches</text><text class="s" x="675" y="150" text-anchor="middle">fix: dropItem · toPanel · fillWindow</text>
+    <rect class="box build" x="830" y="40" width="240" height="150" rx="12"/><text class="t fbuild" x="950" y="66" text-anchor="middle">4 render</text><text class="s" x="950" y="88" text-anchor="middle">producer: production-build</text><text class="s" x="950" y="108" text-anchor="middle">reviewer: checks, black frames,</text><text class="s" x="950" y="124" text-anchor="middle">dead air, captions, (Claude: frames)</text><text class="s" x="950" y="150" text-anchor="middle">fix: rebuild · route upstream</text>
+    <path class="ln" d="M250 115H288" marker-end="url(#a7)"/><path class="ln" d="M520 115H558" marker-end="url(#a7)"/><path class="ln" d="M790 115H828" marker-end="url(#a7)"/>
+    <path class="ln opt" d="M135 190V230" marker-end="url(#a7)"/><path class="ln opt" d="M405 190V230" marker-end="url(#a7)"/><path class="ln opt" d="M675 190V230" marker-end="url(#a7)"/><path class="ln opt" d="M950 190V230" marker-end="url(#a7)"/>
+    <rect class="box ext" x="20" y="232" width="1050" height="62" rx="10"/><text class="t" x="545" y="258" text-anchor="middle">per stage: review → rejected → producer receives findings → revises only the targets → review again (3 rounds, then a human)</text><text class="s" x="545" y="278" text-anchor="middle">verdict = rejected if any blocker or major · minors are notes · each round recorded in loop-ledger.json</text>
+    <path class="ln" d="M950 294V340H405V296" marker-end="url(#a7)"/><text class="s" x="560" y="334">finding owned by an earlier stage (e.g. dead air → cut): routed back, then downstream stages are re-produced</text>
+    <rect class="box out" x="20" y="360" width="520" height="56" rx="10"/><text class="t" x="280" y="384" text-anchor="middle">auto: code reviewers (+ optional Claude reviewer)</text><text class="s" x="280" y="402" text-anchor="middle">writes loop-ledger.json and REVIEW-LOOP.md; needs-human if unfixable</text>
+    <rect class="box out" x="560" y="360" width="510" height="56" rx="10"/><text class="t" x="815" y="384" text-anchor="middle">conversation: video-monk-stage-reviewer subagent</text><text class="s" x="815" y="402" text-anchor="middle">runs video-monk review, same schema, same ledger</text>
+  </svg>
+  <figcaption>The lead loop routes only the earliest owner's findings each time, because re-producing later stages would discard their revisions.</figcaption>
+  </figure>
+  <p>Example finding: <code>cut-quiet-12-33.20</code>, major, owner <code>cut</code>, target scene 12 at 33.2–33.5 s, fix <code>removeQuiet</code>. The cut reviser splits only that segment, rebuilds the manifest and remapped captions, and the reviewer re-checks. On a real quiet recording the check showed 100% of clearly voiced audio kept after tightening.</p>
+</section>
+
+<section id="library">
+  <h2>Asset library</h2>
+  <p class="lead">Generated and licensed assets are indexed once and found everywhere. Default root <code>~/.video-monk/library</code>.</p>
+  <div class="grid">
+    <div class="card"><h4>Graphics</h4><p>Rendered frames are cached by content hash in the library and indexed with template, text, size and theme. An identical graphic in another project is not rendered again.</p></div>
+    <div class="card"><h4>Transcripts</h4><p>Keyed by media hash, model, language and prompt. The same recording is never transcribed twice.</p></div>
+    <div class="card"><h4>Storyboards</h4><p>A Claude storyboard for the same transcript and settings is reused, so the paid call does not repeat.</p></div>
+    <div class="card"><h4>Licensed assets</h4><p>Music, SFX, images and fonts with rights, attribution and source URL recorded once; checked out with a ready manifest entry. Never auto-approved, never pruned.</p></div>
+  </div>
+  <p>Commands: <code>assets --search</code>, <code>--add</code>, <code>--get</code>, <code>--export</code> (cached graphic to .mov alpha / .mp4 / .png), <code>--stats</code>, <code>--prune</code>. The librarian agent searches before anything is generated or downloaded.</p>
 </section>
 
 <section id="explain">
@@ -559,6 +596,6 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 </section>
 
 </main>
-<footer>Video Monk 0.3.0 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
+<footer>Video Monk 0.4.0 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
 </body>
 </html>

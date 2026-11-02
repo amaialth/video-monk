@@ -13,9 +13,11 @@ import { transcribeWhisper, downloadModel, findWhisper, findModel, MODELS, MODEL
 import { autocut, analyzeFootage, FORMATS } from './autocut.js';
 import { autoEdit } from './auto.js';
 import { storyboardManifest } from './storyboard.js';
+import { reviewStage } from './review-cli.js';
 import { templateCatalog } from './motion/templates.js';
 import { renderGraphic } from './motion/preview.js';
 import { findChrome } from './chrome.js';
+import { Library, KINDS } from './library.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
@@ -24,12 +26,13 @@ AUTOMATED EDITING
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
-             [--pace natural|tight|extra (default tight)] [--speed 1-1.5] [--asr-prompt <text>]
+             [--style bytemonk|plain (default bytemonk)] [--pace natural|tight|extra] [--speed 1-1.5] [--asr-prompt <text>]
+             [--review-loop on|off (default on)] [--max-rounds 3] [--review-agent none|claude (needs --allow-llm)] [--glossary <terms file>]
              [--graphics off|light|medium|heavy (default medium)] [--graphics-mode mixed|cutaway|panel]
              [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--presenter <name> --role <text>]
              One shot: inspect -> transcribe -> autocut -> explainer graphics -> review -> render final.mp4
   storyboard --manifest <production.json> --output <new manifest in the same folder>
-             [--density light|medium|heavy] [--graphics-mode mixed|cutaway|panel] [--theme auto|paper|night]
+             [--style bytemonk|plain] [--density light|medium|heavy] [--graphics-mode mixed|cutaway|panel] [--theme auto|paper|night]
              [--engine rules|claude --allow-llm [--model <alias>]] [--presenter <name> --role <text>]
              [--from-storyboard <edited storyboard.json>]
              Plan motion graphics from the transcript: writes the manifest, <name>.storyboard.json and <name>.STORYBOARD.md
@@ -50,6 +53,23 @@ AUTOMATED EDITING
 
 PRODUCTION (version 1 or 2 manifests)
 
+
+REVIEW LOOPS (independent reviewer per stage; findings go back to the producer)
+  review     --stage transcript|cut|storyboard|render [--output <new verdict.json>] [--ledger <loop-ledger.json> --round N]
+             transcript: --words <words.json> [--glossary <terms file>]
+             cut:        --manifest <production.json> --media <source recording> [--words <source words>] [--pace tight]
+             storyboard: --manifest <graphics manifest> --storyboard <storyboard.json> [--style bytemonk|plain]
+             render:     --render-dir <production-build output> [--storyboard <storyboard.json>]
+             [--record-revision "what the producer changed; and this"]   Exit code 1 when rejected
+
+ASSET LIBRARY (shared index of generated and licensed assets; VIDEO_MONK_LIBRARY=<dir>|off)
+  assets     --list [--kind graphic|transcript|storyboard|audio|image|video|font|thumbnail|other] [--tags a,b]
+             --search "<words>" [--kind ..]          Find reusable assets (graphics, transcripts, music...)
+             --add <file> --kind <kind> --name <text> [--tags a,b --description <text> --rights <text>
+                      --attribution <text> --source-url <url> --approved]   Index a licensed/generated file
+             --get <id> --output <new path>          Copy an asset out; prints a manifest asset entry for audio/image/video
+             --export <graphic id> --output <.mov|.mp4|.png>   Turn a cached graphic into a clip or still
+             --stats | --prune [--older-than-days N] [--max-gb G] [--yes]
 
 REFERENCE STUDY AND RESOLVE HANDOFF
   init       --dir <folder> [--channel <YouTube channel>] --model <model>
@@ -116,14 +136,19 @@ const definitions = {
     engine: 'string', model: 'string', language: 'string', 'asr-prompt': 'string' },
   models: { download: 'string', 'allow-download': 'boolean' },
   inspect: { media: 'string', output: 'string' },
-  autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string', pace: 'string', speed: 'string',
+  autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string', pace: 'string', speed: 'string', style: 'string',
     'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
+  review: { stage: 'string', words: 'string', glossary: 'string', manifest: 'string', media: 'string', storyboard: 'string', 'render-dir': 'string', style: 'string', pace: 'string',
+    output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
-    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string' },
-  auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string',
+    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string' },
+  auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', title: 'string' },
+  assets: { list: 'boolean', search: 'string', add: 'string', get: 'string', export: 'string', stats: 'boolean', prune: 'boolean', kind: 'string', tags: 'string',
+    name: 'string', description: 'string', rights: 'string', attribution: 'string', 'source-url': 'string', approved: 'boolean', output: 'string',
+    'older-than-days': 'string', 'max-gb': 'string', yes: 'boolean', limit: 'string' },
   templates: { json: 'boolean' },
   graphic: { template: 'string', html: 'string', props: 'string', output: 'string', seconds: 'string', width: 'string', height: 'string',
     fps: 'string', placement: 'string', background: 'string', font: 'string', theme: 'string', at: 'string' },
@@ -242,7 +267,7 @@ function cutOptions(opts) {
   return {
     words: opts.words ? path.resolve(opts.words) : undefined, format: opts.format, noiseDb: number('noise-db', -80, -10),
     minSilence: number('min-silence', 0.05, 5), removeFillers: !opts['keep-fillers'], jumpZoom: !opts['no-jump-zoom'],
-    pace: opts.pace, speed: number('speed', 1, 1.5),
+    pace: opts.pace, speed: number('speed', 1, 1.5), style: opts.style,
     rightsConfirmed: opts['rights-confirmed'] === true, rights: opts.rights, attribution: opts.attribution, title: opts.title
   };
 }
@@ -305,20 +330,78 @@ export async function main(args) {
         ...cutOptions(opts), words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
         graphics: opts.graphics, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
-        presenter: opts.presenter, role: opts.role
+        presenter: opts.presenter, role: opts.role, reviewLoop: opts['review-loop'] === 'off' ? false : undefined,
+        maxRounds: opts['max-rounds'] ? integer(opts['max-rounds'], 'max-rounds', 1, 8) : undefined, reviewAgent: opts['review-agent'],
+        glossary: opts.glossary ? (await readFile(opts.glossary, 'utf8')).split(/\r?\n|,/).map(t => t.trim()).filter(Boolean) : undefined
       });
+      if (result.loop) console.log(`Review loop: ${result.loop.status}${result.loop.stoppedAt ? ` (stopped at ${result.loop.stoppedAt}; see REVIEW-LOOP.md)` : ''}. Ledger: ${path.resolve(opts.output, 'loop-ledger.json')}`);
       if (result.rendered) {
-        console.log(`Rendered: ${path.resolve(opts.output, 'render', 'final.mp4')} (${result.rendered.status}). Read REVIEW.txt and watch it end to end.`);
-        if (result.rendered.status === 'failed-technical-checks') process.exitCode = 1;
+        const finalFile = result.finalFile || path.resolve(opts.output, 'render', 'final.mp4');
+        console.log(`Rendered: ${finalFile} (${result.rendered.status}). Read REVIEW.txt and watch it end to end.`);
+        if (result.rendered.status === 'failed-technical-checks' || result.loop?.status === 'needs-human') process.exitCode = 1;
       } else console.log(`Plan ready: ${result.manifest}. Add overlays/music, then production-review and production-build.`);
       break;
     }
     case 'storyboard': {
       const result = await storyboardManifest(required(opts, 'manifest'), required(opts, 'output'), {
         density: opts.density, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
-        model: opts.model, presenter: opts.presenter, role: opts.role, fromStoryboard: opts['from-storyboard'] });
+        model: opts.model, presenter: opts.presenter, role: opts.role, fromStoryboard: opts['from-storyboard'], style: opts.style });
       const st = result.storyboard.stats;
       console.log(`Storyboard (${result.storyboard.engine}): ${st.graphics} graphics, ${st.perMinute}/min, ${st.cutawaySeconds}s of cutaways.\nTable: ${result.table}\nManifest: ${result.manifest}\nReview the table, edit ${path.basename(result.storyboardFile)} if needed, then production-review and production-build.`);
+      break;
+    }
+    case 'assets': {
+      const lib = await Library.open();
+      if (!lib) throw new Error('Asset library is disabled (VIDEO_MONK_LIBRARY=off).');
+      const kind = opts.kind;
+      if (kind && !KINDS.includes(kind)) throw new Error(`--kind must be one of ${KINDS.join(', ')}`);
+      const tags = opts.tags ? opts.tags.split(',').map(t => t.trim()).filter(Boolean) : [];
+      const show = entries => console.log(entries.length ? entries.map(e => `${e.id.padEnd(34)} ${e.kind.padEnd(10)} ${String(Math.round((e.bytes || 0) / 1024)).padStart(7)} KB  uses ${String(e.uses || 0).padStart(2)}  ${e.name}${e.rights ? `  [${e.rights.slice(0, 40)}]` : ''}`).join('\n') : 'No matching assets.');
+      if (opts.add) {
+        if (!kind) throw new Error('--add needs --kind');
+        const entry = await lib.add({ source: opts.add, kind, name: opts.name, description: opts.description, tags, rights: opts.rights, attribution: opts.attribution,
+          sourceUrl: opts['source-url'], approved: opts.approved === true ? true : undefined, createdBy: 'user' });
+        console.log(`Indexed ${entry.id} (${entry.kind}, ${Math.round(entry.bytes / 1024)} KB) in ${lib.root}`);
+      } else if (opts.get) {
+        const out = await lib.checkout(opts.get, required(opts, 'output'));
+        console.log(`Copied ${out.entry.id} to ${out.path}`);
+        if (out.manifestEntry) console.log(`Manifest asset entry (set approved only after you confirm the rights):\n${JSON.stringify(out.manifestEntry, null, 2)}`);
+      } else if (opts.export) {
+        const entry = lib.get(opts.export);
+        if (!entry || entry.kind !== 'graphic') throw new Error('--export needs the id of a graphic asset');
+        const outFile = path.resolve(required(opts, 'output'));
+        await unusedOutput(outFile);
+        const ext = path.extname(outFile).toLowerCase();
+        const dir = lib.absolute(entry);
+        const pattern = path.join(dir, 'frame-%06d.png');
+        const ff = process.env.VIDEO_MONK_FFMPEG || 'ffmpeg';
+        const codec = ext === '.mov' ? ['-c:v', 'prores_ks', '-profile:v', '4444', '-pix_fmt', 'yuva444p10le'] : ['-c:v', 'libx264', '-crf', '16', '-pix_fmt', 'yuv420p', '-movflags', '+faststart'];
+        if (ext === '.png') await run(ff, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-i', path.join(dir, `frame-${String(entry.meta.frames).padStart(6, '0')}.png`), '-frames:v', '1', outFile]);
+        else if (['.mov', '.mp4'].includes(ext)) await run(ff, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-n', '-framerate', String(entry.meta.fps), '-i', pattern, ...codec, outFile]);
+        else throw new Error('--output must end in .mov, .mp4 or .png');
+        await lib.touch(entry.id);
+        console.log(`Exported ${entry.id} to ${outFile}`);
+      } else if (opts.stats) {
+        const st = lib.stats();
+        console.log(`${st.root}\n${st.entries} assets, ${(st.bytes / 1e6).toFixed(1)} MB\n${Object.entries(st.byKind).map(([k, v]) => `  ${k.padEnd(11)} ${String(v.count).padStart(4)} assets  ${(v.bytes / 1e6).toFixed(1).padStart(8)} MB  ${v.uses} uses`).join('\n')}`);
+      } else if (opts.prune) {
+        const result = await lib.prune({ olderThanDays: opts['older-than-days'] ? Number(opts['older-than-days']) : null,
+          maxBytes: opts['max-gb'] ? Number(opts['max-gb']) * 1e9 : null, dryRun: opts.yes !== true });
+        console.log(`${result.dryRun ? 'Would remove' : 'Removed'} ${result.removed.length} generated asset(s), ${(result.freedBytes / 1e6).toFixed(1)} MB.${result.dryRun ? ' Re-run with --yes to delete.' : ''} User-added audio, image, video and font assets are never pruned.`);
+      } else if (opts.search !== undefined) {
+        show(lib.search(opts.search, { kind, tags, limit: opts.limit ? Number(opts.limit) : 20 }));
+      } else {
+        show(lib.search('', { kind, tags, limit: opts.limit ? Number(opts.limit) : 50 }));
+      }
+      break;
+    }
+    case 'review': {
+      const result = await reviewStage(opts);
+      const blocking = result.findings.filter(f => f.severity !== 'minor');
+      console.log(`${result.stage} review (round ${result.round}): ${result.decision.toUpperCase()}  ${JSON.stringify(result.metrics)}`);
+      for (const f of result.findings) console.log(`  [${f.severity}]${f.owner && f.owner !== result.stage ? ` → ${f.owner}` : ''} ${f.id}: ${f.message}${f.suggestion ? ` — ${f.suggestion}` : ''}`);
+      if (!result.findings.length) console.log('  no findings');
+      if (blocking.length) process.exitCode = 1;
       break;
     }
     case 'templates': {

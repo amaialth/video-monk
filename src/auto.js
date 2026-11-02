@@ -1,13 +1,15 @@
 // One-shot automated pipeline: inspect -> transcribe -> autocut -> review -> render.
 import path from 'node:path';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { exists, run, writeJson } from './core.js';
 import { analyzeFootage, autocut } from './autocut.js';
 import { transcribeWhisper, findWhisper, findModel } from './transcribe.js';
 import { reviewProduction, buildProduction } from './production.js';
 import { storyboardManifest } from './storyboard.js';
+import { Ledger, runPipeline } from './loop.js';
+import { buildStages } from './stages.js';
 
-export async function autoEdit(media, output, options = {}, execute = run) {
+async function legacyAutoEdit(media, output, options = {}, execute = run) {
   const log = options.log || (() => {});
   if (await exists(output)) throw new Error(`Auto: output already exists: ${output}`);
   await mkdir(output, { recursive: true });
@@ -34,7 +36,7 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   if (density !== 'off' && cut.words) {
     log(`    Planning explainer graphics (${density}, engine ${options.engine || 'rules'})...`);
     const planned = await storyboardManifest(manifest, path.join(output, 'edit', 'production.graphics.json'), {
-      density, graphicsMode: options.graphicsMode, theme: options.theme || 'auto', engine: options.engine, allowLlm: options.allowLlm,
+      density: options.graphics === undefined ? undefined : density, graphicsMode: options.graphicsMode, theme: options.theme, style: options.style, engine: options.engine, allowLlm: options.allowLlm,
       presenter: options.presenter, role: options.role }, execute);
     manifest = planned.manifest;
     storyboard = planned.storyboard;
@@ -52,4 +54,35 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   const rendered = await buildProduction(manifest, review, path.join(output, 'render'), true, execute, undefined,
     { log, quality: options.quality, concurrency: options.concurrency });
   return { analysis, cut, manifest, storyboard, rendered };
+}
+
+// Staged pipeline with a review loop per stage: transcript -> cut -> storyboard -> render. Each stage's reviewer approves or sends
+// findings back to the producer (or to the stage that owns the problem); every round is recorded in loop-ledger.json.
+export async function autoEdit(media, output, options = {}, execute = run) {
+  if (options.reviewLoop === false) return legacyAutoEdit(media, output, options, execute);
+  const log = options.log || (() => {});
+  if (await exists(output)) throw new Error(`Auto: output already exists: ${output}`);
+  if (options.render && options.approvePlan !== true) throw new Error('Auto: rendering needs --approve-plan (you approve the automatic plan and asset rights).');
+  await mkdir(output, { recursive: true });
+  log('Inspecting footage...');
+  const analysis = await analyzeFootage(media, execute);
+  await writeJson(path.join(output, 'analysis.json'), analysis);
+  const density = options.graphics ?? undefined;
+  const wantsGraphics = density !== 'off' && Boolean(options.words || options.transcribe);
+  if (density !== 'off' && !wantsGraphics) log('Graphics need a transcript: pass --transcribe (or --words) to plan explainer graphics.');
+  let stages = buildStages({
+    media, root: output, words: options.words ? path.resolve(options.words) : null, transcribe: options.transcribe, model: options.model, language: options.language,
+    asrPrompt: options.asrPrompt, cut: { ...options, words: undefined }, style: options.style, reviewAgent: options.reviewAgent, allowLlm: options.allowLlm,
+    reviewModel: options.reviewModel, quality: options.quality, concurrency: options.concurrency, log, glossary: options.glossary,
+    storyboard: { density, graphicsMode: options.graphicsMode, theme: options.theme, engine: options.engine, allowLlm: options.allowLlm, presenter: options.presenter, role: options.role }
+  }, execute);
+  if (!wantsGraphics) stages = stages.filter(s => s.name !== 'storyboard');
+  if (!options.render) stages = stages.filter(s => s.name !== 'render');
+  const ledger = await Ledger.open(path.join(output, 'loop-ledger.json'));
+  const result = await runPipeline({ stages, ledger, maxRounds: options.maxRounds ?? 3, log, ctx: { execute, root: output, agent: options.reviewAgent === 'claude' ? 'claude' : null } });
+  await writeFile(path.join(output, 'REVIEW-LOOP.md'), ledger.markdown(`Review loop: ${path.basename(media)}`));
+  const a = result.artifacts;
+  const rendered = a.render?.report || null;
+  return { analysis, loop: { status: result.status, stoppedAt: result.stoppedAt || null, summary: ledger.stageSummary() }, cut: a.cut?.result, manifest: (a.storyboard || a.cut)?.manifestFile,
+    storyboard: a.storyboard?.storyboard || null, rendered, renderDir: a.render?.outputDir || null, finalFile: a.render ? path.join(a.render.outputDir, 'final.mp4') : null };
 }

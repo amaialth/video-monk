@@ -40,8 +40,9 @@ Neither this corpus nor the original pilot establishes complete-channel coverage
 
 ## Approved provisional design direction
 
-Use only with the user's approval, labeled as creative choices rather than a
-verified channel match:
+The user approved this as the house style for all original videos (2026-11-02); it is
+implemented as the `bytemonk` profile (see [house style](../../original-edit-planning/references/style-bytemonk.md)).
+Keep it labeled as creative choices rather than a verified channel match:
 
 - Reusable original dark-card/diagram vocabulary; clear heading/body/code
   hierarchy. Define accessible accents per project, with labels/icons. Topic

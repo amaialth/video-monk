@@ -64,11 +64,11 @@ function compactCatalog() {
   }).join('\n');
 }
 
-export function buildPrompt(words, { density, duration, theme, repair = null }) {
+export function buildPrompt(words, { density, duration, theme, repair = null, style = null }) {
   const conf = DENSITY[density];
   const target = Math.max(3, Math.round(conf.perMinute * (duration / 60) * 1.35));
   const lines = sentences(words).map(s => `[${s.start.toFixed(1)}-${s.end.toFixed(1)}] ${s.text}`).join('\n');
-  const parts = [GRAPHIC_BRIEF,
+  const parts = [GRAPHIC_BRIEF, ...(style?.brief ? [`<style>\n${style.brief}\n</style>`] : []),
     `<templates>\nUse only these templates and only the listed props. Do not output "cues" or "at" inside props (use the top-level cues list).\n${compactCatalog()}\n</templates>`,
     `<inputs>\nVideo length ${duration.toFixed(1)} s. Theme ${theme}. Aim for about ${target} graphics (the tool keeps the best by priority).\nTimed transcript (seconds from the start of the edited video):\n${lines}\n</inputs>`,
     '<output>\nReturn only the JSON object required by the schema: items with start/end in seconds taken from the transcript timestamps, template, mode, priority, why (one short sentence on what it teaches), props, and cues (spoken words) where the template uses them.\n</output>'];
@@ -175,16 +175,16 @@ export async function callClaude(prompt, { model, timeout = 600_000 } = {}, exec
 }
 
 export async function planWithClaude(words, options = {}, execute = run) {
-  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', theme = 'night', presenter = null, role = null, model, allowLlm } = options;
+  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', theme = 'night', presenter = null, role = null, model, allowLlm, style = null } = options;
   if (allowLlm !== true) throw new Error('Explain: --engine claude sends the transcript to Anthropic through your Claude Code login. Pass --allow-llm to confirm.');
   if (!DENSITY[density]) throw new Error(`Explain: density must be ${Object.keys(DENSITY).join(', ')}`);
-  const first = await callClaude(buildPrompt(words, { density, duration, theme }), { model }, execute);
+  const first = await callClaude(buildPrompt(words, { density, duration, theme, style }), { model }, execute);
   let { built, rejected } = itemsToCandidates(first.items, words, { duration, graphics });
   let cost = first.costUsd ?? 0;
   if (rejected.length && rejected.length <= 12) {
     const note = rejected.map(r => `- start ${r.item.start}, template ${r.item.template}: ${r.reason}\n  item: ${JSON.stringify(r.item).slice(0, 600)}`).join('\n');
     try {
-      const second = await callClaude(buildPrompt(words, { density, duration, theme, repair: note }), { model }, execute);
+      const second = await callClaude(buildPrompt(words, { density, duration, theme, repair: note, style }), { model }, execute);
       const retry = itemsToCandidates(second.items, words, { duration, graphics });
       built = built.concat(retry.built);
       rejected = retry.rejected;
@@ -199,7 +199,7 @@ export async function planWithClaude(words, options = {}, execute = run) {
     const rules = ruleCandidates(words, { duration, graphics, density });
     built = built.concat(rules.built.filter(r => ['kinetic-text', 'stat', 'title'].includes(r.template)));
   }
-  const storyboard = finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates: first.items.length, skipped: rejected.length, engine: options.fill === false ? 'claude' : 'claude+rules' });
+  const storyboard = finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates: first.items.length, skipped: rejected.length, engine: options.fill === false ? 'claude' : 'claude+rules', style });
   storyboard.stats.claudeGraphics = storyboard.items.filter(i => i.kind === 'llm').length;
   void llmCount;
   storyboard.stats.llmCostUsd = cost ? round(cost) : null;

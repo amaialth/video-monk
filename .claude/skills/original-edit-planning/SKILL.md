@@ -52,6 +52,13 @@ That separate manifest powers `production-review`, `production-build` and
 9. Hand the reviewed bundle/storyboard to resolve-assisted-finishing. Do not
    render, operate demonstration systems or expand the channel study.
 
+## Editing craft and house style
+
+How to edit (staged gates, look at your own cut, cut by measured audio with a tone, rhythm by idea) is in
+[editing-craft](./references/editing-craft.md). Every original video follows the approved provisional
+[ByteMonk-inspired house style](./references/style-bytemonk.md) unless the user says otherwise.
+Review each stage independently and send findings back to the producing stage (loop in the non-Resolve team).
+
 ## CLI plan contract
 
 - Top-level fields: `version`, `title`, `fps`, `width`, `height`, `clips`,

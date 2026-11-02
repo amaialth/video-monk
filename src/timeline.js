@@ -47,7 +47,8 @@ export async function loadTimeline(file, execute = run) {
   // Theme
   let font = null;
   if (m.theme !== undefined) {
-    keys(m.theme, ['preset', 'background', 'surface', 'text', 'muted', 'accent', 'grid', 'palette', 'font'], 'theme');
+    keys(m.theme, ['preset', 'background', 'surface', 'text', 'muted', 'accent', 'grid', 'palette', 'font', 'calm'], 'theme');
+    check(opt(m.theme.calm, v => typeof v === 'boolean'), 'theme.calm must be boolean (restrained easing: no overshoot)');
     check(opt(m.theme.preset, v => ['night', 'paper'].includes(v)), 'theme.preset must be night or paper');
     for (const k of ['background', 'surface', 'text', 'muted', 'accent']) check(opt(m.theme[k], v => /^#[0-9a-fA-F]{6}$/.test(v)), `theme.${k} must be #RRGGBB`);
     check(opt(m.theme.palette, v => Array.isArray(v) && v.length >= 2 && v.length <= 10 && v.every(c => /^#[0-9a-fA-F]{6}$/.test(c))), 'theme.palette needs 2-10 #RRGGBB colors');
@@ -112,7 +113,9 @@ export async function loadTimeline(file, execute = run) {
   // Scenes
   check(Array.isArray(m.scenes) && m.scenes.length > 0 && m.scenes.length <= 2000, 'provide 1-2000 scenes');
   const timeline = [];
+  // Count in whole frames: summing millisecond-rounded seconds and converting once can disagree with the per-scene frame counts.
   let cursor = 0;
+  let cursorFrames = 0;
   for (const [index, scene] of m.scenes.entries()) {
     const label = `scene ${index}${scene.id ? ` (${scene.id})` : ''}`;
     keys(scene, ['id', 'kind', 'purpose', 'chapter', 'asset', 'in', 'duration', 'speed', 'fit', 'color', 'graphic', 'motion',
@@ -178,11 +181,13 @@ export async function loadTimeline(file, execute = run) {
       aligned(scene.transition.duration, `${label}.transition.duration`);
       transition = scene.transition;
     }
-    timeline.push({ index, scene, broll, overlays, start: cursor, startFrame: frames(cursor), frames: frames(scene.duration), transition });
-    cursor += scene.duration - (transition?.duration ?? 0);
+    const sceneFrames = frames(scene.duration);
+    timeline.push({ index, scene, broll, overlays, start: cursorFrames / m.fps, startFrame: cursorFrames, frames: sceneFrames, transition });
+    cursorFrames += sceneFrames - (transition ? frames(transition.duration) : 0);
+    cursor = cursorFrames / m.fps;
   }
   const duration = cursor;
-  const totalFrames = frames(duration);
+  const totalFrames = cursorFrames;
   check(duration <= 4 * 3600, 'maximum duration is four hours');
 
   // Audio

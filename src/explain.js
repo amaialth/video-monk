@@ -421,19 +421,21 @@ export function ruleCandidates(words, { duration, graphics = 'mixed', density = 
 }
 
 export function planStoryboard(words, options = {}) {
-  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night' } = options;
+  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', style = null } = options;
   if (!DENSITY[density]) throw new Error(`Explain: density must be ${Object.keys(DENSITY).join(', ')}`);
   if (!GRAPHIC_MODES.includes(graphics)) throw new Error(`Explain: graphics mode must be ${GRAPHIC_MODES.join(', ')}`);
   const { built, candidates, skipped } = ruleCandidates(words, { duration, graphics, density });
-  return finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates, skipped, engine: 'rules' });
+  return finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates, skipped, engine: 'rules', style });
 }
 
 
 // Select graphics under the density budget and face-time rules, then number chapters and assemble the storyboard.
 // `built` items: { kind, mode, start, duration, score, template, props, why, line, numbered?, plainTitle? }.
-export function finalizeStoryboard(built, { words, duration, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', candidates = built.length, skipped = 0, engine = 'rules' }) {
+export function finalizeStoryboard(built, { words, duration, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', candidates = built.length, skipped = 0, engine = 'rules', style = null }) {
   const conf = DENSITY[density];
   void words;
+  // House style: boost the templates it prefers (diagrams, flows, comparisons) and cap pull-text.
+  if (style?.scoreBoost) built = built.map(it => ({ ...it, score: it.score + (style.scoreBoost[it.template] ?? 0) }));
   // Normalize durations: long full-frame ideas become side panels so the picture stays visible; others are capped per template.
   built = built.map(it => {
     let mode = it.mode;
@@ -460,9 +462,11 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
     return true;
   };
   const hookSafe = it => it.start >= 1 || it.kind === 'title';
+  const shareCap = template => (style?.maxShare?.[template] === undefined ? Infinity : Math.max(1, Math.floor(style.maxShare[template] * budget)));
+  const count = template => chosen.filter(c => c.template === template).length;
   for (const it of [...built].sort((a, b) => b.score - a.score || a.start - b.start)) {
     if (chosen.length >= budget) break;
-    if (!hookSafe(it) || !fits(it)) continue;
+    if (!hookSafe(it) || !fits(it) || count(it.template) >= shareCap(it.template)) continue;
     chosen.push(it);
   }
   // Fill long gaps with the best remaining candidate that fits there.
@@ -473,7 +477,7 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
     for (let i = 0; i < points.length - 1; i++) {
       const gapStart = points[i], gapEnd = i + 1 < points.length - 1 ? chosen[i].start : duration;
       if (gapEnd - gapStart < conf.fillGap) continue;
-      const pick = built.filter(it => !chosen.includes(it) && it.start >= gapStart && it.start + it.duration <= gapEnd && hookSafe(it) && fits(it))
+      const pick = built.filter(it => !chosen.includes(it) && it.start >= gapStart && it.start + it.duration <= gapEnd && hookSafe(it) && fits(it) && count(it.template) < shareCap(it.template))
         .sort((a, b) => b.score - a.score)[0];
       if (pick) { chosen.push(pick); chosen.sort((a, b) => a.start - b.start); added = true; break; }
     }
@@ -484,6 +488,7 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
   let chapterNumber = 0;
   const items = chosen.map((it, i) => {
     const props = it.numbered ? (() => { chapterNumber += 1; return { ...it.props, number: String(chapterNumber).padStart(2, '0') }; })() : it.props;
+    if (style?.labelSchematic && ['flow', 'steps', 'comparison'].includes(it.template) && !props.citation) props.citation = 'Conceptual schematic';
     const item = { id: `g${String(i + 1).padStart(2, '0')}`, kind: it.kind, template: it.template, mode: it.mode, start: it.start, duration: it.duration,
       score: round(it.score), why: it.why, line: it.line, props };
     if (it.plainTitle) item.chapterTitle = it.plainTitle;
@@ -496,7 +501,7 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
   const byTemplate = {};
   for (const it of items) byTemplate[it.template] = (byTemplate[it.template] || 0) + 1;
   return {
-    version: 1, engine, density, graphics, theme, duration: round(duration),
+    version: 1, engine, style: style?.name ?? 'plain', density, graphics, theme, duration: round(duration),
     stats: { graphics: items.length, perMinute: round(items.length / minutes), cutawaySeconds: round(items.filter(x => x.mode === 'cutaway').reduce((n, x) => n + x.duration, 0)),
       candidates, skipped, byTemplate },
     notes: ['Every label, number and phrase comes from the transcript; no data is invented. Verify wording and numbers before publishing.'],
@@ -506,11 +511,13 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
 
 // ---- applying a storyboard to a version-2 manifest ----
 const OVERLAY_PLACEMENT = { overlay: 'strip-center', panel: 'right' };
-export function applyStoryboard(manifest, storyboard) {
+export function applyStoryboard(manifest, storyboard, style = null) {
   const out = JSON.parse(JSON.stringify(manifest));
   if (!storyboard || storyboard.version !== 1 || !Array.isArray(storyboard.items)) throw new Error('Explain: invalid storyboard.json');
-  out.theme = { ...(out.theme || {}) };
-  if (!out.theme.preset && storyboard.theme) out.theme.preset = storyboard.theme;
+  // Theme tokens the manifest already sets win; the house style fills the rest, then the storyboard's preset.
+  const manifestPreset = out.theme?.preset;
+  out.theme = { ...(style?.theme || {}), ...(out.theme || {}) };
+  if (!manifestPreset && storyboard.theme) out.theme.preset = storyboard.theme;
   out.globalOverlays = (out.globalOverlays || []).filter(o => !String(o.id || '').startsWith('sb:'));
   for (const it of storyboard.items) {
     const overlay = { id: `sb:${it.id}`, note: `${it.kind}: ${it.why}`.slice(0, 300), template: it.template, props: it.props, start: it.start, duration: it.duration };

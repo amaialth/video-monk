@@ -9,6 +9,7 @@ import { loadTimeline, chapters } from './timeline.js';
 import { MotionRenderer, pool } from './motion/render.js';
 import { pageWords, pagesToSrt, pagesToVtt } from './captions.js';
 import { markStress } from './stress.js';
+import { Library, textPreview } from './library.js';
 
 const fail = message => { throw new Error(`Build: ${message}`); };
 const check = (condition, message) => { if (!condition) fail(message); };
@@ -97,6 +98,9 @@ export async function buildTimeline(file, approval, output, options = {}) {
   const draft = quality === 'draft';
   const work = path.join(output, 'work');
   await mkdir(work, { recursive: true });
+  // Rendered graphics live in the shared asset library when enabled, so other projects reuse identical ones.
+  const library = await Library.open();
+  const motionRoot = library ? library.objectDir('graphic') : path.join(work, 'motion');
   await mkdir(path.join(output, 'stems'), { recursive: true });
   const started = Date.now();
 
@@ -141,13 +145,32 @@ export async function buildTimeline(file, approval, output, options = {}) {
     try {
       await renderer.start();
       await pool(jobs, concurrency, async ({ key, job }) => {
-        const result = await renderer.render(job, path.join(work, 'motion'));
+        const result = await renderer.render(job, motionRoot);
         rendered.set(key, result);
         log(`  motion ${key}: ${result.frames} frames (${result.captured} captured)`);
       });
     } finally {
       await renderer.close();
     }
+  }
+
+  let libraryStats = null;
+  if (library && jobs.length) {
+    let reused = 0, added = 0;
+    for (const { key, job } of jobs) {
+      const r = rendered.get(key);
+      if (!r || !job.template || job.template === 'captions' || r.cached === undefined) continue;
+      if (r.cached) reused++; else added++;
+      const text = textPreview(job.props);
+      await library.add({ id: `graphic-${path.basename(r.dir)}`, kind: 'graphic', relativePath: path.join('objects', 'graphic', path.basename(r.dir)),
+        name: `${job.template}: ${text.slice(0, 50)}`, description: `${job.template} graphic, ${job.width}x${job.height} @ ${job.fps} fps, ${r.frames} frames`,
+        tags: [job.template, job.theme?.preset || 'night', job.height > job.width ? 'portrait' : 'landscape', key.startsWith('g') ? 'scene' : 'overlay'],
+        meta: { template: job.template, text, props: job.props, width: job.width, height: job.height, fps: job.fps, frames: r.frames, duration: job.duration,
+          theme: job.theme?.preset || 'night', background: job.background || 'transparent', placement: job.placement || 'full' },
+        createdBy: 'build', project: m.title });
+    }
+    libraryStats = { root: library.root, graphicsAdded: added, graphicsReused: reused };
+    if (reused) log(`  ${reused} graphic(s) reused from the asset library, ${added} new`);
   }
 
   // 2. Scene composites (video only) + source-audio clips
@@ -377,6 +400,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
       thumbnail: 'thumbnail.png', contactSheet: 'contact-sheet.png', stems: ['stems/voice.wav', 'stems/music.wav', 'stems/sfx.wav', 'stems/master.wav'],
       resolveTimeline: 'timeline.xml' },
     timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters },
+    library: libraryStats,
     verification,
     humanReview: { facts: 'NOT VERIFIED', captionsWording: captionPages ? 'NOT VERIFIED' : 'N/A', rights: 'USER ATTESTED', wholeVideoPlayback: 'NOT VERIFIED' },
     credits
