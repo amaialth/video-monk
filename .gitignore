@@ -1,0 +1,9 @@
+node_modules/
+*.tgz
+.env
+.env.*
+!.env.example
+work/
+coverage/
+.playwright-mcp/
+.claude/settings.local.json

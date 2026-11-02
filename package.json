@@ -1,0 +1,17 @@
+{
+  "name": "@amailath/video-monk",
+  "version": "0.1.0",
+  "description": "Evidence-based YouTube editing analysis, Copilot skills, and DaVinci Resolve handoffs.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=22" },
+  "bin": { "video-monk": "bin/video-monk.js" },
+  "files": ["bin", "src", "templates", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test",
+    "check": "node --check bin/video-monk.js && node --check src/core.js && node --check src/media.js && node --check src/llm.js && node --check src/plan.js && node --check src/production.js && node --check src/stock.js && node --check src/cli.js",
+    "prepack": "npm run check && npm test"
+  },
+  "publishConfig": { "access": "public", "registry": "https://registry.npmjs.org/" },
+  "keywords": ["davinci-resolve", "youtube", "video-editing", "copilot", "agent-skills", "llm"]
+}

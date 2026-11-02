@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "title": "Original mechanism explainer",
+  "fps": 24,
+  "width": 1920,
+  "height": 1080,
+  "font": "C:\\Windows\\Fonts\\arial.ttf",
+  "assets": [
+    {
+      "id": "narration",
+      "path": "media\\narration.wav",
+      "kind": "audio",
+      "approved": true,
+      "rights": "REPLACE: your verified original recording rights",
+      "attribution": "REPLACE: original narrator credit"
+    },
+    {
+      "id": "camera",
+      "path": "media\\camera.mp4",
+      "kind": "video",
+      "approved": true,
+      "rights": "REPLACE: your verified original recording rights",
+      "attribution": "REPLACE: original camera credit"
+    }
+  ],
+  "narration": { "asset": "narration", "gainDb": 0 },
+  "scenes": [
+    {
+      "kind": "video",
+      "asset": "camera",
+      "in": 0,
+      "duration": 5,
+      "fit": "contain",
+      "purpose": "Introduce the original teaching question"
+    },
+    {
+      "kind": "graphic",
+      "duration": 5,
+      "fit": "contain",
+      "purpose": "Explain a sourced comparison; replace synthetic data before production",
+      "graphic": {
+        "title": "Illustrative comparison",
+        "rows": [
+          { "label": "Synthetic example A: 50%", "value": 0.5 },
+          { "label": "Synthetic example B: 90%", "value": 0.9 }
+        ],
+        "citation": "Synthetic example, not a factual benchmark"
+      }
+    }
+  ]
+}
