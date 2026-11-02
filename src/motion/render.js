@@ -5,6 +5,7 @@ import { exists } from '../core.js';
 import { launchChrome, openPage } from '../chrome.js';
 import { renderPage } from './runtime.js';
 import { TEMPLATES, validateProps } from './templates.js';
+import { auditExpression } from './audit.js';
 
 // Theme presets. `night` suits dark footage; `paper` (warm gray canvas, black ink, one orange accent, after the
 // motion-graphics skill's defaults) suits light slides and screen recordings.
@@ -127,7 +128,18 @@ export class MotionRenderer {
       page = await this.#open(path.resolve(job.html), job);
     }
     let captured = 0;
+    let audit = [];
     try {
+      if (job.audit && job.template !== 'captions') {
+        // Sample after the entrance has settled and before the exit starts; transparent overlays sit on the theme background.
+        const bg = job.background && job.background !== 'transparent' ? resolveTheme(job.theme).background : resolveTheme(job.theme).background;
+        for (const at of [0.55, 0.8]) {
+          await page.evaluate(`window.__seek(${(job.duration * at).toFixed(3)})`);
+          audit.push(...await page.evaluate(auditExpression(job.width, job.height, bg)));
+        }
+        const seen = new Set();
+        audit = audit.filter(i => { const k = i.kind + i.text; return seen.has(k) ? false : (seen.add(k), true); });
+      }
       let previous = null;
       let previousFile = null;
       for (let i = 0; i < frames; i++) {
@@ -146,8 +158,8 @@ export class MotionRenderer {
     } finally {
       await page.close().catch(() => {});
     }
-    await writeFile(done, JSON.stringify({ captured }));
-    return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, captured, cached: false };
+    await writeFile(done, JSON.stringify({ captured, audit }));
+    return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, captured, audit, cached: false };
   }
 
   async #open(file, job) {

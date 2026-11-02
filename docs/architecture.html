@@ -96,7 +96,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 <body>
 
 <header class="hero">
-  <span class="pill">@amailath/video-monk · v0.4.1</span>
+  <span class="pill">@amailath/video-monk · v0.5.0</span>
   <h1>How Video Monk works</h1>
   <p>Video Monk turns a recording into a finished explainer video: it cuts the dead air, adds captions, plans and animates graphics that explain what you say, mixes and masters the sound, and checks its own work at every step. Everything runs on your computer except two optional steps that use Claude.</p>
   <p style="margin-top:10px"><b>New here?</b> Read <a href="#whatsnew">What's new</a> and <a href="#bigpicture">The big picture</a> first (5 minutes). The rest of the page is reference: each part in detail, in the order it runs.</p>
@@ -113,10 +113,25 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 
 <section id="whatsnew">
   <h2>What's new</h2>
-  <p class="lead">Three releases turned a rough-cut helper into an automated editor that explains, checks itself and remembers what it made. Full list: <code>CHANGELOG.md</code>.</p>
+  <p class="lead">Four releases turned a rough-cut helper into an automated editor that explains, checks itself and remembers what it made. Full list: <code>CHANGELOG.md</code>.</p>
 
   <div class="ver">
-    <h3><span class="tag">0.4.1</span>Calm framing, content always visible <span class="chip">latest</span></h3>
+    <h3><span class="tag">0.5.0</span>Production-grade delivery, formats and checks <span class="chip">latest</span></h3>
+    <ul>
+      <li><b>The format is settled first.</b> <code>video-monk brief</code> (and the same questions asked by Claude Code) decides long-form 16:9, a vertical 9:16 short, both, or a square/4:5 post, plus footage type, vertical framing, short length and which part of the video becomes the short.</li>
+      <li><b>One edit, two products.</b> <code>--deliverables both</code> renders the long video, then <code>cutdown</code> carries the same cuts, captions and graphics into a 9:16 short (window picked at a sentence end; Shorts limit warned). <code>cutdown</code> also works on its own.</li>
+      <li><b>Blurred-background fit</b> (<code>--fit blur</code>) shows the whole picture in a vertical frame instead of cropping it away.</li>
+      <li><b>Delivery tuning.</b> Capped CRF, High profile, BT.709 colour tags, accurate graphic colours, 320 kb/s AAC, targets <code>youtube</code>/<code>web</code>/<code>master</code>; verification checks tags and bitrate.</li>
+      <li><b>Voice treatment.</b> Each voice is measured: high-pass, de-ess, light compression always; presence EQ only for dull voices; denoise only for noisy rooms (<code>--voice auto|on|off</code>).</li>
+      <li><b>Caption hygiene and review.</b> Fragments, fillers and stutters removed, <code>captions.fixes</code> for names, a caption audit (overlap, reading speed, length, flicker, lone words).</li>
+      <li><b>Graphic readability audit.</b> Text off the frame, clipped, too small or low contrast is found in the render browser and reported as review findings; frozen picture is flagged.</li>
+      <li><b>Brand and publishing.</b> A logo bug (<code>watermark</code>, <code>--brand brand.json</code>) and a drafted <code>YOUTUBE.md</code> (title options, description, chapters YouTube will accept, credits, tags, checklist).</li>
+      <li><b>Pace <code>relaxed</code></b> for interviews and vlogs.</li>
+    </ul>
+  </div>
+
+  <div class="ver">
+    <h3><span class="tag old">0.4.1</span>Calm framing, content always visible</h3>
     <ul>
       <li><b>No zoom flicker.</b> The punch-in on every other cut is gone by default; if enabled it holds for 8 seconds or more, and nothing zooms while a graphic is on screen.</li>
       <li><b>The slide stays visible beside a panel.</b> The picture eases down next to the panel and back, instead of being covered. <code>--fit contain</code> shows the whole frame for slides in vertical videos.</li>
@@ -696,6 +711,8 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
   <h2>Command reference</h2>
   <div class="tablewrap"><table>
     <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>brief</code></td><td>Settle the format first: long-form, vertical short, both or feed; footage type, framing, short length. <code>--questions</code> prints the questions for an agent to ask.</td></tr>
+    <tr><td><code>cutdown</code></td><td>Reformat a finished edit (and optionally a time window) to 9:16, 1:1, 4:5 or 16:9 with <code>--fit blur|cover|contain</code>; <code>--max-seconds</code>, <code>--from/--to</code>, <code>--highlight</code>.</td></tr>
     <tr><td><code>auto</code></td><td>Inspect, transcribe, cut, review and render a recording in one go.</td></tr>
     <tr><td><code>inspect</code></td><td>Measure loudness, true peak, pauses, speech ratio and pacing; print suggestions.</td></tr>
     <tr><td><code>transcribe</code></td><td>Local word timestamps (<code>--engine whisper</code>, or <code>parakeet</code> via HyperFrames).</td></tr>
@@ -768,6 +785,6 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
 </section>
 
 </main>
-<footer>Video Monk 0.4.1 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
+<footer>Video Monk 0.5.0 · MIT licensed · Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.</footer>
 </body>
 </html>

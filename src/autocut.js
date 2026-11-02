@@ -270,13 +270,23 @@ export async function materializeEdit(context, ranges, output, execute = run) {
     })),
     audio: { ducking: { enabled: true, amountDb: style.audio.duckingDb }, voice: { enhance: options.voice || 'auto' } },
     notes: `style: ${style.name}`,
-    delivery: { targetLufs: options.targetLufs ?? -14, truePeak: -1 }
+    delivery: { targetLufs: options.targetLufs ?? -14, truePeak: -1, ...(options.target ? { target: options.target } : {}) }
   };
+  // Brand kit: theme tokens and a logo bug from a --brand JSON ({ theme, logo: { path, position, size, opacity }, rights, attribution }).
+  if (options.brand) {
+    const b = options.brand;
+    if (b.theme) manifest.theme = { ...b.theme };
+    if (b.logo?.path) {
+      manifest.assets.push({ id: 'brand-logo', path: rel(path.resolve(b.dir, b.logo.path)), kind: 'image', approved: options.rightsConfirmed === true,
+        rights: b.rights || 'Brand asset supplied by the creator (confirm before approval)', attribution: b.attribution || 'Creator' });
+      manifest.watermark = { asset: 'brand-logo', position: b.logo.position || 'top-right', size: b.logo.size ?? 0.1, opacity: b.logo.opacity ?? 0.85 };
+    }
+  }
   let timelineWords = null;
   if (words) {
     timelineWords = remapWords(words, placed);
     await writeJson(path.join(output, 'words.timeline.json'), timelineWords);
-    manifest.captions = { words: 'words.timeline.json', style: options.captionStyle || 'kinetic', position: 'bottom' };
+    manifest.captions = { words: 'words.timeline.json', style: options.captions === 'plain' ? 'plain' : options.captionStyle || 'kinetic', position: 'bottom', ...(options.captions === 'off' ? { burnIn: false } : {}) };
   }
   await writeJson(path.join(output, 'production.json'), manifest);
   const kept = placed.reduce((n, r) => n + r.timelineFrames / fps, 0);

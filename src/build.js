@@ -8,6 +8,7 @@ import { inspectMedia, digest } from './production.js';
 import { loadTimeline, chapters } from './timeline.js';
 import { MotionRenderer, pool, resolveTheme } from './motion/render.js';
 import { pageWords, pagesToSrt, pagesToVtt } from './captions.js';
+import { youtubePackage } from './publish.js';
 import { markStress } from './stress.js';
 import { RGB_TO_YUV, videoArgs, hdrInfo, sourceColorFix } from './delivery.js';
 import { measureVoice, voiceChain, describeVoice } from './voice.js';
@@ -42,12 +43,19 @@ export async function reviewTimeline(file, output, approve = false, execute = ru
 }
 
 // Fit a visual stream to the frame, with optional camera motion. `frames` = output frame count of that layer.
+let blurCount = 0;
 function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames, speed = 1) {
   const type = motion?.type || 'none';
   const retime = speed === 1 ? '' : `setpts=(PTS-STARTPTS)/${speed},`;
   const cover = (w, h) => `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}`;
   const contain = (w, h, bg) => `scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${bg}`;
-  const fitTo = (w, h) => (fit === 'contain' ? contain(w, h, '0x0b1020') : cover(w, h));
+  // blur: the whole picture is shown, over a darkened blurred copy of itself that fills the frame (the standard vertical reframe).
+  const blur = (w, h) => {
+    const n = ++blurCount, bw = Math.max(2, Math.round(w / 8 / 2) * 2), bh = Math.max(2, Math.round(h / 8 / 2) * 2);
+    return `split=2[bga${n}][fga${n}];[bga${n}]scale=${bw}:${bh}:force_original_aspect_ratio=increase:flags=bilinear,crop=${bw}:${bh},boxblur=3:2,scale=${w}:${h}:flags=bilinear,eq=brightness=-0.12:saturation=0.85[bgb${n}];` +
+      `[fga${n}]scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos[fgb${n}];[bgb${n}][fgb${n}]overlay=(W-w)/2:(H-h)/2`;
+  };
+  const fitTo = (w, h) => (fit === 'contain' ? contain(w, h, '0x0b1020') : fit === 'blur' ? blur(w, h) : cover(w, h));
   if (type === 'none') return `${retime}fps=${fps},${fitTo(W, H)},setsar=1`;
   if (type === 'punch-in') {
     const a = motion.amount ?? 0.12;
@@ -84,7 +92,7 @@ function motionJob(loaded, spec, duration, overlay) {
     width: m.width, height: m.height, fps: m.fps, duration, theme: m.theme ? { ...m.theme, font: undefined } : undefined,
     font: loaded.font, placement: spec.placement, panel: spec.panel,
     background: overlay ? (spec.background || 'transparent') : (spec.background || 'grid'), exit: overlay,
-    fadeFrame: overlay && Boolean(spec.background) && spec.background !== 'transparent'
+    fadeFrame: overlay && Boolean(spec.background) && spec.background !== 'transparent', audit: true
   };
 }
 
@@ -175,6 +183,21 @@ export async function buildTimeline(file, approval, output, options = {}) {
     } finally {
       await renderer.close();
     }
+  }
+
+  // Readability audit results (text off-canvas / clipped / too small / low contrast) per graphic, with where each sits in the video.
+  const graphicAudit = [];
+  for (const { key, job } of jobs) {
+    const issues = rendered.get(key)?.audit;
+    if (!issues?.length) continue;
+    let start = 0;
+    const scene = key.match(/^[go](\d+)/);
+    if (scene) start = timeline[Number(scene[1])]?.start ?? 0;
+    const local = key.match(/^o\d+-(\d+)$/);
+    if (local) start += timeline[Number(key.match(/^o(\d+)/)[1])]?.overlays[Number(local[1])]?.start ?? 0;
+    const global = key.match(/^global-(\d+)$/);
+    if (global) start = (m.globalOverlays || [])[Number(global[1])]?.start ?? 0;
+    graphicAudit.push({ key, template: job.template, start: Math.round(start * 1000) / 1000, duration: job.duration, issues });
   }
 
   let libraryStats = null;
@@ -403,6 +426,20 @@ export async function buildTimeline(file, approval, output, options = {}) {
     fg.push(`[${cur}][g${k}]overlay=eof_action=pass:format=yuv444:enable='between(t,${sec(o.start)},${sec(o.start + o.duration - 0.5 / m.fps)})'[go${k}]`);
     cur = `go${k}`;
   });
+  // Brand bug: a small logo in a corner for the whole video (or a window of it), under the captions' layer order but over everything else.
+  if (m.watermark) {
+    const w = m.watermark, wa = assets.get(w.asset);
+    const wi = fAdd(['-loop', '1', '-framerate', String(m.fps), '-i', wa.path]);
+    const wide = Math.max(16, Math.round(m.width * (w.size ?? 0.1) / 2) * 2);
+    const margin = Math.round(m.width * (w.margin ?? 0.03));
+    const [vert, horiz] = (w.position || 'top-right').split('-');
+    const x = horiz === 'left' ? margin : `W-w-${margin}`, y = vert === 'top' ? margin : `H-h-${margin}`;
+    const from = w.start ?? 0, until = w.end ?? duration;
+    fg.push(`[${wi}:v]format=rgba,scale=${wide}:-2:flags=lanczos,colorchannelmixer=aa=${w.opacity ?? 0.85},${RGB_TO_YUV},format=yuva444p,setpts=PTS-STARTPTS[wm]`);
+    fg.push(`[${cur}]format=yuv444p[wmbase]`);
+    fg.push(`[wmbase][wm]overlay=x=${x}:y=${y}:format=yuv444:shortest=0:enable='between(t,${sec(from)},${sec(until)})'[wmo]`);
+    cur = 'wmo';
+  }
   fg.push(`[${cur}]format=yuv420p[vout]`);
   const videoFile = path.join(work, 'video.mp4');
   // Capped CRF, High profile, closed GOPs and BT.709 tags (see delivery.js); the target comes from manifest.delivery.target.
@@ -453,15 +490,17 @@ export async function buildTimeline(file, approval, output, options = {}) {
   await writeNew(path.join(output, 'timeline.xml'), timelineXml(loaded, work, output));
   const verification = await verifyMedia(finalFile, loaded, execute);
   const credits = [...assets.values()].map(({ id, rights, attribution, sourceUrl }) => ({ id, rights, attribution, sourceUrl }));
+  await writeNew(path.join(output, 'YOUTUBE.md'), youtubePackage({ title: m.title, duration, width: m.width, height: m.height, words: loaded.words, chapters: chapterList, credits,
+    captionsFile: captionPages ? 'captions.srt' : null, warnings }));
   await writeNew(path.join(output, 'CREDITS.txt'), credits.map(a => `${a.attribution} — ${a.rights}${a.sourceUrl ? ` (${a.sourceUrl})` : ''}`).join('\n') + '\n');
   const report = {
     version: 2, status: verification.passed ? 'technical-checks-passed-needs-human-review' : 'failed-technical-checks',
     fingerprint: loaded.fingerprint, quality, renderSeconds: Math.round((Date.now() - started) / 1000),
-    outputs: { video: 'final.mp4', captions: captionPages ? ['captions.srt', 'captions.vtt'] : [], chapters: chapterList.length ? 'chapters.txt' : null,
+    outputs: { video: 'final.mp4', captions: captionPages ? ['captions.srt', 'captions.vtt'] : [], chapters: chapterList.length ? 'chapters.txt' : null, publishing: 'YOUTUBE.md',
       thumbnail: 'thumbnail.png', contactSheet: 'contact-sheet.png', stems: ['stems/voice.wav', 'stems/music.wav', 'stems/sfx.wav', 'stems/master.wav'],
       resolveTimeline: 'timeline.xml' },
     timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters, splitLayouts: splitCount },
-    library: libraryStats, warnings, voice: voiceReport,
+    library: libraryStats, warnings, voice: voiceReport, graphicAudit,
     verification,
     humanReview: { facts: 'NOT VERIFIED', captionsWording: captionPages ? 'NOT VERIFIED' : 'N/A', rights: 'USER ATTESTED', wholeVideoPlayback: 'NOT VERIFIED' },
     credits

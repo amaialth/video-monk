@@ -15,6 +15,9 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 
 ## What's new
 
+- **0.5: production-grade, in the format you need.** Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
+  from the long edit (`cutdown`, blurred-background fit), tuned delivery (capped CRF, BT.709, accurate colours), voice treatment, caption and
+  graphic readability audits, a logo bug and a drafted `YOUTUBE.md`.
 - **0.4: checked, reusable, on-style.** Pacing measured from your recording's noise floor (quiet time in one real edit fell from 8.9% to
   0.3%), an independent reviewer for every stage with fixes limited to what was flagged (`REVIEW-LOOP.md`), a shared asset library that
   reuses graphics, transcripts and storyboards, and a ByteMonk-inspired house style by default.
@@ -131,9 +134,22 @@ video-monk auto --media talk.mp4 --output talk-v1 --transcribe \
 video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude --allow-llm \
   --graphics medium --allow-render --approve-plan --rights-confirmed
 
-# Vertical short from the same recording, fast draft quality
-video-monk auto --media talk.mp4 --output talk-short --transcribe --format vertical \
+# Not sure which format? Answer a few questions first (long-form, vertical short, or both)
+video-monk brief --output brief.json
+video-monk auto --brief brief.json --media talk.mp4 --output talk-both --transcribe \
+  --allow-render --approve-plan --rights-confirmed
+
+# Long-form plus a 9:16 short cut from it (render/final.mp4 and short/final.mp4)
+video-monk auto --media talk.mp4 --output talk-both --transcribe --deliverables both --short-max 55 \
+  --allow-render --approve-plan --rights-confirmed
+
+# Only a vertical short, whole picture over a blurred background
+video-monk auto --media talk.mp4 --output talk-short --transcribe --deliverables short --fit blur \
   --quality draft --allow-render --approve-plan --rights-confirmed
+
+# Re-cut a finished edit into another format or time window
+video-monk cutdown --manifest talk-v1/edit/production.graphics.json --output talk-v1/edit/short.json \
+  --aspect 9:16 --from 30 --to 85
 ```
 
 `talk-v1/render/final.mp4` is the result. Read `REVIEW.txt` and watch the whole file

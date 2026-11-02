@@ -14,6 +14,7 @@ import { DENSITY, applyStoryboard, planStoryboard, storyboardMarkdown } from './
 import { STOP_WORDS, cleanWord } from './stress.js';
 import { reviewProduction, buildProduction } from './production.js';
 import { claudeReview } from './review-llm.js';
+import { auditSrt } from './captions.js';
 import { resolveStyle } from './style.js';
 
 const round = n => Math.round(n * 1000) / 1000;
@@ -312,11 +313,39 @@ export async function reviewRender(artifact, ctx) {
     findings.push(finding({ id: `render-black-${from.toFixed(1)}`, severity: 'major', owner: item ? 'storyboard' : 'render', target: { time: [from, to], ...(item ? { item: item.id } : {}) },
       message: `black frames for ${(to - from).toFixed(1)} s at ${from.toFixed(1)} s${item ? ` (during ${item.id})` : ''}`, ...(item ? { suggestion: 'drop the graphic that renders black', fix: { op: 'dropItem', id: item.id } } : {}) }));
   }
+  // Frozen picture: expected for screen recordings and held slides, so always advisory.
+  const frozen = [...(await detect(final, 'freezedetect=n=-60dB:d=4', execute)).matchAll(/freeze_start: ([0-9.]+)[\s\S]*?freeze_end: ([0-9.]+)/g)].map(m => [Number(m[1]), Number(m[2])]);
+  for (const [from, to] of frozen) {
+    findings.push(finding({ id: `render-freeze-${from.toFixed(1)}`, severity: 'minor', owner: 'render', target: { time: [from, to] },
+      message: `the picture is frozen for ${(to - from).toFixed(1)} s at ${from.toFixed(1)} s`, suggestion: 'add a graphic, B-roll or a zoom here, or cut the stretch if it is dead time' }));
+  }
   const silences = [...(await detect(final, 'silencedetect=noise=-45dB:d=0.8', execute, 'a')).matchAll(/silence_start: ([0-9.]+)[\s\S]*?silence_end: ([0-9.]+)/g)].map(m => [Number(m[1]), Number(m[2])]);
   for (const [from, to] of silences) {
     const mapped = cut ? mapTimeline(cut, from) : null;
     findings.push(finding({ id: `render-silence-${from.toFixed(1)}`, severity: 'major', owner: mapped ? 'cut' : 'render', target: { time: [from, to] }, message: `${(to - from).toFixed(1)} s of silence at ${from.toFixed(1)} s in the final video`,
       ...(mapped ? { suggestion: 'cut the dead air', fix: { op: 'removeQuiet', range: mapped.index, from: round(mapped.source), to: round(Math.min(mapped.rangeEnd, mapped.source + (to - from))) } } : {}) }));
+  }
+  // Readability audit of the rendered graphics: off-canvas or clipped text is a defect; tiny text and low contrast are advisories.
+  for (const g of report.graphicAudit || []) {
+    const item = storyboard?.items.find(i => g.start >= i.start - 0.3 && g.start < i.start + i.duration + 0.3);
+    for (const issue of g.issues) {
+      const hard = issue.kind === 'offcanvas' || issue.kind === 'clipped';
+      const word = { offcanvas: 'runs off the edge of the frame', clipped: 'is clipped by its box', small: 'is too small to read on a phone', contrast: 'has low contrast' }[issue.kind];
+      findings.push(finding({ id: `render-layout-${g.key}-${issue.kind}`, severity: hard ? 'major' : 'minor', owner: item ? 'storyboard' : 'render', target: { time: [g.start, g.start + g.duration], ...(item ? { item: item.id } : {}) },
+        message: `${g.template} text "${issue.text}" ${word} (${issue.detail})`,
+        ...(item && hard ? { suggestion: 'shorten the text or drop the graphic', fix: { op: 'dropItem', id: item.id } } : { suggestion: 'shorten the text or pick a roomier template' }) }));
+    }
+  }
+  // Caption quality: overlaps are defects; speed, length, flicker and lone words are advisories unless widespread.
+  const srtFile = path.join(outputDir, 'captions.srt');
+  if (await exists(srtFile)) {
+    for (const issue of auditSrt(await readFile(srtFile, 'utf8'))) {
+      const share = issue.count / Math.max(1, issue.total);
+      const word = { overlap: 'overlap the next caption', fast: 'are read too fast', long: 'are too long for one screen', flicker: 'flash by too quickly', lone: 'show a lone short word' }[issue.kind];
+      findings.push(finding({ id: `render-captions-${issue.kind}`, severity: issue.kind === 'overlap' || share > 0.25 ? 'major' : 'minor', owner: 'render', target: { time: [issue.examples[0].at, issue.examples[0].at + 2] },
+        message: `${issue.count} caption page(s) ${word} (limit ${issue.limit}); first at ${issue.examples[0].at}s: "${issue.examples[0].text}"`,
+        suggestion: 'adjust captions.maxWords / maxChars or add captions.fixes' }));
+    }
   }
   if (artifact.manifestCaptions && !(await exists(path.join(outputDir, 'captions.srt')))) findings.push(finding({ id: 'render-captions', severity: 'major', owner: 'render', message: 'captions were requested but captions.srt was not produced' }));
   let costUsd = null;
@@ -328,7 +357,7 @@ export async function reviewRender(artifact, ctx) {
     findings.push(...reviewed.findings);
     costUsd = reviewed.costUsd;
   }
-  return verdict({ stage: 'render', round: 0, reviewer: ctx.agent === 'claude' ? 'render-reviewer (code + Claude)' : 'render-reviewer (code)', findings, metrics: { blackSegments: black.length, silentSegments: silences.length, loudness: report.verification?.measured?.integratedLufs, truePeak: report.verification?.measured?.truePeakDb, ...(costUsd ? { reviewCostUsd: costUsd } : {}) } });
+  return verdict({ stage: 'render', round: 0, reviewer: ctx.agent === 'claude' ? 'render-reviewer (code + Claude)' : 'render-reviewer (code)', findings, metrics: { blackSegments: black.length, frozenSegments: frozen.length, silentSegments: silences.length, loudness: report.verification?.measured?.integratedLufs, truePeak: report.verification?.measured?.truePeakDb, ...(costUsd ? { reviewCostUsd: costUsd } : {}) } });
 }
 
 async function sampleFrames(file, duration, execute, dir) {

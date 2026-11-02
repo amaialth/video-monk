@@ -80,3 +80,10 @@ final.mp4, captions.srt/.vtt, chapters.txt, thumbnail.png, contact-sheet.png,
 stems/ (voice, music, sfx, master), timeline.xml (Resolve: scene clips on V1/V2
 plus stems), report.json (decode, size, fps, duration, loudness, true peak),
 REVIEW.txt and CREDITS.txt. `--quality draft` renders faster for iteration.
+
+## Fit, watermark and captions fixes (0.5.0)
+
+- `fit` on a scene or B-roll: `cover` (crop to fill), `contain` (letterbox) or `blur` (whole picture over a darkened blurred copy of itself; the standard vertical reframe).
+- `watermark`: `{ "asset": "<image asset id>", "position": "top-right|top-left|bottom-right|bottom-left", "size": 0.1, "opacity": 0.85, "margin": 0.03, "start": 0, "end": <s> }` places a logo bug for the whole video or a window.
+- `captions.fixes`: `{ "replace": { "gpt 4": "GPT-4" }, "drop": ["you know"] }` applied to the caption words.
+- `audio.voice.enhance`: `auto` (default), `on` or `off`. `delivery.target`: `youtube`, `web` or `master`.

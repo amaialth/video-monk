@@ -8,6 +8,7 @@ import { reviewProduction, buildProduction } from './production.js';
 import { storyboardManifest } from './storyboard.js';
 import { Ledger, runPipeline } from './loop.js';
 import { buildStages } from './stages.js';
+import { buildShort } from './deliverables.js';
 
 async function legacyAutoEdit(media, output, options = {}, execute = run) {
   const log = options.log || (() => {});
@@ -83,6 +84,12 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   await writeFile(path.join(output, 'REVIEW-LOOP.md'), ledger.markdown(`Review loop: ${path.basename(media)}`));
   const a = result.artifacts;
   const rendered = a.render?.report || null;
-  return { analysis, loop: { status: result.status, stoppedAt: result.stoppedAt || null, summary: ledger.stageSummary() }, cut: a.cut?.result, manifest: (a.storyboard || a.cut)?.manifestFile,
+  const out = { analysis, loop: { status: result.status, stoppedAt: result.stoppedAt || null, summary: ledger.stageSummary() }, cut: a.cut?.result, manifest: (a.storyboard || a.cut)?.manifestFile,
     storyboard: a.storyboard?.storyboard || null, rendered, renderDir: a.render?.outputDir || null, finalFile: a.render ? path.join(a.render.outputDir, 'final.mp4') : null };
+  // "Long-form plus a vertical short": the short is cut from the approved long edit, so it carries the same cuts, captions and graphics.
+  if (options.deliverables === 'both' && out.manifest && result.status !== 'needs-human' && rendered && rendered.status !== 'failed-technical-checks') {
+    log('Cutting the vertical short from the long edit...');
+    out.short = await buildShort({ manifest: out.manifest, output: path.join(output, 'short'), options, execute, log });
+  }
+  return out;
 }

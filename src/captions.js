@@ -130,3 +130,25 @@ export function remapWords(words, ranges) {
 }
 
 const round = n => Math.round(n * 1000) / 1000;
+
+// Caption quality audit on SRT text: reading speed, line length, flicker, overlap and lone-word pages.
+// Returns [{ kind, count, examples: [{ at, text }], limit }] sorted by importance.
+export function auditSrt(srt, { maxCps = 20, maxLine = 42, minOnScreen = 0.6 } = {}) {
+  const toSec = t => { const [h, m, rest] = t.split(':'); const [s, ms] = rest.split(','); return Number(h) * 3600 + Number(m) * 60 + Number(s) + Number(ms) / 1000; };
+  const pages = srt.split(/\r?\n\r?\n/).map(b => b.trim().split(/\r?\n/)).filter(b => b.length >= 3).map(b => {
+    const [from, to] = b[1].split(' --> ').map(toSec);
+    return { from, to, text: b.slice(2).join(' ') };
+  });
+  const buckets = { overlap: [], fast: [], long: [], flicker: [], lone: [] };
+  pages.forEach((p, i) => {
+    const chars = p.text.length, dur = p.to - p.from;
+    if (pages[i + 1] && p.to > pages[i + 1].from + 0.02) buckets.overlap.push(p);
+    if (dur > 0 && chars / dur > maxCps) buckets.fast.push(p);
+    if (chars > maxLine) buckets.long.push(p);
+    if (dur < minOnScreen && p.text.split(' ').length > 1) buckets.flicker.push(p);
+    if (p.text.split(' ').length === 1 && chars <= 4 && !/[.!?]$/.test(p.text)) buckets.lone.push(p);
+  });
+  const limits = { overlap: 'no overlap', fast: `${maxCps} characters per second`, long: `${maxLine} characters per page`, flicker: `${minOnScreen} s on screen`, lone: 'no lone short words' };
+  return Object.entries(buckets).filter(([, v]) => v.length).map(([kind, v]) => ({ kind, count: v.length, limit: limits[kind], total: pages.length,
+    examples: v.slice(0, 3).map(p => ({ at: Math.round(p.from * 10) / 10, text: p.text })) }));
+}

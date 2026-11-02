@@ -21,8 +21,18 @@ informed by the public video-editor-skills, claude-code-video-toolkit and awesom
 ### Changed
 - Caption pages hold longer by default (0.9 s minimum).
 
-### Not done yet
-Layout/contrast audit of rendered graphics, blurred-background fit and a `cutdown` command for 9:16 / 1:1, logo watermark, and a YOUTUBE.md package.
+- **Format questions first** (`src/brief.js`, `video-monk brief`): long-form 16:9, vertical 9:16 short, both, or square/4:5; footage type; vertical framing; short length; which part of the video. Claude Code asks them with AskUserQuestion (`brief --questions`); `auto --brief brief.json` applies the answers.
+- **`--deliverables long|short|both|feed`** on `auto`. `both` renders the long edit, then cuts a 9:16 short from the approved edit into `short/`.
+- **`cutdown` command** (`src/cutdown.js`): reformat a finished manifest to 9:16, 1:1, 4:5 or 16:9 and optionally slice a time window (scenes, B-roll, graphics, captions, music). Windows end on a sentence; `--highlight` proposes the strongest stretch for approval; Shorts length is warned about.
+- **`fit: blur`**: whole picture over a darkened, blurred copy of itself (`--fit blur`).
+- **Graphic readability audit** (`src/motion/audit.js`): text off the frame or clipped is a defect; text under 2.2% of the short side and contrast under 3:1 are advisories. In `report.graphicAudit` and as render-review findings.
+- **Caption audit** (overlap, reading speed over 20 chars/s, long pages, flicker, lone words) and **frozen-picture** detection in the render review.
+- **`watermark`** (logo bug) and **`--brand brand.json`** (theme tokens + logo).
+- **`YOUTUBE.md`** in every render: title options, description draft, chapters only when YouTube would accept them, credits, tags and an upload checklist.
+- New references for agents: `content-formats.md`, `delivery-qa.md`.
+
+### Limits
+No HDR to SDR conversion (warning only). The highlight picker is a heuristic proposal, not a judgement of what is interesting. Graphics laid out for landscape can be tight in 9:16; the readability audit reports where.
 
 ## 0.4.1: calm framing, content always visible
 

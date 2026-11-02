@@ -11,7 +11,7 @@ the [timeline reference](./references/timeline-v2.md) and
 [explainer graphics](./references/explainer-graphics.md), [kinetic typography](./references/kinetic-typography.md)
 and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
 [review loop](./references/review-loop.md); generated and licensed assets live in the
-[asset library](./references/asset-library.md). Style: `--style bytemonk` (default).
+[asset library](./references/asset-library.md). Style: `--style bytemonk` (default). **Settle the format first**: ask the [format questions](./references/content-formats.md) unless the request already answers them. Delivery checks are in [delivery QA](./references/delivery-qa.md).
 
 ## Team and handoff
 
@@ -30,14 +30,21 @@ and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
 The main conversation coordinates; subagents never nest. Skip a stage only with
 an explicit not-needed decision, never a faked output.
 
+## Ask first: what are we making?
+
+Long-form 16:9, a vertical 9:16 short, both, or a square/4:5 feed post are different products. If the request does not say which, run
+`video-monk brief --questions` and ask with AskUserQuestion (format, footage type, then vertical framing, short length and which part of
+the video). Resolve with `video-monk brief --answers answers.json --output brief.json` and pass `--brief brief.json` to `auto`.
+Details: [content formats](./references/content-formats.md).
+
 ## Fast path (talking head / screen recording)
 
 `video-monk auto --media <recording> --output <new-folder> --transcribe --allow-render --approve-plan --rights-confirmed`
-inspects, transcribes locally, removes pauses, breaths and filler words (`--pace natural|tight|extra`,
+inspects, transcribes locally, removes pauses, breaths and filler words (`--pace relaxed|natural|tight|extra`,
 default tight, threshold measured from the recording's own noise floor; `--speed 1.1` lifts slow speech), adds jump-cut
 punch-ins, plans explainer graphics from the transcript (`--graphics off|light|medium|heavy`),
 burns kinetic captions (stressed words in italic serif), masters loudness and writes final.mp4. Add
-`--format vertical` for Shorts/Reels (center reframe), `--quality draft` for speed.
+`--deliverables long|short|both|feed` for Shorts/Reels (vertical from the start, or cut from the long edit; `--fit blur|cover`), `video-monk cutdown` to reformat a finished edit or a time window of it, `--quality draft` for speed.
 Use `--approve-plan`/`--rights-confirmed` only after the user approves.
 
 ## Full procedure

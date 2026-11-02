@@ -31,7 +31,7 @@ export async function loadTimeline(file, execute = run) {
   const raw = await readFile(file);
   const m = JSON.parse(raw);
   keys(m, ['version', 'title', 'fps', 'width', 'height', 'theme', 'assets', 'scenes', 'audio', 'captions',
-    'globalOverlays', 'delivery', 'notes'], 'manifest');
+    'globalOverlays', 'delivery', 'watermark', 'notes'], 'manifest');
   check(m.version === 2 && text(m.title, 120), 'version 2 and a title (1-120 chars) are required');
   check(RATES.includes(m.fps), `fps must be one of ${RATES.join(', ')}`);
   check(Number.isInteger(m.width) && Number.isInteger(m.height) && m.width % 2 === 0 && m.height % 2 === 0 &&
@@ -128,7 +128,7 @@ export async function loadTimeline(file, execute = run) {
     check(opt(scene.chapter, v => text(v, 80)), `${label}.chapter must be short text`);
     check(finite(scene.duration, 1 / m.fps, 3600), `${label}.duration must be 1 frame to 3600s`);
     aligned(scene.duration, `${label}.duration`);
-    check(opt(scene.fit, v => ['cover', 'contain'].includes(v)), `${label}.fit must be cover or contain`);
+    check(opt(scene.fit, v => ['cover', 'contain', 'blur'].includes(v)), `${label}.fit must be cover, contain or blur`);
     motion(scene.motion, `${label}.motion`);
     check(scene.kind === 'video' || scene.speed === undefined, `${label}: only video scenes can have a speed`);
     if (scene.kind === 'video' || scene.kind === 'image') {
@@ -162,7 +162,7 @@ export async function loadTimeline(file, execute = run) {
         `${bl} must fit inside the scene`);
       aligned(b.start, `${bl}.start`); aligned(b.duration, `${bl}.duration`);
       if (asset.kind === 'video') check(finite(b.in ?? 0, 0, 1e7) && (b.in ?? 0) + b.duration <= asset.metadata.duration + 0.05, `${bl} exceeds source duration`);
-      check(opt(b.fit, v => ['cover', 'contain'].includes(v)), `${bl}.fit must be cover or contain`);
+      check(opt(b.fit, v => ['cover', 'contain', 'blur'].includes(v)), `${bl}.fit must be cover, contain or blur`);
       motion(b.motion, `${bl}.motion`);
     }
     const overlays = scene.overlays || [];
@@ -255,6 +255,17 @@ export async function loadTimeline(file, execute = run) {
   for (const [i, o] of globals.entries()) {
     await motionJob(o, `globalOverlays[${i}]`, { overlay: true });
     check(finite(o.start, 0, duration) && finite(o.duration, 0.2, duration) && o.start + o.duration <= duration + 1e-6, `globalOverlays[${i}] must fit in the timeline`);
+  }
+
+  if (m.watermark !== undefined) {
+    const w = m.watermark;
+    keys(w, ['asset', 'position', 'size', 'opacity', 'margin', 'start', 'end'], 'watermark');
+    check(assets.get(w.asset)?.kind === 'image', 'watermark.asset must be the id of an image asset (a logo PNG with transparency works best)');
+    check(opt(w.position, v => ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(v)), 'watermark.position must be top-left, top-right, bottom-left or bottom-right');
+    check(opt(w.size, v => finite(v, 0.03, 0.5)), 'watermark.size must be 0.03-0.5 (fraction of the frame width)');
+    check(opt(w.opacity, v => finite(v, 0.1, 1)), 'watermark.opacity must be 0.1-1');
+    check(opt(w.margin, v => finite(v, 0, 0.2)), 'watermark.margin must be 0-0.2 (fraction of the frame width)');
+    check(opt(w.start, v => finite(v, 0, duration)) && opt(w.end, v => finite(v, 0, duration)), 'watermark.start/end must be inside the timeline');
   }
 
   const delivery = m.delivery || {};

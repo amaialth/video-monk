@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFile, readdir, mkdir } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { exists, writeNew, writeJson, readJson, loadProject, youtubeChannel, integer, endpoint, run } from './core.js';
 import { catalog, downloadVideo, analyze, probe } from './media.js';
 import { complete, parseModelJson, styleContent } from './llm.js';
@@ -18,12 +19,22 @@ import { templateCatalog } from './motion/templates.js';
 import { renderGraphic } from './motion/preview.js';
 import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
+import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
+import { cutdownManifest, ASPECTS } from './cutdown.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  brief      [--questions] [--answers <answers.json>] [--output <new brief.json>]
+             Settle the format BEFORE editing: long-form 16:9, a vertical 9:16 short, both, or a square/4:5 feed post;
+             footage type, pace, graphics, captions, destination. Interactive in a terminal; --questions prints them as JSON.
+  cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
+             [--fit blur|cover|contain] [--max-seconds 55 | --from <s> --to <s>] [--highlight] [--width 1080]
+             Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
+             [--brief <brief.json>] [--deliverables long|short|both|feed] [--short-max <s> --short-from <s> --short-to <s> --short-pick hook|highlight|range]
+             [--captions kinetic|plain|off] [--target youtube|web|master] [--brand <brand.json: theme + logo>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
              [--style bytemonk|plain (default bytemonk)] [--pace relaxed|natural|tight|extra] [--speed 1-1.5] [--asr-prompt <text>]
@@ -43,7 +54,7 @@ AUTOMATED EDITING
   models     [--download <name> --allow-download]  List/download local whisper.cpp models
   autocut    --media <recording> --output <new folder> [--words <words.json>]
              [--format ...] [--pace relaxed|natural|tight|extra] [--speed 1-1.5] [--noise-db <dB>] [--min-silence <s>] [--keep-fillers]
-             [--jump-zoom | --no-jump-zoom] [--fit cover|contain] [--voice auto|on|off] [--rights-confirmed] [--rights <text>] [--attribution <text>]
+             [--jump-zoom | --no-jump-zoom] [--fit cover|contain|blur] [--voice auto|on|off] [--rights-confirmed] [--rights <text>] [--attribution <text>]
              Remove pauses/fillers -> version-2 production.json + remapped captions
   templates  [--json]                     List motion-graphics templates and their props
   graphic    --template <name> --props <json|file> --output <.mp4|.mov|.png>
@@ -137,12 +148,14 @@ const definitions = {
   models: { download: 'string', 'allow-download': 'boolean' },
   inspect: { media: 'string', output: 'string' },
   autocut: { media: 'string', output: 'string', words: 'string', format: 'string', 'noise-db': 'string', 'min-silence': 'string', pace: 'string', speed: 'string', style: 'string',
-    'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string' },
+    'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', title: 'string', captions: 'string', target: 'string', brand: 'string' },
   review: { stage: 'string', words: 'string', glossary: 'string', manifest: 'string', media: 'string', storyboard: 'string', 'render-dir': 'string', style: 'string', pace: 'string',
     output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
     'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string' },
-  auto: { media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
+  brief: { questions: 'boolean', answers: 'string', output: 'string' },
+  cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
+  auto: { concurrency: 'string', brief: 'string', brand: 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', title: 'string' },
@@ -267,7 +280,8 @@ function cutOptions(opts) {
   return {
     words: opts.words ? path.resolve(opts.words) : undefined, format: opts.format, noiseDb: number('noise-db', -80, -10),
     minSilence: number('min-silence', 0.05, 5), removeFillers: !opts['keep-fillers'], jumpZoom: opts['jump-zoom'] ? true : opts['no-jump-zoom'] ? false : undefined, fit: opts.fit, voice: opts.voice,
-    pace: opts.pace, speed: number('speed', 1, 1.5), style: opts.style,
+    pace: opts.pace, speed: number('speed', 1, 1.5), style: opts.style, captions: opts.captions, target: opts.target,
+    brand: opts.brand ? { ...JSON.parse(readFileSync(path.resolve(opts.brand), 'utf8')), dir: path.dirname(path.resolve(opts.brand)) } : undefined,
     rightsConfirmed: opts['rights-confirmed'] === true, rights: opts.rights, attribution: opts.attribution, title: opts.title
   };
 }
@@ -326,10 +340,19 @@ export async function main(args) {
       break;
     }
     case 'auto': {
+      const fromBrief = opts.brief ? briefToAutoOptions(await loadBrief(opts.brief)) : {};
+      const flag = (key, value) => (value !== undefined ? value : fromBrief[key]);
+      if (!opts.brief && !opts.format && !opts.deliverables) console.error('Note: no format given, so this makes a landscape long-form video. For a vertical short or both, pass --deliverables short|both (or run `video-monk brief` first).');
+      const deliverables = flag('deliverables', opts.deliverables) || 'long';
+      if (!['long', 'short', 'both', 'feed'].includes(deliverables)) throw new Error('--deliverables must be long, short, both or feed');
+      const cutOpts = cutOptions({ ...opts, format: opts.format ?? fromBrief.format ?? (deliverables === 'short' ? 'vertical' : deliverables === 'feed' ? 'square' : undefined),
+        pace: opts.pace ?? fromBrief.pace, fit: opts.fit ?? fromBrief.fit ?? (['short', 'feed'].includes(deliverables) ? 'blur' : undefined), captions: opts.captions ?? fromBrief.captions, target: opts.target ?? fromBrief.target });
       const result = await autoEdit(required(opts, 'media'), path.resolve(required(opts, 'output')), {
-        ...cutOptions(opts), words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
+        ...cutOpts, deliverables, shortFit: opts['short-fit'] ?? fromBrief.shortFit, shortMax: flag('shortMax', opts['short-max'] ? Number(opts['short-max']) : undefined) ?? (deliverables === 'both' ? 55 : undefined),
+        shortFrom: flag('shortFrom', opts['short-from'] ? Number(opts['short-from']) : undefined), shortTo: flag('shortTo', opts['short-to'] ? Number(opts['short-to']) : undefined),
+        shortPick: flag('shortPick', opts['short-pick']), concurrency: opts.concurrency ? Number(opts.concurrency) : undefined, words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
-        graphics: opts.graphics, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         presenter: opts.presenter, role: opts.role, reviewLoop: opts['review-loop'] === 'off' ? false : undefined,
         maxRounds: opts['max-rounds'] ? integer(opts['max-rounds'], 'max-rounds', 1, 8) : undefined, reviewAgent: opts['review-agent'],
         glossary: opts.glossary ? (await readFile(opts.glossary, 'utf8')).split(/\r?\n|,/).map(t => t.trim()).filter(Boolean) : undefined
@@ -339,7 +362,27 @@ export async function main(args) {
         const finalFile = result.finalFile || path.resolve(opts.output, 'render', 'final.mp4');
         console.log(`Rendered: ${finalFile} (${result.rendered.status}). Read REVIEW.txt and watch it end to end.`);
         if (result.rendered.status === 'failed-technical-checks' || result.loop?.status === 'needs-human') process.exitCode = 1;
+        if (result.short) console.log(`Vertical short: ${result.short.finalFile} (${result.short.rendered.status}, ${result.short.cut.window.duration}s).${result.short.cut.warnings.length ? ` ${result.short.cut.warnings.join('; ')}.` : ''} Watch it before publishing.`);
       } else console.log(`Plan ready: ${result.manifest}. Add overlays/music, then production-review and production-build.`);
+      break;
+    }
+    case 'brief': {
+      if (opts.questions) { console.log(JSON.stringify(QUESTIONS, null, 2)); break; }
+      let answers;
+      if (opts.answers) answers = JSON.parse(await readFile(opts.answers, 'utf8'));
+      else if (process.stdin.isTTY) answers = await askInteractive();
+      else throw new Error('brief needs a terminal, or --answers <answers.json>, or --questions to print the questions for an agent to ask');
+      const brief = resolveBrief(answers);
+      if (opts.output) await writeJson(path.resolve(opts.output), brief);
+      console.log(JSON.stringify(brief, null, 2));
+      console.error(`\nUse it: video-monk auto --brief ${opts.output || '<brief.json>'} --media <file> --output <new folder> --transcribe --allow-render --approve-plan --rights-confirmed`);
+      break;
+    }
+    case 'cutdown': {
+      const num = key => opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })());
+      const result = await cutdownManifest(required(opts, 'manifest'), required(opts, 'output'), { aspect: opts.aspect, fit: opts.fit, maxSeconds: num('max-seconds'),
+        from: num('from'), to: num('to'), highlight: opts.highlight, width: num('width') });
+      console.log(`Cutdown ${result.aspect} (${result.width}x${result.height}): ${result.window.duration}s from ${result.window.from}s to ${result.window.to}s, ${result.scenes} scenes.\nManifest: ${result.output}${result.warnings.length ? `\n${result.warnings.map(w => `  warning: ${w}`).join('\n')}` : ''}\nNext: production-review --approve-plan, then production-build.`);
       break;
     }
     case 'storyboard': {
