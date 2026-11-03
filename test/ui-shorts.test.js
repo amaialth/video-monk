@@ -142,3 +142,18 @@ test('a short goes step by step: nothing is sent to Claude or spent at ElevenLab
   assert.equal((await call('DELETE', `/api/shorts/${id}`)).json.deleted, true);
   assert.deepEqual(await readdir(path.join(home, 'ui', 'shorts')), []);
 });
+
+test('looking for pictures needs the person\'s go-ahead for Claude, the browser and the stock licence, and nothing can be approved before it ran', async t => {
+  const home = await temporary(t);
+  const { call, wait, sent } = await app(t, home);
+  const id = (await call('POST', '/api/shorts', { source: SOURCE })).json.id;
+  assert.equal((await call('POST', `/api/shorts/${id}/visuals`, { confirmLlm: true, confirmBrowse: true })).status, 400, 'no script yet');
+  await wait((await call('POST', `/api/shorts/${id}/script`, { confirmLlm: true })).json.jobId);
+  const before = sent.claude;
+  assert.match((await call('POST', `/api/shorts/${id}/visuals`, { confirmBrowse: true })).json.error, /sends the script/);
+  assert.match((await call('POST', `/api/shorts/${id}/visuals`, { confirmLlm: true })).json.error, /Choose what to look for/);
+  assert.match((await call('POST', `/api/shorts/${id}/visuals`, { confirmLlm: true, confirmStock: true })).json.error, /licence/);
+  assert.equal(sent.claude, before, 'Claude is not asked without every confirmation');
+  assert.equal((await call('PUT', `/api/shorts/${id}/visuals`, { approveAll: true })).status, 400, 'nothing to approve yet');
+  assert.equal((await call('GET', `/api/shorts/${id}`)).json.visuals, null);
+});

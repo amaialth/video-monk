@@ -12,6 +12,7 @@ import { textsOf, numbersIn } from './facts.js';
 import { motionVideo } from './motionvideo.js';
 import { synthesizeCached, cachedSpeech, countCharacters, elevenConfig, listVoices, ELEVEN_RIGHTS, DEFAULT_MODEL } from './elevenlabs.js';
 import { reviewProduction, buildProduction } from './production.js';
+import { applyVisuals, readVisuals } from './visuals.js';
 
 const fail = message => { throw new Error(`Shorts: ${message}`); };
 
@@ -277,7 +278,7 @@ export async function generateNarration(script, { dir, voiceId, modelId = DEFAUL
 }
 
 // The plan: graphic scenes timed to the narration (via the standalone-video planner), plus narration, captions and the voice's licence note.
-export async function planShort(script, audio, dir, rawOptions, { source = '', provider = {} } = {}) {
+export async function planShort(script, audio, dir, rawOptions, { source = '', provider = {}, visuals = null, visualsBase = null } = {}) {
   const options = shortOptions(rawOptions);
   await mkdir(dir, { recursive: true });
   const brief = { type: 'explainer', title: script.title, aspect: '9:16', current: options.current, theme: { preset: options.theme, ...(options.calm ? { calm: true } : {}), ...(options.onTwos ? { onTwos: true } : {}) },
@@ -297,10 +298,12 @@ export async function planShort(script, audio, dir, rawOptions, { source = '', p
   manifest.audio = { ...(manifest.audio || {}), narration: { asset: 'narration', gainDb: 0, start: 0 }, ducking: { enabled: true, amountDb: 14 } };
   manifest.captions = { words: 'words.timeline.json', style: options.captions, position: 'lower' };
   manifest.delivery = { ...(manifest.delivery || {}), target: 'web' };
+  let visualNotes = { notes: [], warnings: [] };
+  if (visuals) visualNotes = await applyVisuals(manifest, dir, visuals, visualsBase || dir);
   manifest.notes = `${manifest.notes || ''} Educational short: script by Claude from the supplied text, narration by ElevenLabs${provider.voiceId ? ` (voice ${provider.voiceId}, model ${provider.modelId})` : ''}.`.trim();
   await writeFile(planned.output, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(path.join(dir, 'script.json'), `${JSON.stringify(script, null, 2)}\n`);
-  return { ...planned, narration: audio.narration, words: audio.words.length, characters: audio.characters, plan: planned.output };
+  return { ...planned, warnings: [...(planned.warnings || []), ...visualNotes.warnings], visuals: visualNotes.notes, narration: audio.narration, words: audio.words.length, characters: audio.characters, plan: planned.output };
 }
 
 export const estimate = (script, { modelCostFactor = 1 } = {}) => { const characters = countCharacters(script.beats.map(b => b.say)); return { characters, credits: Math.ceil(characters * modelCostFactor), seconds: Math.round(countWords(script.beats.map(b => b.say).join(' ')) / WORDS_PER_SECOND) }; };
@@ -317,7 +320,7 @@ export function scriptMarkdown(script, check, options) {
 // The whole path for one short. Nothing is spent or approved without being asked for: Claude needs allowLlm, ElevenLabs credits need allowEleven,
 // and a build needs approvePlan (the person's review of the script, the recording and the plan).
 export async function makeShort({ source = '', kind = 'text', dir, options: rawOptions = {}, scriptFile = null, scriptOnly = false, allowLlm = false, model = null,
-  voiceId = null, elevenModel = null, voiceSettings, auto = false, explicit = [], seed, allowEleven = false, maxChars = 8000, build = false, approvePlan = false, quality = 'draft', db = null, projectId = null,
+  voiceId = null, elevenModel = null, voiceSettings, auto = false, explicit = [], visualsFile = null, seed, allowEleven = false, maxChars = 8000, build = false, approvePlan = false, quality = 'draft', db = null, projectId = null,
   env = process.env, cwd = process.cwd(), fetcher = fetch, execute = run, log = () => {} } = {}) {
   const options = shortOptions(rawOptions);
   const cfg = await elevenConfig(env, cwd);
@@ -365,7 +368,7 @@ export async function makeShort({ source = '', kind = 'text', dir, options: rawO
     onBeat: (n, cached) => log(`  beat ${n}: ${cached ? 'already recorded' : 'recorded'}`) });
   // 3. the plan
   log('Planning the video…');
-  const planned = await planShort(script, audio, out, options, { source: source || script.beats.map(b => b.say).join(' '), provider: { voiceId: voice, modelId } });
+  const planned = await planShort(script, audio, out, options, { source: source || script.beats.map(b => b.say).join(' '), provider: { voiceId: voice, modelId }, visuals: visualsFile ? await readVisuals(path.resolve(visualsFile)) : null, visualsBase: visualsFile ? path.dirname(path.resolve(visualsFile)) : null });
   const result = { stage: 'plan', dir: out, direction, plan: planned.plan, script, scriptPath, warnings: [...check.warnings, ...(planned.warnings || [])], characters: audio.characters, recorded: audio.recorded, cached: audio.cached, ...est, seconds: Math.round(audio.totalSeconds) };
   if (!build) return result;
   // 4. the build, only on the person's say-so

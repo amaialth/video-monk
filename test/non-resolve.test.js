@@ -19,7 +19,8 @@ const roles = {
   'ffmpeg-finisher': 'Read, Grep, Glob, Write, Edit, Bash',
   'stage-reviewer': 'Read, Grep, Glob, Bash',
   'asset-librarian': 'Read, Grep, Glob, Write, Edit, Bash',
-  'short-scripter': 'Read, Grep, Glob, Write, Edit, Bash'
+  'short-scripter': 'Read, Grep, Glob, Write, Edit, Bash',
+  'visual-researcher': 'Read, Grep, Glob, Bash'
 };
 
 async function temporary(t) {
@@ -35,7 +36,7 @@ for (const format of ['claude', 'copilot']) {
       const folder = await temporary(t);
       const files = await install(folder, format, workflow);
       const agentFiles = files.filter(file => path.basename(path.dirname(file)) === 'agents');
-      assert.equal(agentFiles.length, workflow === 'resolve' ? 4 : workflow === 'both' ? 15 : 11);
+      assert.equal(agentFiles.length, workflow === 'resolve' ? 4 : workflow === 'both' ? 16 : 12);
       const isAgent = role => agentFiles.find(file => path.basename(file).startsWith(`video-monk-${role}.`));
       if (workflow !== 'resolve') {
         for (const [role, tools] of Object.entries(roles)) {

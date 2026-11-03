@@ -150,30 +150,59 @@ async function detail(view, id, timers) {
     return box;
   };
 
+  // 3. pictures: logos fetched from each company's own website by a browser, and stock footage. Candidates only: the person approves each one.
+  const visualsCard = () => {
+    const box = h('div', { class: 'card pad' });
+    if (!scriptDraft) { mount(box, h('h3', {}, '3. Pictures'), h('p', { class: 'muted small' }, 'Write the script first.')); return box; }
+    const v = st.visuals;
+    let browse = true, stock = false, rights = false;
+    const find = h('div', { class: 'col mt-s', style: { gap: '8px' } },
+      h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', checked: true, onchange: e => { browse = e.target.checked; } }), 'Logos: a browser visits each named company\'s own website and takes its logo (read-only; nothing is typed or submitted)'),
+      h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', onchange: e => { stock = e.target.checked; } }), 'Stock footage (Pixabay or Unsplash, with the keys in your environment)'),
+      h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', onchange: e => { rights = e.target.checked; } }), 'I accept the stock provider\'s licence for the footage that is downloaded'),
+      h('div', { class: 'row' }, h('button', { class: 'btn', disabled: !cfg.canUseClaude, onclick: ev => {
+        if (!confirm('Look for pictures?\n\nThis sends the script and your source text to Claude to decide where pictures help, then visits the websites of the companies it names. Nothing appears in the video until you approve it.')) return;
+        ev.target.disabled = true; run(api.post(`/api/shorts/${id}/visuals`, { confirmLlm: true, confirmBrowse: browse, confirmStock: stock, confirmRights: rights }));
+      } }, icon('search', 16), v ? 'Look again' : 'Look for logos and footage')));
+    const approve = async (beat, kind, index, approved) => { try { await api.put(`/api/shorts/${id}/visuals`, { approvals: [{ beat, kind, index, approved }] }); await reload(); } catch (e) { toast(e.message, 'bad'); } };
+    const tile = (src, caption, checked, status, onchange, warn) => h('div', { class: 'card pad', style: { width: '210px', background: 'var(--bg2)' } },
+      src ? h('div', { style: { background: 'repeating-conic-gradient(#8884 0 25%, #0000 0 50%) 50% / 16px 16px', borderRadius: '8px', height: '110px', display: 'flex', alignItems: 'center', justifyContent: 'center' } }, h('img', { src, style: { maxWidth: '90%', maxHeight: '90%', objectFit: 'contain' } })) : h('div', { class: 'muted small', style: { height: '110px', display: 'flex', alignItems: 'center' } }, status),
+      h('div', { class: 'small mt-s' }, caption), warn ? h('div', { class: 'tiny', style: { color: 'var(--warn, #d99a00)' } }, warn) : null,
+      src ? h('label', { class: 'row small mt-s', style: { gap: '6px' } }, h('input', { type: 'checkbox', checked, onchange: e => onchange(e.target.checked) }), 'Use in the video') : null);
+    const list = v ? h('div', { class: 'mt' }, v.beats.length ? v.beats.map(b => h('div', { class: 'mt-s' }, h('div', { class: 'small muted' }, `Beat ${b.beat}: ${st.script.beats[b.beat - 1]?.say.replace(/\[[^\]]*\]/g, '').trim().slice(0, 70) || ''}`),
+      h('div', { class: 'row wrap mt-s', style: { gap: '10px' } },
+        b.logos.map((l, i) => tile(l.file ? `/api/shorts/${id}/file?p=${encodeURIComponent(l.file)}` : null, `${l.name} logo · ${l.domain}`, l.approved, l.reason || l.status, ok => approve(b.beat, 'logo', i, ok), l.provenance?.warning)),
+        b.broll ? tile(b.broll.preview ? `/api/shorts/${id}/file?p=${encodeURIComponent(b.broll.preview)}` : null, `Footage "${b.broll.query}"${b.broll.source ? ` · ${b.broll.source}` : ''}${b.broll.creator ? ` · ${b.broll.creator}` : ''}`, b.broll.approved, b.broll.status === 'not-searched' ? 'Not searched' : b.broll.status === 'no-result' ? 'No footage found' : b.broll.error || b.broll.status, ok => approve(b.beat, 'broll', 0, ok)) : null))) : h('div', { class: 'muted small' }, 'Nothing in the script called for a logo or footage.'),
+      h('div', { class: 'small faint mt-s' }, 'Logos are trademarks of their owners: they are shown only to identify the company, and you should check the brand\'s usage guidelines before publishing. Stock footage keeps its credit in the production notes. Re-record or re-plan after changing approvals.'),
+      h('div', { class: 'row mt-s' }, h('button', { class: 'btn ghost sm', onclick: async () => { try { await api.put(`/api/shorts/${id}/visuals`, { approveAll: true }); await reload(); } catch (e) { toast(e.message, 'bad'); } } }, 'Approve everything fetched'))) : null;
+    mount(box, h('h3', {}, '3. Pictures (logos, footage, depth)'), h('p', { class: 'muted small' }, 'A researcher finds the logos of the companies your script names (taken from their own websites with a browser) and, if you ask, stock footage for scenes that benefit. Approved logos fly in as 3D badges over their scene; approved footage becomes the scene\'s background with the graphic on a panel above it.'), find, list);
+    return box;
+  };
+
   const voiceCard = () => {
     const box = h('div', { class: 'card pad' });
     const d = st.direction;
-    if (!scriptDraft || !d) { mount(box, h('h3', {}, '3. Record the voice'), h('p', { class: 'muted small' }, 'Approve the direction first.')); return box; }
+    if (!scriptDraft || !d) { mount(box, h('h3', {}, '4. Record the voice'), h('p', { class: 'muted small' }, 'Approve the direction first.')); return box; }
     const rec = h('button', { class: 'btn', disabled: !cfg.elevenlabs.hasKey || !d.approved, onclick: ev => {
       if (!confirm(`Record the voice with ElevenLabs?\n\nVoice: ${d.voiceName || d.voiceId}, model ${d.modelId}.\nThis uses about ${st.estimate.characters} characters of your ElevenLabs credits (recordings you have already made are reused and cost nothing).`)) return;
       ev.target.disabled = true; run(api.post(`/api/shorts/${id}/audio`, { confirmSpend: true }));
     } }, icon('music', 16), 'Record the voice and plan the video');
     const players = st.beatAudio ? h('div', { class: 'col mt-s', style: { gap: '8px' } }, h('div', { class: 'small muted' }, 'Listen to each beat before you build:'), st.script.beats.map((b, i) => h('div', { class: 'row', style: { gap: '10px', alignItems: 'center' } }, h('span', { class: 'faint tiny', style: { width: '58px' } }, `Beat ${i + 1}`), h('audio', { controls: true, preload: 'none', style: { height: '32px' }, src: `/api/shorts/${id}/file?p=${encodeURIComponent(st.beatAudio[i])}` }), h('span', { class: 'small muted', style: { flex: 1 } }, b.say.slice(0, 80))))) : null;
-    mount(box, h('h3', {}, '3. Record the voice'),
+    mount(box, h('h3', {}, '4. Record the voice'),
       h('p', { class: 'muted small' }, cfg.elevenlabs.hasKey ? 'Recording uses your ElevenLabs credits. Each beat is recorded once and kept, so editing one beat only re-records that beat.' : 'ELEVENLABS_API_KEY is not set, so recording is not available.'),
       h('div', { class: 'row mt-s' }, rec, h('span', { class: 'small muted' }, `${d.voiceName || d.voiceId} · ${d.modelId} · ${st.estimate.characters} characters, about ${st.estimate.seconds} s of speech${d.approved ? '' : ' · approve the direction first'}`)), players);
     return box;
   };
 
   const buildCard = () => {
-    const box = h('div', { class: 'card pad' }, h('h3', {}, '4. Build the video'));
-    if (!st.files.plan) { mount(box, h('h3', {}, '4. Build the video'), h('p', { class: 'muted small' }, 'Record the voice first: the plan is made from the recording so every scene lasts as long as its narration.')); return box; }
+    const box = h('div', { class: 'card pad' }, h('h3', {}, '5. Build the video'));
+    if (!st.files.plan) { mount(box, h('h3', {}, '5. Build the video'), h('p', { class: 'muted small' }, 'Record the voice first: the plan is made from the recording so every scene lasts as long as its narration.')); return box; }
     let quality = 'draft', ok = false;
     const btn = h('button', { class: 'btn', disabled: true, onclick: ev => { ev.target.disabled = true; run(api.post(`/api/shorts/${id}/build`, { approve: true, quality })); } }, icon('film', 16), 'Build the video');
     const video = st.files.video ? h('div', { class: 'mt' }, h('video', { controls: true, style: { maxHeight: '560px', borderRadius: '12px', background: '#000' }, src: `/api/shorts/${id}/file?p=build/final.mp4&t=${Date.now()}` }),
       h('div', { class: 'row mt-s' }, h('a', { class: 'btn ghost sm', href: `/api/shorts/${id}/file?p=build/final.mp4`, download: `${st.title}.mp4` }, icon('download', 14), 'Download the video'), st.files.contactSheet ? h('a', { class: 'btn ghost sm', href: `/api/shorts/${id}/file?p=build/contact-sheet.png`, target: '_blank', rel: 'noopener' }, 'Contact sheet') : null,
         h('a', { class: 'btn ghost sm', href: `/api/shorts/${id}/file?p=build/REVIEW.txt`, target: '_blank', rel: 'noopener' }, 'Review notes')), h('div', { class: 'muted small mt-s' }, 'Watch it end to end before you publish. The narration is ElevenLabs text to speech: commercial use needs a paid ElevenLabs plan.')) : null;
-    mount(box, h('h3', {}, '4. Build the video'),
+    mount(box, h('h3', {}, '5. Build the video'),
       h('p', { class: 'muted small' }, 'A vertical 1080x1920 video: one scene per beat, timed to the narration, with word-timed captions, music-ready ducking and quiet sound effects. Your approval is recorded in the Approvals history.'),
       h('div', { class: 'row', style: { gap: '14px' } }, field('Quality', select(['draft', 'final'], quality, v => { quality = v; }), 'Draft is faster; final is the full quality encode.')),
       h('label', { class: 'row small mt-s', style: { gap: '8px' } }, h('input', { type: 'checkbox', onchange: e => { ok = e.target.checked; btn.disabled = !ok; } }), 'I have read the script, listened to the voice and checked the plan.'),
@@ -181,7 +210,7 @@ async function detail(view, id, timers) {
     return box;
   };
 
-  const draw = () => mount(root, sourceCard(), h('div', { class: 'mt' }, scriptCard()), h('div', { class: 'mt' }, directionCard()), h('div', { class: 'mt' }, voiceCard()), h('div', { class: 'mt' }, buildCard()), jobBox);
+  const draw = () => mount(root, sourceCard(), h('div', { class: 'mt' }, scriptCard()), h('div', { class: 'mt' }, directionCard()), h('div', { class: 'mt' }, visualsCard()), h('div', { class: 'mt' }, voiceCard()), h('div', { class: 'mt' }, buildCard()), jobBox);
   mount(view, h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Short ', h('em', { class: 'serif' }, 'studio')), h('p', {}, 'Script, voice, video. Nothing is sent, spent or approved until you say so.'))), root);
   draw();
   if (st.job?.status === 'running') run(Promise.resolve({ jobId: st.job.id }));

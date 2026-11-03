@@ -10,6 +10,7 @@ import { environment } from './env.js';
 import { elevenConfig, listVoices, listModels, DEFAULT_MODEL } from '../elevenlabs.js';
 import { shortOptions, validateScript, writeScript, generateNarration, planShort, estimate, recommendDirection, defaultDirection, normalizeDirection, shortsModel, isExpressive, AUDIO_TAG, DIRECTION_KEYS, LENGTHS, TONES, AUDIENCES, CAPTION_STYLES, SHORT_TEMPLATES } from '../shorts.js';
 import { reviewProduction, buildProduction } from '../production.js';
+import { researchVisuals, readVisuals, approveVisuals } from '../visuals.js';
 
 const ID = /^s-[a-f0-9]{8}$/;
 const SERVED = /\.(mp3|wav|mp4|png|srt|vtt|json|md|txt)$/i;
@@ -75,7 +76,8 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
   on('GET', '/api/shorts/:sid', async ({ params }) => {
     const state = await readState(params.sid), dir = dirOf(params.sid), script = await readScript(params.sid);
     const job = [...jobs.values()].filter(j => j.shortId === params.sid).sort((a, b) => b.startedAt - a.startedAt)[0] || null;
-    return { ...state, script, estimate: script ? estimate(script) : null, check: script ? validateScript(script, sourceOf(state, script), checkOptions(state)) : null,
+    const visuals = await readVisuals(path.join(dir, 'visuals.json')).catch(() => null);
+    return { ...state, visuals, script, estimate: script ? estimate(script) : null, check: script ? validateScript(script, sourceOf(state, script), checkOptions(state)) : null,
       files: { plan: await exists(path.join(dir, 'production.json')), narration: await exists(path.join(dir, 'narration.wav')), video: await exists(path.join(dir, 'build', 'final.mp4')), contactSheet: await exists(path.join(dir, 'build', 'contact-sheet.png')) },
       job: job && { id: job.id, kind: job.kind, status: job.status } };
   });
@@ -154,7 +156,38 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
     return { direction };
   });
 
-  // 3. the recording (spends ElevenLabs credits: needs confirmSpend, and the approved direction)
+  // 3. the pictures: a researcher finds each named company's logo (a browser visits its own website) and stock footage; the person approves what appears in the video
+  on('POST', '/api/shorts/:sid/visuals', async ({ params, body }) => {
+    const state = await readState(params.sid), script = await readScript(params.sid);
+    if (!script) throw err('Write the script first');
+    if (body.confirmLlm !== true) throw err('Asking Claude where pictures help sends the script and source text to Claude. Confirm first.');
+    const browse = body.confirmBrowse === true, stock = body.confirmStock === true;
+    if (!browse && !stock) throw err('Choose what to look for: logos (a browser visits each company\'s website) and/or stock footage.');
+    if (stock && body.confirmRights !== true) throw err('Footage is downloaded under the stock provider\'s licence. Confirm that you accept it.');
+    const job = startJob(params.sid, 'visuals', async log => {
+      const result = await researchVisuals({ script, source: sourceOf(state, script), dir: dirOf(params.sid), allowLlm: true, allowBrowse: browse, allowStock: stock, allowStockDownload: stock, rightsConfirmed: stock && body.confirmRights === true, execute, fetcher, log });
+      await saveState(params.sid, { ...state, visualsAt: new Date().toISOString() });
+      return { beats: result.beats.length };
+    });
+    return { jobId: job.id };
+  });
+  on('PUT', '/api/shorts/:sid/visuals', async ({ params, body }) => {
+    const state = await readState(params.sid), file = path.join(dirOf(params.sid), 'visuals.json');
+    if (busy(params.sid)) throw err('Wait for the current step to finish', 409);
+    const v = await readVisuals(file).catch(() => null);
+    if (!v) throw err('Look for pictures first');
+    for (const a of Array.isArray(body.approvals) ? body.approvals.slice(0, 50) : []) {
+      const beat = v.beats.find(b => b.beat === a.beat); if (!beat) continue;
+      if (a.kind === 'logo' && beat.logos[a.index]) beat.logos[a.index].approved = a.approved === true && beat.logos[a.index].status === 'fetched';
+      if (a.kind === 'broll' && beat.broll) beat.broll.approved = a.approved === true && beat.broll.status === 'downloaded';
+    }
+    if (body.approveAll === true) approveVisuals(v);
+    await writeFile(file, `${JSON.stringify(v, null, 2)}\n`);
+    await saveState(params.sid, state);
+    return { visuals: v };
+  });
+
+  // 4. the recording (spends ElevenLabs credits: needs confirmSpend, and the approved direction)
   on('POST', '/api/shorts/:sid/audio', async ({ params, body }) => {
     const state = await readState(params.sid), script = await readScript(params.sid);
     if (!script) throw err('Write the script first');
@@ -173,7 +206,7 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
       log(`Recording ${script.beats.length} beats (${est.characters} characters)…`);
       const audio = await generateNarration(script, { dir, voiceId, modelId, voiceSettings, languageCode: state.options.language === 'en' ? undefined : state.options.language, allowSpend: true, maxChars: Math.min(Number(body.maxChars) || 8000, 20000), db: store.db, projectId: `short-${params.sid}`, env, cwd, fetcher, execute, onBeat: (n, cached) => log(`Beat ${n}: ${cached ? 'already recorded' : 'recorded'}`) });
       log('Planning the video…');
-      const planned = await planShort(script, audio, dir, state.options, { source: sourceOf(state, script), provider: { voiceId, voiceName: state.direction.voiceName || null, modelId } });
+      const planned = await planShort(script, audio, dir, state.options, { source: sourceOf(state, script), provider: { voiceId, voiceName: state.direction.voiceName || null, modelId }, visuals: await readVisuals(path.join(dir, 'visuals.json')).catch(() => null) });
       await saveState(params.sid, { ...state, stage: 'planned', voice: { id: voiceId, name: state.direction.voiceName || null, modelId, settings: voiceSettings || null }, beatAudio: audio.files, narrationSeconds: audio.totalSeconds, recorded: audio.recorded, cached: audio.cached });
       return { seconds: Math.round(audio.totalSeconds), recorded: audio.recorded, cached: audio.cached, warnings: planned.warnings || [] };
     });

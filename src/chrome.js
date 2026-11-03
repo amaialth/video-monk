@@ -58,7 +58,8 @@ class Session {
   }
 }
 
-export async function launchChrome() {
+// By default every DNS lookup is blocked, so templates cannot reach the network. Research (logos, source pages) opts in with { network: true }.
+export async function launchChrome({ network = false } = {}) {
   const executable = await findChrome();
   const profile = await mkdtemp(path.join(tmpdir(), 'video-monk-chrome-'));
   const child = spawn(executable, [
@@ -67,7 +68,7 @@ export async function launchChrome() {
     '--disable-sync', '--disable-component-update', '--disable-default-apps', '--mute-audio', '--hide-scrollbars',
     '--force-color-profile=srgb', '--font-render-hinting=none', '--disable-lcd-text',
     // Templates are local and self-contained; block all DNS so pages cannot reach the network.
-    '--host-resolver-rules=MAP * ~NOTFOUND', 'about:blank'
+    ...(network ? [] : ['--host-resolver-rules=MAP * ~NOTFOUND']), 'about:blank'
   ], { stdio: ['ignore', 'ignore', 'pipe'] });
   const endpoint = await new Promise((resolve, reject) => {
     let buffer = '';
@@ -134,5 +135,39 @@ export async function openPage(browser, htmlFile, { width, height, transparent }
       await writeFile(file, Buffer.from(data, 'base64'));
     },
     close: () => session.send('Target.closeTarget', { targetId })
+  };
+}
+
+// Visit a public web page for research. Only for browsers launched with { network: true }. The page is only read: no cookies are kept (a fresh profile each launch),
+// nothing is typed or submitted, and the caller decides which hosts are allowed. Returns helpers to read the page and take a screenshot.
+export async function browsePage(browser, url, { width = 1440, height = 900, timeout = 25000, settle = 1500 } = {}) {
+  const { session } = browser;
+  const { targetId } = await session.send('Target.createTarget', { url: 'about:blank' });
+  const { sessionId } = await session.send('Target.attachToTarget', { targetId, flatten: true });
+  const send = (method, params) => session.send(method, params, sessionId);
+  await send('Page.enable'); await send('Runtime.enable');
+  await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false });
+  await send('Page.navigate', { url });
+  const started = Date.now();
+  for (;;) {
+    const r = await send('Runtime.evaluate', { expression: 'document.readyState', returnByValue: true }).catch(() => null);
+    if (r?.result?.value === 'complete') break;
+    if (Date.now() - started > timeout) break;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+  await new Promise(resolve => setTimeout(resolve, settle));
+  const evaluate = async (expression, awaitPromise = false) => {
+    const result = await send('Runtime.evaluate', { expression, awaitPromise, returnByValue: true });
+    if (result.exceptionDetails) throw new Error(`Page error: ${result.exceptionDetails.exception?.description || result.exceptionDetails.text}`);
+    return result.result.value;
+  };
+  return {
+    evaluate,
+    async screenshot(file, { clip, transparent = false } = {}) {
+      if (transparent) await send('Emulation.setDefaultBackgroundColorOverride', { color: { r: 0, g: 0, b: 0, a: 0 } });
+      const { data } = await send('Page.captureScreenshot', { format: 'png', fromSurface: true, ...(clip ? { clip: { ...clip, scale: clip.scale || 1 } } : {}) });
+      await writeFile(file, Buffer.from(data, 'base64'));
+    },
+    close: () => session.send('Target.closeTarget', { targetId }).catch(() => {})
   };
 }
