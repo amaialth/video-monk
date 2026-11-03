@@ -49,19 +49,19 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
     if (options.theme) storyboard.theme = theme;
   } else if (engine === 'claude') {
     // A paid model call is reused when the same transcript, settings and model come back.
-    const key = createHash('sha256').update(JSON.stringify([loaded.words, density, graphics, theme, captionsOn, options.model || '', options.presenter || '', options.role || '', style.name])).digest('hex').slice(0, 16);
+    const key = createHash('sha256').update(JSON.stringify([loaded.words, density, graphics, theme, captionsOn, options.cta || '', options.model || '', options.presenter || '', options.role || '', style.name])).digest('hex').slice(0, 16);
     const cached = library?.get(`storyboard-claude-${key}`);
     if (cached) {
       storyboard = JSON.parse(await readFile(library.absolute(cached), 'utf8'));
       await library.touch(cached.id);
       cacheNote = `reused from the asset library (${cached.id})`;
     } else {
-      storyboard = await planWithClaude(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role, captionsOn,
+      storyboard = await planWithClaude(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role, captionsOn, cta: options.cta,
         model: options.model, allowLlm: options.allowLlm, style }, execute);
       claudeKey = key;
     }
   } else {
-    storyboard = planStoryboard(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role, style, captionsOn });
+    storyboard = planStoryboard(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role, style, captionsOn, cta: options.cta });
   }
   // Multiple motion graphics: alternative designs per key moment, rendered, audited and chosen; a person can switch with "chosen".
   const variantCount = options.variants ? Number(options.variants) : 0;

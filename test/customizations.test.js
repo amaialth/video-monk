@@ -79,7 +79,8 @@ test('all customization resources install unchanged with exact discovery identit
     path.join('skills', 'original-edit-planning', 'references', 'production.md'),
     path.join('skills', 'original-edit-planning', 'references', 'production.example.json'),
     path.join('skills', 'original-edit-planning', 'references', 'editing-craft.md'),
-    path.join('skills', 'original-edit-planning', 'references', 'style-bytemonk.md')
+    path.join('skills', 'original-edit-planning', 'references', 'style-bytemonk.md'),
+    path.join('skills', 'original-edit-planning', 'references', 'storyboard-craft.md')
   ];
   assert.deepEqual([...installed.keys()].sort(), expected.sort());
   for (const file of expected) {

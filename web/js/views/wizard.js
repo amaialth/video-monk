@@ -2,7 +2,7 @@ import { h, mount, icon, fmt, toast, segmented } from '../ui.js';
 import { api } from '../api.js';
 import { fileBrowser } from '../components/filebrowser.js';
 
-const blank = () => ({ media: null, probe: null, name: '', step: 0, options: { deliverable: 'long', content: 'talking-head', vertical: '', shortLength: '55', shortPick: 'hook', shortFrom: '', shortTo: '', pace: '', graphics: '', captions: 'kinetic', sfx: '',
+const blank = () => ({ media: null, probe: null, name: '', step: 0, options: { deliverable: 'long', content: 'talking-head', vertical: '', cta: '', shortLength: '55', shortPick: 'hook', shortFrom: '', shortTo: '', pace: '', graphics: '', captions: 'kinetic', sfx: '',
   theme: 'auto', style: 'bytemonk', quality: 'final', target: 'youtube', engine: 'rules', variants: 0, allowLlm: false, sfxEngine: 'synth', allowMirelo: false, mireloBudget: 300, broll: 'plan', glossary: '', transcribe: true, wordsFile: '', language: 'en', model: '',
   gates: { script: true, cut: false, storyboard: true, final: true }, rightsConfirmed: false } });
 let draft = blank();
@@ -72,6 +72,7 @@ export async function renderWizard(view, ctx) {
     const vertical = ['short', 'both', 'feed'].includes(o.deliverable);
     return h('div', {},
       section('What are you making?', 'A landscape video and a vertical short are different products: frame, pace, caption size and length all differ.', cards(q('deliverable'), 'deliverable')),
+      section('A closing call to action (optional)', 'If you want the video to end on one, type it exactly as it should appear. It becomes a closing title card in your words; nothing is written for you.', h('input', { class: 'input', maxlength: 110, placeholder: 'e.g. Subscribe for part two', value: o.cta, oninput: e => { o.cta = e.target.value; } })),
       section('What kind of footage is it?', 'This sets sensible pacing and graphics defaults.', cards(q('content'), 'content')),
       vertical ? section('How should the picture fit a vertical frame?', 'Blur keeps the whole picture visible, which suits slides and screen recordings. Crop fills the frame, which suits a centred speaker.', cards(q('vertical'), 'vertical', { allowAuto: true, autoLabel: 'Automatic' })) : null,
       ['short', 'both'].includes(o.deliverable) ? section('The vertical short', 'Shorts allow up to 3 minutes; under 60 seconds performs best.', cards(q('shortLength'), 'shortLength'),

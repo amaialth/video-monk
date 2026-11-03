@@ -105,7 +105,7 @@ test('CLI rejects unknown flags, missing values and prototype command names', as
 test('installer installs discoverable skills and agents without overwriting', async t => {
   const folder = await temporary(t);
   const files = await install(folder);
-  assert.equal(files.length, 26);
+  assert.equal(files.length, 27);
   const skills = await readdir(path.join(folder, '.github', 'skills'));
   assert.equal(skills.length, 3);
   for (const skill of skills) {

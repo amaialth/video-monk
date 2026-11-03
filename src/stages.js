@@ -203,6 +203,7 @@ export function reviewStoryboard(artifact, { style = null } = {}) {
   const items = [...storyboard.items].sort((a, b) => a.start - b.start);
   const findings = [];
   for (const it of items) {
+    if (it.kind === 'cta') { if (it.start + it.duration > duration + 0.05 || it.start < 0) findings.push(finding({ id: `sb-bounds-${it.id}`, severity: 'blocker', owner: 'storyboard', target: { item: it.id }, message: `${it.id} runs outside the video`, fix: { op: 'dropItem', id: it.id } })); continue; } // the user's own words
     const tokens = textFields(it.props).join(' ').replace(/\*/g, '').toLowerCase().match(/[\p{L}\p{N}'.]+/gu) || [];
     const numbers = tokens.filter(t => /^\d/.test(t) && !vocab.has(t.replace(/[.,]$/, '')));
     const content = tokens.filter(t => !STOP_WORDS.has(t) && !GENERIC_LABELS.has(t) && t.length > 2 && !/^\d/.test(t));
@@ -224,6 +225,8 @@ export function reviewStoryboard(artifact, { style = null } = {}) {
       findings.push(finding({ id: `sb-overlap-${prev.id}-${cur.id}`, severity: 'blocker', owner: 'storyboard', target: { item: drop.id }, message: `${prev.id} and ${cur.id} overlap`, suggestion: `drop the lower-scoring one (${drop.id})`, fix: { op: 'dropItem', id: drop.id } }));
     }
   }
+  // A long video should end on something: a recap or a call to action in the last stretch.
+  if (duration > 90 && !items.some(i => i.start + i.duration > duration - 20)) findings.push(finding({ id: 'sb-closing-beat', severity: 'minor', owner: 'storyboard', message: 'nothing marks the close of the video (no recap or call to action in the last 20 s)', suggestion: 'add a recap card, or pass a call to action (--cta) if you want one' }));
   const cutaways = items.filter(i => i.mode === 'cutaway');
   const cutawaySeconds = cutaways.reduce((n, i) => n + i.duration, 0);
   const share = cutawaySeconds / Math.max(1, duration);

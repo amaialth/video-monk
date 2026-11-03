@@ -19,7 +19,7 @@ async function temporary(t) {
 test('Claude installation converts agents, preserves skills and resolves relative links', async t => {
   const folder = await temporary(t);
   const files = await install(folder, 'claude');
-  assert.equal(files.length, 26);
+  assert.equal(files.length, 27);
   assert.equal(await exists(path.join(folder, '.github')), false);
   const agents = await readdir(path.join(folder, '.claude', 'agents'));
   assert.equal(agents.length, 4);
@@ -133,7 +133,7 @@ test('CLI exposes Claude format and strict local plan import', async t => {
   const folder = await temporary(t);
   const bin = path.join(root, 'bin', 'video-monk.js');
   const { stdout } = await run(process.execPath, [bin, 'install', '--target', folder, '--format', 'claude']);
-  assert.match(stdout, /26 claude/);
+  assert.match(stdout, /27 claude/);
   await assert.rejects(run(process.execPath, [bin, 'import-plan']), /Missing --output/);
   const help = await run(process.execPath, [bin, '--help']);
   assert.match(help.stdout, /import-plan/);

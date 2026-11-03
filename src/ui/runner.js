@@ -46,6 +46,7 @@ export function normalizeOptions(raw = {}) {
   const o = { ...defaults, ...raw, gates: { ...defaults.gates, ...(raw.gates || {}) } };
   if (!['long', 'short', 'both', 'feed'].includes(o.deliverable)) fail('deliverable must be long, short, both or feed');
   if (!['final', 'draft'].includes(o.quality)) fail('quality must be final or draft');
+  if (o.cta !== undefined && o.cta !== '' && (typeof o.cta !== 'string' || o.cta.trim().length > 110)) fail('The call to action must be 110 characters or fewer');
   if (o.variants && (o.engine !== 'claude' || o.allowLlm !== true)) fail('Alternative graphic designs need the Claude engine and permission to use it');
   if (o.engine === 'claude' && o.allowLlm !== true) fail('The Claude engine sends transcript text to Anthropic: confirm permission to use it');
   if (o.sfxEngine === 'mirelo' && o.allowMirelo !== true) fail('Mirelo sends prompts to Mirelo and spends credits: confirm permission to use it');
@@ -260,7 +261,7 @@ export class Runner {
     const autoOptions = {
       format: fromBrief.format, pace: fromBrief.pace, fit: fromBrief.fit, captions: o.captions, target: o.target, voice: o.voice, style: o.style, title: project.name,
       rightsConfirmed: true, rights: o.rights, attribution: o.attribution, words: wordsFile || undefined, analysis, graphics: fromBrief.graphics,
-      graphicsMode: o.graphicsMode || fromBrief.graphicsMode, theme: o.theme, engine: o.engine || 'rules', allowLlm: o.allowLlm === true, variants: o.variants || undefined,
+      graphicsMode: o.graphicsMode || fromBrief.graphicsMode, cta: o.cta?.trim() || undefined, theme: o.theme, engine: o.engine || 'rules', allowLlm: o.allowLlm === true, variants: o.variants || undefined,
       sfx: fromBrief.sfx, sfxEngine: o.sfxEngine, allowMirelo: o.allowMirelo === true, mireloBudget: o.mireloBudget, broll: o.broll || 'plan', content: o.content,
       deliverables: o.deliverable, shortFit: fromBrief.shortFit, shortMax: fromBrief.shortSelection?.maxSeconds, shortFrom: fromBrief.shortSelection?.from, shortTo: fromBrief.shortSelection?.to, shortPick: fromBrief.shortSelection?.pick,
       render: true, approvePlan: true, quality: o.quality, glossary: o.glossary ? parseGlossary(o.glossary) : undefined, reviewAgent: o.reviewAgent, maxRounds: o.maxRounds,

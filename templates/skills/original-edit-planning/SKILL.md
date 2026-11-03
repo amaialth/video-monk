@@ -22,8 +22,9 @@ That separate manifest powers `production-review`, `production-build` and
 2. Confirm audience, original teaching goal, duration, aspect ratio, source rights,
    delivery target and manual finishing capacity. Select a narrative form from
    the index that fits the topic; short explainers and long labs need different pacing.
-3. Create a compact original storyboard before calling a model:
-   `beat | purpose/narration | source ID + in/out or missing asset | visual/state change | audio/caption need | evidence/approval blocker`.
+3. Create a compact original storyboard before calling a model, following [storyboard craft](./references/storyboard-craft.md)
+   (intake questions, cadence, story arc, a shared visual theme written first):
+   `beat | purpose label | narration | source ID + in/out or missing asset | visual/state change | audio/caption need | evidence/approval blocker`.
    For new diagrams, specify labels, states, causal arrows and readable holds.
    Request missing assets; don't invent footage IDs or imply graphics already exist.
 4. Build `inventory.json` from the project example or README: version 1, nonempty
@@ -53,6 +54,8 @@ That separate manifest powers `production-review`, `production-build` and
    render, operate demonstration systems or expand the channel study.
 
 ## Editing craft and house style
+
+Storyboards: [storyboard craft](./references/storyboard-craft.md) covers the intake, cadence by format, story arcs, the visual-consistency theme, the beat card and a closing checklist.
 
 How to edit (staged gates, look at your own cut, cut by measured audio with a tone, rhythm by idea) is in
 [editing-craft](./references/editing-craft.md). Every original video follows the approved provisional

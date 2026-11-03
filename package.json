@@ -23,7 +23,9 @@
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check.mjs",
-    "prepack": "npm run check && npm test"
+    "prepack": "npm run check && npm test",
+    "ui": "node bin/video-monk.js ui",
+    "start": "node bin/video-monk.js ui"
   },
   "publishConfig": {
     "access": "public",

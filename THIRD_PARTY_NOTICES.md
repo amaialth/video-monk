@@ -48,6 +48,10 @@ bundles them under the same license. The fonts are unmodified and are not sold o
 Delivery, voice and caption practices were informed by `appariciojunior/video-editor-skills` (MIT), `digitalsamba/claude-code-video-toolkit` (MIT) and
 `zhuyansen/awesome-claude-video-skills`. They were read as references only; no code or prompt text was copied.
 
+## Storyboard craft
+
+The storyboard craft reference adapts ideas from `aicontentskills/ai-video-storyboard-skill` (MIT): the brief intake, cadence by platform and length, story-arc patterns, the shared visual-consistency layer, the per-beat structure with audio direction, the prompt anatomy for generated clips, and the closing "why this works" rationale. Its text and example are not copied; the reference is written for real footage with graphics, B-roll and sound, in original wording. (The upstream `SKILL.md` lists four reference files that its repository does not contain.)
+
 ## Reviewed, not adopted
 
 `Sousastep/sousa_fx_generator` (audio effect processors for Max/RNBO; no licence file found, bundles ports of other projects) and the

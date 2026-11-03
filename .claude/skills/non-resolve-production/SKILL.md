@@ -11,7 +11,7 @@ the [timeline reference](./references/timeline-v2.md) and
 [explainer graphics](./references/explainer-graphics.md), [kinetic typography](./references/kinetic-typography.md)
 and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
 [review loop](./references/review-loop.md); generated and licensed assets live in the
-[asset library](./references/asset-library.md). Style: `--style bytemonk` (default). **Settle the format first**: ask the [format questions](./references/content-formats.md) unless the request already answers them. Delivery checks are in [delivery QA](./references/delivery-qa.md). Transcripts are verified for mis-heard terms first: [script verification](./references/script-verification.md). B-roll comes from Pixabay or Pexels: [B-roll](./references/broll.md).
+[asset library](./references/asset-library.md). Style: `--style bytemonk` (default). **Settle the format first**: ask the [format questions](./references/content-formats.md) unless the request already answers them. Delivery checks are in [delivery QA](./references/delivery-qa.md). Transcripts are verified for mis-heard terms first: [script verification](./references/script-verification.md). B-roll comes from Pixabay, Unsplash or Pexels: [B-roll](./references/broll.md). Plan the story first: [storyboard craft](../original-edit-planning/references/storyboard-craft.md).
 
 ## Team and handoff
 

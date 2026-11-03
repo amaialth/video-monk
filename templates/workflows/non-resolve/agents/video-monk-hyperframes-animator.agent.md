@@ -18,3 +18,4 @@ the PNG; check readability for both 16:9 and 9:16. Custom HTML must expose a pur
 No copied branding or paid generation. Return manifest overlay/graphic JSON,
 preview paths, visual-review notes and fact/rights blockers. Stop before assembly.
 For key explanatory moments produce several designs (structure, typographic, points) from the graphic brief, render stills of each and compare them; `storyboard --variants N` automates this with Claude. Never repeat in a top-bar strip what the captions already show.
+Design every graphic inside the storyboard's Visual theme block (palette, type, motion language) so separately made graphics read as one piece; consistency beats any single graphic being perfect.

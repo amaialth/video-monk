@@ -63,12 +63,12 @@ AUTOMATED EDITING
              [--style bytemonk|plain (default bytemonk)] [--pace relaxed|natural|tight|extra] [--speed 1-1.5] [--asr-prompt <text>]
              [--review-loop on|off (default on)] [--max-rounds 3] [--review-agent none|claude (needs --allow-llm)] [--glossary <terms file>]
              [--graphics off|light|medium|heavy (default medium)] [--graphics-mode mixed|cutaway|panel]
-             [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--variants 2-4] [--presenter <name> --role <text>]
+             [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--variants 2-4] [--cta <closing call to action>] [--presenter <name> --role <text>]
              One shot: inspect -> transcribe -> autocut -> explainer graphics -> review -> render final.mp4
   storyboard --manifest <production.json> --output <new manifest in the same folder>
              [--style bytemonk|plain] [--density light|medium|heavy] [--graphics-mode mixed|cutaway|panel] [--theme auto|paper|night]
              [--engine rules|claude --allow-llm [--model <alias>]] [--presenter <name> --role <text>]
-             [--from-storyboard <edited storyboard.json>]
+             [--from-storyboard <edited storyboard.json>] [--cta "Subscribe for the next part"  closing call-to-action card, your words exactly]
              [--variants 2-4  Draft alternative designs per key moment (needs --engine claude --allow-llm), render, audit and pick; compare in <name>.variants/]
              Plan motion graphics from the transcript: writes the manifest, <name>.storyboard.json and <name>.STORYBOARD.md, and the B-roll plan <name>.BROLL-PLAN.md
              [--broll off|plan|fetch --content talking-head|screen|explainer|interview] [--sfx off|subtle|full]
@@ -192,7 +192,7 @@ const definitions = {
   review: { stage: 'string', words: 'string', glossary: 'string', manifest: 'string', media: 'string', storyboard: 'string', 'render-dir': 'string', style: 'string', pace: 'string',
     output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
-    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', content: 'string',
+    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', content: 'string',
     'allow-search': 'boolean', 'allow-download': 'boolean', 'rights-confirmed': 'boolean', sfx: 'string' },
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
@@ -202,7 +202,7 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
-  auto: { concurrency: 'string', brief: 'string', brand: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
+  auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', title: 'string' },
@@ -399,7 +399,7 @@ export async function main(args) {
         shortFrom: flag('shortFrom', opts['short-from'] ? Number(opts['short-from']) : undefined), shortTo: flag('shortTo', opts['short-to'] ? Number(opts['short-to']) : undefined),
         shortPick: flag('shortPick', opts['short-pick']), concurrency: opts.concurrency ? Number(opts.concurrency) : undefined, words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
-        variants: opts.variants ? integer(opts.variants, 'variants', 2, 4) : undefined, broll: opts.broll, brollDensity: opts['broll-density'], allowSearch: opts['allow-search'], allowDownload: opts['allow-download'], sfx: flag('sfx', opts.sfx), sfxEngine: opts['sfx-engine'], allowMirelo: opts['allow-mirelo'], mireloBudget: opts['mirelo-budget'] ? Number(opts['mirelo-budget']) : undefined, graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        cta: opts.cta, variants: opts.variants ? integer(opts.variants, 'variants', 2, 4) : undefined, broll: opts.broll, brollDensity: opts['broll-density'], allowSearch: opts['allow-search'], allowDownload: opts['allow-download'], sfx: flag('sfx', opts.sfx), sfxEngine: opts['sfx-engine'], allowMirelo: opts['allow-mirelo'], mireloBudget: opts['mirelo-budget'] ? Number(opts['mirelo-budget']) : undefined, graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         presenter: opts.presenter, role: opts.role, reviewLoop: opts['review-loop'] === 'off' ? false : undefined,
         maxRounds: opts['max-rounds'] ? integer(opts['max-rounds'], 'max-rounds', 1, 8) : undefined, reviewAgent: opts['review-agent'],
         glossary: opts.glossary ? parseGlossary(await readFile(opts.glossary, 'utf8')) : undefined
@@ -538,7 +538,7 @@ export async function main(args) {
       const result = await storyboardManifest(required(opts, 'manifest'), required(opts, 'output'), {
         density: opts.density, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         model: opts.model, presenter: opts.presenter, role: opts.role, fromStoryboard: opts['from-storyboard'], style: opts.style,
-        variants: opts.variants ? integer(opts.variants, 'variants', 2, 4) : undefined,
+        cta: opts.cta, variants: opts.variants ? integer(opts.variants, 'variants', 2, 4) : undefined,
         broll: opts.broll, brollDensity: opts['broll-density'], content: opts.content, allowSearch: opts['allow-search'], allowDownload: opts['allow-download'], rightsConfirmed: opts['rights-confirmed'], sfx: opts.sfx,
         log: message => console.error(message) });
       const st = result.storyboard.stats;

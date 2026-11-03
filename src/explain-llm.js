@@ -199,7 +199,7 @@ export async function planWithClaude(words, options = {}, execute = run) {
     const rules = ruleCandidates(words, { duration, graphics, density });
     built = built.concat(rules.built.filter(r => ['kinetic-text', 'stat', 'title'].includes(r.template)));
   }
-  const storyboard = finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates: first.items.length, skipped: rejected.length, engine: options.fill === false ? 'claude' : 'claude+rules', style, captionsOn: options.captionsOn === true });
+  const storyboard = finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates: first.items.length, skipped: rejected.length, engine: options.fill === false ? 'claude' : 'claude+rules', style, captionsOn: options.captionsOn === true, cta: options.cta || null });
   storyboard.stats.claudeGraphics = storyboard.items.filter(i => i.kind === 'llm').length;
   void llmCount;
   storyboard.stats.llmCostUsd = cost ? round(cost) : null;

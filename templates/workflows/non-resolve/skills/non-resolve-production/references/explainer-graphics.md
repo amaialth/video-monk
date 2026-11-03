@@ -24,6 +24,13 @@ video-monk storyboard ... --engine claude --allow-llm  # Claude designs the diag
 
 Re-apply an edited table with `--from-storyboard <storyboard.json>` (new output file).
 
+## Story first: arc, theme, call to action
+
+Plan the story before the graphics (see [storyboard craft](../../original-edit-planning/references/storyboard-craft.md)): the arc (hook, build, payoff, CTA, or question, mechanism, example, recap), the shared visual theme, and an optional closing call to action.
+`STORYBOARD.md` now opens with the **Visual theme** every graphic follows and the **Story arc** (how many Hook, Setup, Explain, Proof, Emphasis, Recap and CTA beats), and each row has a beat label.
+`--cta "Subscribe for part two"` adds a closing title card in the last seconds using exactly those words (it replaces any graphic it would overlap, and is not checked against the transcript because it is yours).
+A video over 90 s with nothing in its last 20 s gets a reviewer note (`sb-closing-beat`): add a recap, or give a call to action.
+
 ## Planning rules (both engines)
 
 - **Density:** light 3/min, medium 6/min (default), heavy 10/min. The best items by score win.

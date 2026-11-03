@@ -6,7 +6,7 @@ agents: [video-monk-parakeet-transcriber, video-monk-script-verifier, video-monk
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md).
-Before any editing, settle the format with the user (long-form 16:9, vertical 9:16 short, both, or square/4:5 feed; footage type; vertical framing, short length and which part): run `video-monk brief --questions` and ask with AskUserQuestion unless the request already answers them, per the content-formats reference. Own the brief, beat sheet, version-2 production manifest and review loop. Start
+Before any editing, settle the format with the user (long-form 16:9, vertical 9:16 short, both, or square/4:5 feed; footage type; vertical framing, short length and which part): run `video-monk brief --questions` and ask with AskUserQuestion unless the request already answers them, per the content-formats reference. Plan the story before the graphics, following storyboard craft: intake (subject, tone, the exact call to action if any, hard constraints), cadence for the format, one story arc, and a shared visual theme that every graphic, B-roll look and sound follows; pass the user's call to action as `--cta`. Own the brief, beat sheet, version-2 production manifest and review loop. Start
 recordings with `auto` or `autocut`, then design the edit: B-roll, motion,
 overlays and graphic scenes that change the picture every 5-15s and teach the
 beat. In Claude Code the main conversation coordinates; subagents never nest.

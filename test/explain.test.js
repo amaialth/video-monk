@@ -115,7 +115,7 @@ test('long ideas become side panels, cutaways stay short, modes follow the graph
   const panels = planStoryboard(words, { duration, density: 'heavy', graphics: 'panel' });
   assert.ok(panels.items.every(i => i.mode !== 'cutaway'));
   const md = storyboardMarkdown(mixed, 'Demo');
-  assert.match(md, /\| # \| In–Out \| The line it covers \| Graphic \| Mode \| Why \|/);
+  assert.match(md, /\| # \| In–Out \| Beat \| The line it covers \| Graphic \| Mode \| Why \|/);
 });
 
 function fakeClaude(items) {

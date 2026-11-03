@@ -7,6 +7,7 @@
 import { run } from './core.js';
 import { markStress, cleanWord, STOP_WORDS } from './stress.js';
 import { validateProps } from './motion/templates.js';
+import { THEMES } from './motion/render.js';
 
 const round = n => Math.round(n * 1000) / 1000;
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -421,16 +422,36 @@ export function ruleCandidates(words, { duration, graphics = 'mixed', density = 
 }
 
 export function planStoryboard(words, options = {}) {
-  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', style = null, captionsOn = false } = options;
+  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', style = null, captionsOn = false, cta = null } = options;
   if (!DENSITY[density]) throw new Error(`Explain: density must be ${Object.keys(DENSITY).join(', ')}`);
   if (!GRAPHIC_MODES.includes(graphics)) throw new Error(`Explain: graphics mode must be ${GRAPHIC_MODES.join(', ')}`);
   const { built, candidates, skipped } = ruleCandidates(words, { duration, graphics, density });
-  return finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates, skipped, engine: 'rules', style, captionsOn });
+  return finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates, skipped, engine: 'rules', style, captionsOn, cta });
 }
 
 
 // A top-bar pull-text strip that repeats the words the burned-in captions are showing at the same moment adds nothing: the viewer reads the same
 // line twice. True when at least `threshold` of the strip's words are in the caption words spoken during the strip.
+// The purpose a graphic serves in the story (a heuristic from what it is and where it sits): Hook, Setup, Explain, Proof, Emphasis, Recap or CTA.
+export function beatOf(it, duration) {
+  if (it.kind === 'cta') return 'CTA';
+  const at = it.start / Math.max(duration, 1);
+  if (it.kind === 'title' || (it.kind === 'question' && at < 0.2)) return 'Hook';
+  if (it.template === 'chapter') return 'Setup';
+  if (['list', 'steps', 'comparison'].includes(it.kind) && at > 0.85) return 'Recap';
+  if (it.kind === 'number' || ['stat', 'bar-chart', 'donut', 'line-chart'].includes(it.template)) return 'Proof';
+  if (it.kind === 'phrase') return 'Emphasis';
+  return 'Explain';
+}
+
+// The shared look every graphic must follow (the consistency layer): palette, type, motion language and caption treatment.
+export function visualThemeOf(theme, style, captionsOn) {
+  const t = THEMES[theme] || THEMES.night;
+  return { preset: theme, palette: [t.background, t.surface, t.text, t.accent, ...(t.palette || []).slice(0, 3)], accent: t.accent,
+    type: 'Geist (sans) for text; Instrument Serif italic in the accent colour for the one or two stressed words', motion: style?.name === 'bytemonk' ? 'calm: gentle easing, no overshoot, one change per spoken beat' : 'springs with small overshoot, one change per spoken beat',
+    captions: captionsOn ? 'burned in (animated, stressed words)' : 'not burned in', style: style?.name ?? 'plain' };
+}
+
 export function repeatsCaptions(item, words, threshold = 0.6) {
   if (item.template !== 'kinetic-text' || item.mode !== 'overlay') return false;
   const norm = t => String(t).toLowerCase().replace(/\*/g, '').replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(x => x.length > 1);
@@ -442,7 +463,7 @@ export function repeatsCaptions(item, words, threshold = 0.6) {
 
 // Select graphics under the density budget and face-time rules, then number chapters and assemble the storyboard.
 // `built` items: { kind, mode, start, duration, score, template, props, why, line, numbered?, plainTitle? }.
-export function finalizeStoryboard(built, { words, duration, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', candidates = built.length, skipped = 0, engine = 'rules', style = null, captionsOn = false }) {
+export function finalizeStoryboard(built, { words, duration, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', candidates = built.length, skipped = 0, engine = 'rules', style = null, captionsOn = false, cta = null }) {
   const conf = DENSITY[density];
   let strips = 0;
   if (captionsOn) {
@@ -491,6 +512,14 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
     if (!hookSafe(it) || !fits(it) || count(it.template) >= shareCap(it.template)) continue;
     chosen.push(it);
   }
+  // A call to action the user supplied closes the video: a title card in the last seconds, using their words exactly.
+  if (cta) {
+    const text = String(cta).trim();
+    if (!text || text.length > 110) throw new Error('Explain: the call to action must be 1-110 characters');
+    const len = 3, start = Math.max(0, Math.floor((duration - len - 0.2) * 30) / 30);
+    for (let k = chosen.length - 1; k >= 0; k--) if (chosen[k].start < start + len + 0.3 && start < chosen[k].start + chosen[k].duration + 0.3) chosen.splice(k, 1);
+    chosen.push({ kind: 'cta', mode: 'cutaway', start: round(start), duration: round(Math.min(len, duration - start - 0.05)), score: 10, template: 'title', props: { title: text }, why: 'Call to action (your words)', line: '' });
+  }
   // Fill long gaps with the best remaining candidate that fits there.
   chosen.sort((a, b) => a.start - b.start);
   for (let pass = 0; pass < 3; pass++) {
@@ -512,7 +541,7 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
     const props = it.numbered ? (() => { chapterNumber += 1; return { ...it.props, number: String(chapterNumber).padStart(2, '0') }; })() : it.props;
     if (style?.labelSchematic && ['flow', 'steps', 'comparison'].includes(it.template) && !props.citation) props.citation = 'Conceptual schematic';
     const item = { id: `g${String(i + 1).padStart(2, '0')}`, kind: it.kind, template: it.template, mode: it.mode, start: it.start, duration: it.duration,
-      score: round(it.score), why: it.why, line: it.line, props };
+      score: round(it.score), why: it.why, line: it.line, props, beat: beatOf(it, duration) };
     if (it.plainTitle) item.chapterTitle = it.plainTitle;
     return item;
   });
@@ -523,7 +552,7 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
   const byTemplate = {};
   for (const it of items) byTemplate[it.template] = (byTemplate[it.template] || 0) + 1;
   return {
-    version: 1, engine, style: style?.name ?? 'plain', density, graphics, theme, duration: round(duration),
+    version: 1, engine, style: style?.name ?? 'plain', density, graphics, theme, duration: round(duration), visualTheme: visualThemeOf(theme, style, captionsOn), ...(cta ? { cta: String(cta).trim() } : {}),
     stats: { graphics: items.length, perMinute: round(items.length / minutes), cutawaySeconds: round(items.filter(x => x.mode === 'cutaway').reduce((n, x) => n + x.duration, 0)),
       candidates, skipped, byTemplate },
     notes: ['Every label, number and phrase comes from the transcript; no data is invented. Verify wording and numbers before publishing.',
@@ -575,10 +604,14 @@ export function applyStoryboard(manifest, storyboard, style = null) {
 
 export function storyboardMarkdown(storyboard, title = 'Storyboard') {
   const fmt = s => `${Math.floor(s / 60)}:${(s % 60).toFixed(1).padStart(4, '0')}`;
-  const rows = storyboard.items.map((it, i) => `| ${i + 1} | ${fmt(it.start)}–${fmt(it.start + it.duration)} | ${it.line.replace(/\|/g, '/') || '(presenter)'} | \`${it.template}\` | ${it.mode} | ${it.why.replace(/\|/g, '/')} |`);
+  const rows = storyboard.items.map((it, i) => `| ${i + 1} | ${fmt(it.start)}–${fmt(it.start + it.duration)} | ${it.beat || ''} | ${it.line.replace(/\|/g, '/') || '(presenter)'} | \`${it.template}\` | ${it.mode} | ${it.why.replace(/\|/g, '/')} |`);
+  const v = storyboard.visualTheme;
+  const arc = ['Hook', 'Setup', 'Explain', 'Proof', 'Emphasis', 'Recap', 'CTA'].map(b => [b, storyboard.items.filter(i => i.beat === b).length]).filter(([, n]) => n).map(([b, n]) => `${b} ${n}`).join(' · ');
   return `# ${title}\n\nDensity **${storyboard.density}**, graphics mode **${storyboard.graphics}**, theme **${storyboard.theme}**. ` +
     `${storyboard.stats.graphics} graphics (${storyboard.stats.perMinute}/min), ${storyboard.stats.cutawaySeconds}s of full-frame cutaways.\n\n` +
-    `| # | In–Out | The line it covers | Graphic | Mode | Why |\n|---|---|---|---|---|---|\n${rows.join('\n')}\n\n` +
+    (v ? `## Visual theme (every graphic follows this)\n\n- **Palette:** ${v.palette.join(', ')} (accent ${v.accent})\n- **Type:** ${v.type}\n- **Motion:** ${v.motion}\n- **Captions:** ${v.captions}\n- **House style:** ${v.style}\n\n` : '') +
+    `## Story arc\n\n${arc || 'No graphics planned.'}${storyboard.cta ? `\n\nCall to action: “${storyboard.cta}”` : ''}\n\n## Shot list\n\n` +
+    `| # | In–Out | Beat | The line it covers | Graphic | Mode | Why |\n|---|---|---|---|---|---|---|\n${rows.join('\n')}\n\n` +
     `${storyboard.notes.join('\n')}\n\nEdit \`storyboard.json\` (change, delete or add items) and re-apply it with \`video-monk storyboard --from-storyboard\`.\n`;
 }
 
