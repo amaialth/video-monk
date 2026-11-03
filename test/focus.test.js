@@ -1,7 +1,7 @@
 import './setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -9,6 +9,7 @@ import { run, writeJson, readJson } from '../src/core.js';
 import { focusScenes, focusManifest, findActivity, detectActivity } from '../src/focus.js';
 import { focusExpressions } from '../src/build.js';
 import { loadTimeline } from '../src/timeline.js';
+import { findSyncFlash, FLASH_AT } from '../scripts/focus-tune/align.mjs';
 
 async function temporary(t) {
   const folder = await realpath(await mkdtemp(path.join(tmpdir(), 'video-monk-focus-')));
@@ -149,4 +150,26 @@ test('with the default settings a strong event does not hide a weaker real one 2
   assert.ok(found.some(c => Math.abs(c.at - 2) < 0.5), JSON.stringify(found));
   assert.ok(found.some(c => Math.abs(c.at - 4.4) < 0.6), 'the second event, 2.4 s after the first: ' + JSON.stringify(found));
   assert.ok(found.some(c => Math.abs(c.at - 7.6) < 0.6), JSON.stringify(found));
+});
+
+test('the session page and harness: the magenta sync flash is found in tiny frames and gives the offset (and nothing else is mistaken for it)', () => {
+  const W = 16, H = 9, px = W * H, n = 40, frames = new Uint8Array(px * 3 * n);          // 4 s at 10 fps
+  const fill = (f, r, g, b, share = 1, into = frames) => { for (let i = 0; i < Math.round(px * share); i++) { into[(f * px + i) * 3] = r; into[(f * px + i) * 3 + 1] = g; into[(f * px + i) * 3 + 2] = b; } };
+  for (let f = 0; f < n; f++) fill(f, 40, 90, 200);                                      // a blue-ish screen
+  for (let f = 5; f < 10; f++) fill(f, 255, 255, 255);                                   // a white flash that is not the sync
+  for (let f = 22; f < 26; f++) fill(f, 255, 0, 200);                                    // the magenta flash starts at 2.2 s
+  assert.equal(findSyncFlash(frames, { width: W, height: H, fps: 10 }), 2.2);
+  assert.equal(FLASH_AT, 0.5);
+  assert.equal(findSyncFlash(new Uint8Array(px * 3 * 10), { width: W, height: H, fps: 10 }), null);
+  const letterboxed = new Uint8Array(px * 3 * n); for (let f = 30; f < 34; f++) fill(f, 255, 0, 200, 0.55, letterboxed);   // the page fills only 55% of the screen
+  assert.equal(findSyncFlash(letterboxed, { width: W, height: H, fps: 10 }), 3);
+});
+
+test('the live session page carries the flash at the agreed time and the real-time driver', async () => {
+  const html = await readFile(new URL('../scripts/focus-tune/app.html', import.meta.url), 'utf8');
+  assert.match(html, /id="sync"[^>]*#ff00c8/);
+  assert.match(html, /t>=0\.5&&t<0\.9/);
+  assert.match(html, /\?live|\[\?&\]live/);
+  assert.match(html, /Do not click or type/);
+  assert.doesNotMatch(html, /https?:\/\/(?!www\.w3)/, 'no network references');
 });
