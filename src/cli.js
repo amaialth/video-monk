@@ -78,7 +78,7 @@ AUTOMATED EDITING
              Builds nothing: review the plan, then production-review --approve-plan and production-build.
   focus      --manifest <production.json> --clicks <clicks.json> --output <new manifest in the same folder> [--amount 0.5] [--hold 1.4] [--ramp 0.5] [--asset id] [--replace]
              focus --detect <recording> --output <new clicks.json> [--max 12] [--min-gap 3] [--sensitivity 1] [--from s --seconds s]: propose the moments from screen activity
-             (small parts of the screen that start to change after a quiet stretch); these are proposals, not recorded clicks: review them.
+             (something new starting to change: a toast, a modal, typed text, a highlight); proposals, not recorded clicks: review them. Sensitivity 0.8-1.3 is the reliable range; above 1.5 adds false alarms.
              Auto-zoom on a screen recording: clicks.json is { "clicks": [{ "at": 12.4, "x": 0.31, "y": 0.62 }] } (seconds in the source; x, y as fractions of the picture).
              Each video scene gets a "focus" motion: the picture eases in on the spot, holds, eases out. Nothing is rendered.
   cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
