@@ -55,7 +55,7 @@ export async function focusManifest(manifestFile, clicksFile, outputFile, option
 // To keep real recordings from drowning in noise: changes are pooled over three frames (typing arrives a few pixels at a time); parts of the screen that are
 // always active (a ticking clock, a spinner) are learned and ignored; and a whole-screen change is ignored (a cut, a scroll, a slide change), except a modal
 // that dims the screen, where the bright region on the darkened screen is the moment. These are proposals about screen activity, not real clicks.
-export function findActivity(frames, { width = 128, height = 72, fps = 5, sensitivity = 1, minGap = 3, max = 12, from = 0, debug = null } = {}) {
+export function findActivity(frames, { width = 128, height = 72, fps = 5, sensitivity = 1, minGap = 2, max = 12, from = 0, debug = null } = {}) {
   const px = width * height, count = Math.floor(frames.length / px);
   const sens = Math.max(0.2, sensitivity);
   const T = Math.max(3, Math.round(9 / sens));                                    // grey levels that count as a change
@@ -141,14 +141,21 @@ export function findActivity(frames, { width = 128, height = 72, fps = 5, sensit
     .map(c => ({ at: Math.round((from + c.f / fps) * 100) / 100, x: Math.round(c.x * 1000) / 1000, y: Math.round(c.y * 1000) / 1000, strength: Math.round(c.strength * 1000) / 1000 }));
 }
 
-export async function detectActivity(media, outputFile, options = {}) {
-  const input = path.resolve(media), output = path.resolve(outputFile);
+// The proposals as data (nothing is written): [{ at, x, y, strength }], plus how many seconds were looked at.
+export async function detectClicks(media, options = {}) {
+  const input = path.resolve(media);
   if (!(await exists(input))) fail(`recording not found: ${input}`);
-  if (await exists(output)) fail(`output already exists: ${output}`);
   const width = 128, height = 72, fps = 5, from = options.from ?? 0;
   const args = ['-v', 'error', '-nostdin', ...(from ? ['-ss', String(from)] : []), ...(options.seconds ? ['-t', String(options.seconds)] : []), '-i', input, '-an', '-vf', `fps=${fps},scale=${width}:${height}:flags=area,format=gray`, '-f', 'rawvideo', '-'];
   const { stdout } = await run('ffmpeg', args, { encoding: 'buffer', maxBuffer: 2 * 1024 * 1024 * 1024, timeout: 3600_000 });
-  const clicks = findActivity(stdout, { width, height, fps, from, sensitivity: options.sensitivity ?? 1, minGap: options.minGap ?? 3, max: options.max ?? 12 });
-  await writeJson(output, { note: 'Proposed from screen activity in the recording (not recorded clicks). Review each one, delete what does not matter, then run: video-monk focus --manifest ... --clicks this-file --output ...', recording: path.basename(input), clicks });
-  return { output, clicks: clicks.length, seconds: Math.floor(stdout.length / (width * height)) / fps };
+  const clicks = findActivity(stdout, { width, height, fps, from, sensitivity: options.sensitivity ?? 1, minGap: options.minGap ?? 2, max: options.max ?? 12 });
+  return { clicks, seconds: Math.floor(stdout.length / (width * height)) / fps, recording: path.basename(input) };
+}
+
+export async function detectActivity(media, outputFile, options = {}) {
+  const output = path.resolve(outputFile);
+  if (await exists(output)) fail(`output already exists: ${output}`);
+  const found = await detectClicks(media, options);
+  await writeJson(output, { note: 'Proposed from screen activity in the recording (not recorded clicks). Review each one, delete what does not matter, then run: video-monk focus --manifest ... --clicks this-file --output ...', recording: found.recording, clicks: found.clicks });
+  return { output, clicks: found.clicks.length, seconds: found.seconds };
 }

@@ -159,3 +159,32 @@ test('catalog blocks: import needs confirmation and refuses components and unkno
   assert.match(await readFile(path.join(home, 'plan', 'scenes', 'lt-test', 'index.html'), 'utf8'), /"name":"Grace"/);
   assert.equal((await call('POST', '/api/catalog/remove', { name: 'lt-test' })).json.removed, 1);
 });
+
+test('screen zoom: moments are proposed from a recording, and the ones you keep become a NEW plan (never overwriting)', { skip: ffmpegOk ? false : 'needs ffmpeg', timeout: 180000 }, async t => {
+  const home = await temporary(t);
+  const { call } = await app(t, home);
+  assert.equal((await call('POST', '/api/motion/focus/detect', { media: 'rec.mp4' })).status, 400);
+  assert.match((await call('POST', '/api/motion/focus/detect', { media: path.join(home, 'notes.txt') })).json.error, /not a video/);
+  assert.equal((await call('POST', '/api/motion/focus/detect', { media: path.join(home, 'nope.mp4') })).status, 404);
+  const rec = path.join(home, 'rec.mp4');
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-f', 'lavfi', '-i', "color=c=0x202833:s=640x360:r=30:d=10,drawbox=x=300:y=320:w=170:h=24:color=0x4cc9f0:t=fill:enable='gte(t\\,5)'", '-pix_fmt', 'yuv420p', rec]);
+  assert.match((await call('POST', '/api/motion/focus/detect', { media: rec, sensitivity: 9 })).json.error, /out of range/);
+  const found = await call('POST', '/api/motion/focus/detect', { media: rec });
+  assert.equal(found.status, 200);
+  assert.ok(found.json.clicks.some(c => Math.abs(c.at - 5) < 0.8 && Math.abs(c.x - 0.6) < 0.12 && Math.abs(c.y - 0.92) < 0.1), JSON.stringify(found.json));
+  const manifest = path.join(home, 'production.json');
+  await writeFile(manifest, JSON.stringify({ version: 2, title: 'R', fps: 30, width: 640, height: 360, assets: [{ id: 'rec', path: 'rec.mp4', kind: 'video', approved: true, rights: 'Own', attribution: 'Me' }], scenes: [{ id: 's1', kind: 'video', asset: 'rec', in: 0, duration: 10, fit: 'cover', audio: {}, purpose: 'demo' }] }));
+  const before = await readFile(manifest, 'utf8');
+  assert.equal((await call('POST', '/api/motion/focus/apply', { manifest: 'production.json', clicks: found.json.clicks })).status, 400);
+  assert.equal((await call('POST', '/api/motion/focus/apply', { manifest, clicks: [] })).status, 400);
+  const a = await call('POST', '/api/motion/focus/apply', { manifest, clicks: found.json.clicks, amount: 0.6 });
+  assert.equal(a.status, 200, JSON.stringify(a.json));
+  assert.match(a.json.output, /production\.focus\.json$/);
+  assert.equal(JSON.parse(await readFile(a.json.output, 'utf8')).scenes[0].motion.type, 'focus');
+  const b = await call('POST', '/api/motion/focus/apply', { manifest, clicks: found.json.clicks });
+  assert.match(b.json.output, /production\.focus2\.json$/);
+  assert.match(a.json.next[0], /production-review .*--approve-plan/);
+  assert.equal(await readFile(manifest, 'utf8'), before, 'the original plan is untouched');
+  assert.ok(!(await readdirSafe(home)).some(f => /focus-clicks/.test(f)), 'the staging file is removed');
+});
+async function readdirSafe(dir) { const { readdir } = await import('node:fs/promises'); return readdir(dir); }

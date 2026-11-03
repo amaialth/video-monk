@@ -1,7 +1,7 @@
 // Motion studio routes for the web app: template previews, the standalone-video planner and the 3D/animation library vault.
 // Same rules as the command line: nothing is downloaded without an explicit confirmation, nothing is built or approved here.
 import path from 'node:path';
-import { readFile, readdir, stat, mkdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, stat, mkdir, writeFile, rm } from 'node:fs/promises';
 import { exists } from '../core.js';
 import { TEMPLATES, templateCatalog, validateProps } from '../motion/templates.js';
 import { EFFECTS } from '../motion/effects.js';
@@ -9,6 +9,8 @@ import { EXAMPLES } from '../motion/examples.js';
 import { TYPES, reviewBrief, motionVideo, libsNeeded } from '../motionvideo.js';
 import { LIBS, NOT_SUPPORTED, addLib, listLibs, removeLib } from '../libs.js';
 import { importBlock, listImported, removeImported, findImported } from '../catalog.js';
+import { detectClicks, focusManifest } from '../focus.js';
+import { MEDIA_EXT } from './fsbrowse.js';
 
 const STARTERS = new URL('../../assets/motion-starters/', import.meta.url).pathname;
 const CATALOG = new URL('../../assets/hyperframes-catalog.json', import.meta.url).pathname;
@@ -107,6 +109,33 @@ export function registerMotion(on, { previews, serveFile, HANDLED }) {
     const stamp = `${(await stat(file)).mtimeMs}|${libs.map(l => `${l.id}@${l.version}`).sort().join(',')}`;
     try { await serveFile(req, res, await previews.still({ html: file, stamp, at, duration: Math.max(6, at + 1), width: item.width || 1920, height: item.height || 1080 }), { cache: true }); } catch (error) { if (error.status) throw error; throw err(`The preview failed: ${String(error.message).slice(0, 200)}`, 500); }
     return HANDLED;
+  });
+
+  // Auto-zoom: propose moments from screen activity in a recording (nothing is written), then apply the ones you keep to a plan as a NEW manifest.
+  const absolute = (value, what) => { const v = String(value || ''); if (!path.isAbsolute(v)) throw err(`${what} must be a full path`); return path.resolve(v); };
+  on('POST', '/api/motion/focus/detect', async ({ body }) => {
+    const media = absolute(body.media, 'The recording');
+    if (!MEDIA_EXT.has(path.extname(media).toLowerCase())) throw err('That is not a video file');
+    if (!(await exists(media))) throw err('Recording not found', 404);
+    const n = (v, lo, hi, d) => { if (v === undefined || v === null || v === '') return d; const x = Number(v); if (!Number.isFinite(x) || x < lo || x > hi) throw err(`value out of range (${lo}-${hi})`); return x; };
+    try { return await detectClicks(media, { sensitivity: n(body.sensitivity, 0.4, 3, 1), max: n(body.max, 1, 40, 12), minGap: n(body.minGap, 1, 30, 2) }); }
+    catch (error) { throw err(String(error.message).replace(/^Focus: /, '')); }
+  });
+  on('POST', '/api/motion/focus/apply', async ({ body }) => {
+    const manifest = absolute(body.manifest, 'The plan');
+    if (!/\.json$/i.test(manifest) || !(await exists(manifest))) throw err('Plan not found (choose a production.json)', 404);
+    if (!Array.isArray(body.clicks) || !body.clicks.length) throw err('Keep at least one moment');
+    const base = manifest.replace(/\.json$/i, '');
+    let output = `${base}.focus.json`, k = 1;
+    while (await exists(output)) output = `${base}.focus${++k}.json`;               // never overwrite: a second run gets a new name
+    const stage = `${base}.focus-clicks-${process.pid}-${Date.now()}.json`;
+    await writeFile(stage, JSON.stringify({ clicks: body.clicks.map(c => ({ at: Number(c.at), x: Number(c.x), y: Number(c.y) })) }));
+    try {
+      const r = await focusManifest(manifest, stage, output, { amount: body.amount === undefined ? undefined : Number(body.amount), hold: body.hold === undefined ? undefined : Number(body.hold), asset: body.asset || undefined, replace: body.replace === true });
+      const q = s => `'${s.replaceAll("'", "'\\''")}'`;
+      return { ...r, next: [`video-monk production-review --manifest ${q(r.output)} --output ${q(`${base}.focus.review.json`)} --approve-plan`, `video-monk production-build --manifest ${q(r.output)} --review ${q(`${base}.focus.review.json`)} --output ${q(`${base}.focus-build`)} --allow-render`] };
+    } catch (error) { throw err(String(error.message).replace(/^Focus: /, '')); }
+    finally { await rm(stage, { force: true }); }
   });
 
   on('POST', '/api/motion/brief/check', async ({ body }) => {

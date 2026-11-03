@@ -29,7 +29,7 @@ function score(found) {
 async function sweep(label, media) {
   const data = await frames(media);
   console.log(`\n${label}`);
-  for (const sensitivity of [0.6, 0.8, 1, 1.3, 1.7, 2.2]) console.log(`  sensitivity ${String(sensitivity).padEnd(4)} ${score(findActivity(data, { width: 128, height: 72, sensitivity, minGap: 1.5, max: 50 }))}`);
+  for (const sensitivity of [0.6, 0.8, 1, 1.3, 1.7, 2.2]) console.log(`  sensitivity ${String(sensitivity).padEnd(4)} ${score(findActivity(data, { width: 128, height: 72, sensitivity, minGap: 2, max: 50 }))}`);
 }
 
 if (mediaArg) await sweep(mediaArg, path.resolve(mediaArg));

@@ -130,11 +130,23 @@ test('on a recording with a moving cursor and a ticking clock it finds the toast
   const typing = [12, 12.3, 12.6, 12.9, 13.2, 13.5].map((at, i) => `drawbox=x=${30 + i * 10}:y=150:w=7:h=11:color=white:t=fill:enable='gte(t\\,${at})'`).join(',');
   const graph = `[0]drawbox=x=560:y=10:w=60:h=14:color=white:t=fill:enable='lt(mod(t\\,1)\\,0.5)',drawbox=x=300:y=320:w=170:h=24:color=0x4cc9f0:t=fill:enable='between(t\\,5\\,8)',eq=brightness=-0.25:enable='gte(t\\,9)',drawbox=x=220:y=110:w=200:h=130:color=white:t=fill:enable='gte(t\\,9)',${typing}[b];[b][1]overlay=x='20+560*t/16':y='60+200*abs(sin(t*0.9))'`;
   await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-f', 'lavfi', '-i', 'color=c=0x202833:s=640x360:r=30:d=16', '-f', 'lavfi', '-i', 'color=c=white:s=9x13:r=30:d=16', '-filter_complex', graph, '-pix_fmt', 'yuv420p', '-crf', '30', path.join(dir, 'rec.mp4')]);
-  const { clicks } = await (async () => { await detectActivity(path.join(dir, 'rec.mp4'), path.join(dir, 'c.json'), { minGap: 2 }); return readJson(path.join(dir, 'c.json')); })();
+  const { clicks } = await (async () => { await detectActivity(path.join(dir, 'rec.mp4'), path.join(dir, 'c.json')); return readJson(path.join(dir, 'c.json')); })();
   const near = (at, x, y) => clicks.some(c => Math.abs(c.at - at) < 0.8 && Math.abs(c.x - x) < 0.12 && Math.abs(c.y - y) < 0.12);
   assert.ok(near(5, 0.6, 0.92), 'the toast bar appears: ' + JSON.stringify(clicks));
   assert.ok(near(9, 0.5, 0.49), 'the modal opens over a dimmed screen: ' + JSON.stringify(clicks));
   assert.ok(near(12, 0.1, 0.43), 'typing starts: ' + JSON.stringify(clicks));
   assert.ok(clicks.length <= 4, 'the cursor and the clock add nothing: ' + JSON.stringify(clicks));
   assert.ok(clicks.every(c => c.at >= 1), 'the first second is ignored');
+});
+
+test('with the default settings a strong event does not hide a weaker real one 2.4 s away', () => {
+  const W = 128, H = 72, px = W * H, frames = new Uint8Array(px * 60);
+  const box = (f, x0, y0, w, h, v) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) frames[f * px + y * W + x] = v; };
+  for (let f = 10; f < 17; f++) box(f, 60, 30, 30, 18, 255);       // a big panel appears at 2 s and goes at 3.4 s
+  for (let f = 22; f < 60; f++) box(f, 8, 58, 14, 7, 255);        // a small strip appears at 4.4 s and stays
+  for (let f = 38; f < 60; f++) box(f, 100, 8, 14, 7, 255);       // another at 7.6 s
+  const found = findActivity(frames, { width: W, height: H, fps: 5 });                 // all defaults
+  assert.ok(found.some(c => Math.abs(c.at - 2) < 0.5), JSON.stringify(found));
+  assert.ok(found.some(c => Math.abs(c.at - 4.4) < 0.6), 'the second event, 2.4 s after the first: ' + JSON.stringify(found));
+  assert.ok(found.some(c => Math.abs(c.at - 7.6) < 0.6), JSON.stringify(found));
 });
