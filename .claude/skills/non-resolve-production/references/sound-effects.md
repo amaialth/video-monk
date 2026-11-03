@@ -1,7 +1,11 @@
 # Sound effects
 
-The toolkit synthesises its own sound effects with FFmpeg: original sounds, no samples, no downloads, no API key, nothing to attribute. They are
-generated once, indexed in the asset library as `sfx-<kind>-v1` and reused.
+Two sources, same cues and same library:
+
+- **Built-in synthesis** (default): original sounds made with FFmpeg. No samples, no downloads, no key, nothing to attribute. Free and offline.
+- **Mirelo text-to-SFX** (optional): richer, more natural sounds from a text prompt, and any other sound or ambience you can describe. Needs `MIRELO_API_KEY`.
+
+Either way each sound is generated once, indexed in the asset library and reused (`sfx-<kind>-v1` for synthesis; `sfx-mirelo-<hash>` for Mirelo, keyed by prompt, length and model), so credits are never spent twice on the same sound.
 
 | Kind | Length | Used for |
 |---|---|---|
@@ -23,10 +27,27 @@ generated once, indexed in the asset library as `sfx-<kind>-v1` and reused.
 - Sound effects accent, they do not decorate. If you notice one while listening, it is too loud or too frequent: lower `gainDb` or use `subtle`.
 - Never on top of a key word in the voice: move the cue 0.3 s earlier or drop it.
 - No effect on interviews, quiet or serious pieces.
-- The synthesised sounds are checked for level and length, but not auditioned: **listen to the result and adjust**.
+- Generated sounds are checked for level and length, but not auditioned by an agent: **listen to the result and adjust** (see Listening).
+
+## Mirelo (credits)
+
+Setup: put `MIRELO_API_KEY=sk-...` in the environment or in a `.env` file in the folder you run from (git ignores `.env`; see `.env.example`). The key is never printed, logged or stored in a manifest.
+
+- It is **opt-in**: a prompt is sent to Mirelo and credits are spent. Every command needs `--allow-mirelo`. Without it, nothing leaves the machine.
+- `video-monk sfx --credits` shows the balance. Pricing (sfx-2.0): 10 credits per second until 2026-12-12, 15 after, per variant. The toolkit asks for one variant.
+- A budget caps each run: `--budget 300` (`--mirelo-budget 300` on `auto`). When the next sound would exceed it, or the account is short, that sound falls back to the built-in synthesised version and the run says so. A full set of the nine built-in kinds costs about 85 credits once.
+- Place sounds on graphics: `video-monk sfx --manifest production.json --output production.sfx.json --engine mirelo --allow-mirelo` or `auto --sfx subtle --sfx-engine mirelo --allow-mirelo`.
+- One named sound: `video-monk sfx --kind whoosh --engine mirelo --allow-mirelo --output whoosh.wav`.
+- **Any other sound or ambience** from a prompt: `video-monk sfx --prompt "quiet open-plan office, distant keyboards, soft air conditioning" --seconds 30 --engine mirelo --allow-mirelo --output office.wav`. Use it as an `audio` asset with an `audio.sfx` cue, or as a low-level bed in `audio.music` (it ducks under speech). It makes sound effects and ambience, **not music**: use licensed music for beds with melody.
+- Not built: video-to-sound-effects (Mirelo can generate sound that follows a video clip; it needs uploads and costs per second of video).
+
+Terms to check: the Free plan is for **non-commercial** use, and a paid plan is needed to ship commercially. A fully automatic pipeline needs no "Powered by Mirelo" badge. Generated files are deleted from Mirelo after 7 days, so the toolkit copies them into the library at once. Facts here are from Mirelo's published API reference (November 2026); re-read https://mirelo.ai/api-terms before relying on them for a commercial release.
+
+## Listening
+
+An agent cannot hear audio. What can be checked without ears: length, peak and loudness, silence, clipping, and a spectrogram image (attack, decay, and what frequencies it uses). That catches broken sounds, not a wrong *feel*.
+`video-monk sfx --audition <folder of .wav> --output audition.html` writes a page with a player, waveform and spectrogram for every sound so a person can judge them in a minute. Play them against the voice at normal level, then adjust `gainDb` or the mode.
 
 ## Other sources
 
-AI sound-effect generators (for example ElevenLabs sound effects, Meta AudioCraft) can produce more varied sounds, but they send your prompt to a
-service or need a local model, and their terms apply. The toolkit does not call them. If you use one, get the user's approval, save the file,
-record the licence and account terms (`video-monk assets --add ... --kind audio --rights ... --approved`), and add it as an `audio` asset with an `audio.sfx` cue.
+Other AI sound-effect services or files (ElevenLabs, AudioCraft, stock libraries) are not called by the toolkit. If you use one, get the user's approval, save the file, record the licence and account terms (`video-monk assets --add ... --kind audio --rights ... --approved`), and add it as an `audio` asset with an `audio.sfx` cue.

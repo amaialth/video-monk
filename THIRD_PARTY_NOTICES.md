@@ -54,6 +54,11 @@ Delivery, voice and caption practices were informed by `appariciojunior/video-ed
 "Sound Effects Expert" skill listed on mcpmarket.com (guidance for external AI sound-effect services; licence not shown on the listing)
 were reviewed as references. No code or text from either is used; the toolkit's sound effects are its own FFmpeg synthesis.
 
+## Services (opt-in)
+
+Mirelo (mirelo.ai) text-to-sound-effect API: used only with `--allow-mirelo` and your own `MIRELO_API_KEY`. The prompt is sent to Mirelo and credits are spent under your account.
+Mirelo's terms apply (free plan non-commercial use; paid plan for commercial release). No Mirelo code or branding is bundled. Generated files are recorded in the asset library with that note.
+
 ## Dev and runtime tools (not bundled)
 
 FFmpeg, Google Chrome / Chromium, whisper.cpp and its models, and the Claude Code CLI are separate programs under

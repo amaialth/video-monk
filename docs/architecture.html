@@ -127,7 +127,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
       <li><b>Graphic readability audit.</b> Text off the frame, clipped, too small or low contrast is found in the render browser and reported as review findings; frozen picture is flagged.</li>
       <li><b>Brand and publishing.</b> A logo bug (<code>watermark</code>, <code>--brand brand.json</code>) and a drafted <code>YOUTUBE.md</code> (title options, description, chapters YouTube will accept, credits, tags, checklist).</li>
       <li><b>Script verifier.</b> Mis-heard terms (REST heard as wrist or rist, "red is" for Redis) are found by sound and spelling and corrected <em>in context</em>, with a before/after log. <code>script-check</code>, <code>script-fix</code>, and a <code>video-monk-script-verifier</code> agent.</li>
-      <li><b>Sound effects.</b> Original sounds synthesised with FFmpeg and placed quietly on graphics (<code>--sfx subtle|full</code>, <code>video-monk sfx</code>); no samples, keys or attribution.</li>
+      <li><b>Sound effects.</b> Original sounds synthesised with FFmpeg and placed quietly on graphics (<code>--sfx subtle|full</code>, <code>video-monk sfx</code>), or generated with Mirelo from a prompt (<code>--sfx-engine mirelo --allow-mirelo</code>, your <code>MIRELO_API_KEY</code>, a credit budget, reused from the library, falls back to the built-in sound). <code>sfx --audition</code> writes a listening page.</li>
       <li><b>Pace <code>relaxed</code></b> for interviews and vlogs.</li>
     </ul>
   </div>
@@ -715,7 +715,7 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
     <tr><th>Command</th><th>What it does</th></tr>
     <tr><td><code>brief</code></td><td>Settle the format first: long-form, vertical short, both or feed; footage type, framing, short length. <code>--questions</code> prints the questions for an agent to ask.</td></tr>
     <tr><td><code>script-check</code>, <code>script-fix</code></td><td>Find mis-heard glossary terms (sound-alikes, split words) and apply confirmed corrections with timing kept and a log.</td></tr>
-    <tr><td><code>sfx</code></td><td>List or synthesise sound effects, or place them on a manifest's graphics (<code>--manifest</code>, <code>--mode subtle|full</code>, <code>--plan</code>).</td></tr>
+    <tr><td><code>sfx</code></td><td>Synthesise or Mirelo-generate sound effects and ambience (<code>--kind</code>, <code>--prompt --seconds</code>, <code>--engine mirelo --allow-mirelo</code>), place them on a manifest's graphics (<code>--manifest</code>, <code>--mode</code>, <code>--budget</code>, <code>--plan</code>), check credits (<code>--credits</code>) or build a listening page (<code>--audition</code>).</td></tr>
     <tr><td><code>cutdown</code></td><td>Reformat a finished edit (and optionally a time window) to 9:16, 1:1, 4:5 or 16:9 with <code>--fit blur|cover|contain</code>; <code>--max-seconds</code>, <code>--from/--to</code>, <code>--highlight</code>.</td></tr>
     <tr><td><code>auto</code></td><td>Inspect, transcribe, cut, review and render a recording in one go.</td></tr>
     <tr><td><code>inspect</code></td><td>Measure loudness, true peak, pauses, speech ratio and pacing; print suggestions.</td></tr>
@@ -737,7 +737,7 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
     <tr><td><code>doctor</code></td><td>Check required tools and FFmpeg filters, and report which optional tools are present.</td></tr>
   </table></div>
   <h3>Environment overrides</h3>
-  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>VIDEO_MONK_LIBRARY</code> (library folder, or <code>off</code>), <code>PEXELS_API_KEY</code> (stock search only).</p>
+  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>VIDEO_MONK_LIBRARY</code> (library folder, or <code>off</code>), <code>PEXELS_API_KEY</code> (stock search only), <code>MIRELO_API_KEY</code> (Mirelo sound effects only, with <code>--allow-mirelo</code>).</p>
 </section>
 
 <section id="claude">

@@ -21,16 +21,20 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
-import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx } from './sfx.js';
+import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
+import { mireloKey, account } from './mirelo.js';
 import { parseGlossary, findMisheard, applyScriptFixes, fixesMarkdown } from './script.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
-  sfx        --list | --kind <name> --output <new .wav> | --manifest <production.json> --output <new manifest> [--mode subtle|full]
-             Original sound effects synthesised with FFmpeg (no samples, no API). With --manifest, accents the manifest's graphics
-             (whoosh for cutaways, swipe for panels, pop for stats/terms, chime for chapters) as audio.sfx cues; --plan only prints them
+  sfx        --list | --credits | --audition <folder of .wav> --output <new page.html>
+             --kind <name> --output <new .wav> [--engine synth|mirelo --allow-mirelo]
+             --prompt "<sound>" --seconds <s> --output <new .wav> --engine mirelo --allow-mirelo   Any sound or ambience from a text prompt
+             --manifest <production.json> --output <new manifest> [--mode subtle|full] [--engine synth|mirelo --allow-mirelo --budget 300] [--plan]
+             Sound effects: built-in FFmpeg synthesis (free, offline) or Mirelo text-to-SFX (MIRELO_API_KEY; sends the prompt, spends credits,
+             capped by --budget, reused from the library afterwards). With --manifest, accents graphics as audio.sfx cues
   script-check --words <words.json> --glossary <terms file> [--output <new fixes.json>]
              Find mis-heard words (sound-alikes like wrist/rist for REST, "red is" for Redis) and propose fixes with reasons.
              Glossary lines: "REST | api; http; endpoint" (the hints say the term is meant). Proposals are candidates: confirm each in context.
@@ -44,7 +48,7 @@ AUTOMATED EDITING
              Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
              [--brief <brief.json>] [--deliverables long|short|both|feed] [--short-max <s> --short-from <s> --short-to <s> --short-pick hook|highlight|range]
-             [--sfx off|subtle|full] [--captions kinetic|plain|off] [--target youtube|web|master] [--brand <brand.json: theme + logo>]
+             [--sfx off|subtle|full] [--sfx-engine synth|mirelo --allow-mirelo [--mirelo-budget 300]] [--captions kinetic|plain|off] [--target youtube|web|master] [--brand <brand.json: theme + logo>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
              [--style bytemonk|plain (default bytemonk)] [--pace relaxed|natural|tight|extra] [--speed 1-1.5] [--asr-prompt <text>]
@@ -163,12 +167,13 @@ const definitions = {
     output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
     'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string' },
-  sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean' },
+  sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
+    'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   'script-check': { words: 'string', glossary: 'string', output: 'string' },
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
-  auto: { concurrency: 'string', brief: 'string', brand: 'string', sfx: 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
+  auto: { concurrency: 'string', brief: 'string', brand: 'string', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', title: 'string' },
@@ -365,7 +370,7 @@ export async function main(args) {
         shortFrom: flag('shortFrom', opts['short-from'] ? Number(opts['short-from']) : undefined), shortTo: flag('shortTo', opts['short-to'] ? Number(opts['short-to']) : undefined),
         shortPick: flag('shortPick', opts['short-pick']), concurrency: opts.concurrency ? Number(opts.concurrency) : undefined, words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
-        sfx: flag('sfx', opts.sfx), graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        sfx: flag('sfx', opts.sfx), sfxEngine: opts['sfx-engine'], allowMirelo: opts['allow-mirelo'], mireloBudget: opts['mirelo-budget'] ? Number(opts['mirelo-budget']) : undefined, graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         presenter: opts.presenter, role: opts.role, reviewLoop: opts['review-loop'] === 'off' ? false : undefined,
         maxRounds: opts['max-rounds'] ? integer(opts['max-rounds'], 'max-rounds', 1, 8) : undefined, reviewAgent: opts['review-agent'],
         glossary: opts.glossary ? parseGlossary(await readFile(opts.glossary, 'utf8')) : undefined
@@ -380,13 +385,42 @@ export async function main(args) {
       break;
     }
     case 'sfx': {
+      const budget = opts.budget ? Number(opts.budget) : undefined;
       if (opts.list) { console.log(SFX_KINDS.map(k => `${k.padEnd(8)} ${String(SFX[k].seconds).padStart(4)} s  ${SFX[k].why}`).join('\n')); break; }
+      if (opts.credits) {
+        const key = await mireloKey();
+        if (!key) throw new Error('No MIRELO_API_KEY found in the environment or .env');
+        const acct = await account(key);
+        console.log(`Mirelo credits available: ${acct.credits}${acct.ready ? '' : ' (account not ready)'}`);
+        break;
+      }
+      if (opts.audition) {
+        const result = await auditionPage(path.resolve(opts.audition), path.resolve(required(opts, 'output')));
+        console.log(`Audition page with ${result.count} sound(s): ${result.page}`);
+        break;
+      }
+      const engine = opts.engine || 'synth';
+      if (!['synth', 'mirelo'].includes(engine)) throw new Error('--engine must be synth or mirelo');
+      if (opts.prompt) {
+        if (engine !== 'mirelo') throw new Error('--prompt needs --engine mirelo (the built-in synthesiser makes only its named kinds)');
+        const seconds = Number(required(opts, 'seconds'));
+        const file = path.resolve(required(opts, 'output'));
+        if (await exists(file)) throw new Error(`output already exists: ${file}`);
+        const session = await mireloSession({ allow: opts['allow-mirelo'], budget: budget ?? Math.max(300, Math.ceil(seconds * 15)) });
+        const got = await obtainFromMirelo({ prompt: opts.prompt, seconds, file, session, library: await Library.open(), tags: ['prompted'] });
+        console.log(`Wrote ${file} (${got.reused ? 'reused from the library, no credits spent' : `${got.credits} credits spent`}).`);
+        break;
+      }
       if (opts.kind) {
         if (!SFX[opts.kind]) throw new Error(`--kind must be one of ${SFX_KINDS.join(', ')}`);
         const file = path.resolve(required(opts, 'output'));
         if (await exists(file)) throw new Error(`output already exists: ${file}`);
-        await synthesize(opts.kind, file);
-        console.log(`Wrote ${file} (${opts.kind}). Add it as an audio asset and an audio.sfx cue, or use --manifest to place sounds automatically.`);
+        if (engine === 'mirelo') {
+          const { PROMPTS } = await import('./mirelo.js');
+          const session = await mireloSession({ allow: opts['allow-mirelo'], budget: budget ?? 300 });
+          const got = await obtainFromMirelo({ prompt: PROMPTS[opts.kind], seconds: Math.max(0.3, SFX[opts.kind].seconds), file, session, library: await Library.open(), tags: [opts.kind] });
+          console.log(`Wrote ${file} (${opts.kind}, Mirelo: ${got.reused ? 'reused, no credits spent' : `${got.credits} credits`}).`);
+        } else { await synthesize(opts.kind, file); console.log(`Wrote ${file} (${opts.kind}, synthesised).`); }
         break;
       }
       const manifestFile = path.resolve(required(opts, 'manifest'));
@@ -401,10 +435,12 @@ export async function main(args) {
       const output = path.resolve(required(opts, 'output'));
       if (path.dirname(output) !== path.dirname(manifestFile)) throw new Error('--output must be in the same folder as the manifest so relative asset paths keep working');
       if (await exists(output)) throw new Error(`output already exists: ${output}`);
-      const placed = await applySfx(base, { mode, dir: path.join(path.dirname(output), 'sfx'), relTo: path.dirname(output), library: await Library.open(), project: base.title });
+      const session = engine === 'mirelo' ? await mireloSession({ allow: opts['allow-mirelo'], budget: budget ?? 300 }) : null;
+      const placed = await applySfx(base, { mode, engine, session, log: message => console.error(message), dir: path.join(path.dirname(output), 'sfx'), relTo: path.dirname(output), library: await Library.open(), project: base.title });
       await writeJson(output, placed.manifest);
       try { await (await import('./timeline.js')).loadTimeline(output); } catch (error) { await (await import('node:fs/promises')).rm(output, { force: true }); throw new Error(`The manifest with sound effects is invalid (${error.message}); nothing was written`); }
-      console.log(`${placed.events.length} sound effect(s) placed (${mode}): ${output}`);
+      console.log(`${placed.events.length} sound effect(s) placed (${mode}, ${engine}${session ? `, ${placed.credits} credits spent` : ''}): ${output}`);
+      for (const w of placed.warnings) console.log(`  warning: ${w}`);
       break;
     }
     case 'script-check': {

@@ -18,7 +18,7 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 - **0.5: production-grade, in the format you need.** Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
   from the long edit (`cutdown`, blurred-background fit), tuned delivery (capped CRF, BT.709, accurate colours), voice treatment, caption and
   graphic readability audits, a logo bug and a drafted `YOUTUBE.md`, a script verifier that fixes mis-heard terms in context (REST, not wrist),
-  and original synthesised sound effects (`--sfx subtle`).
+  and sound effects (`--sfx subtle`): built-in synthesis, or Mirelo with your own key (`--sfx-engine mirelo --allow-mirelo`).
 - **0.4: checked, reusable, on-style.** Pacing measured from your recording's noise floor (quiet time in one real edit fell from 8.9% to
   0.3%), an independent reviewer for every stage with fixes limited to what was flagged (`REVIEW-LOOP.md`), a shared asset library that
   reuses graphics, transcripts and storyboards, and a ByteMonk-inspired house style by default.

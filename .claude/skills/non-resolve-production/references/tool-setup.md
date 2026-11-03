@@ -125,3 +125,7 @@ lawfully downloaded local audio. No music subscription or purchase is required.
 Local Parakeet/HyperFrames execution must be verified after installation. Mock
 adapter tests establish command/output contracts only, not upstream compatibility
 or model accuracy. The native FFmpeg production tests are a separate validation.
+
+## Optional: Mirelo sound effects
+
+`MIRELO_API_KEY` in the environment or a `.env` file (git ignores `.env`; copy `.env.example`). Used only with `--allow-mirelo`. Check with `video-monk sfx --credits`. See [sound effects](./sound-effects.md).
