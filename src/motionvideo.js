@@ -132,7 +132,7 @@ export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 's
   for (const [i, b] of beats.entries()) {
     if (b.catalog === undefined) continue;
     const item = imported.find(x => x.name === b.catalog);
-    if (!item) { problems.push(`beat ${i + 1}: ${b.catalog} is not imported: run  video-monk catalog --import ${b.catalog} --allow-download  (a one-time download), then plan again`); continue; }
+    if (!item) { problems.push(`beat ${i + 1}: ${b.catalog} is not imported: run  video-monk motion-catalog --import ${b.catalog} --allow-download  (a one-time download), then plan again`); continue; }
     const declared = new Set((item.variables || []).map(v => v.id));
     for (const k of Object.keys(b.vars || {})) if (!declared.has(k)) problems.push(`beat ${i + 1}: ${b.catalog} has no variable "${k}"${declared.size ? ` (it has: ${[...declared].join(', ')})` : ''}`);
     const lib = installed.filter(l => l.id === 'gsap').sort((a, c) => String(c.addedAt).localeCompare(String(a.addedAt)))[0];

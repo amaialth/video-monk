@@ -28,7 +28,7 @@ let dataCache = null;
 export async function catalogData() { dataCache ||= JSON.parse(await readFile(DATA, 'utf8')); return dataCache; }
 export async function catalogEntry(name) {
   const entry = (await catalogData()).items.find(i => i.name === name);
-  if (!entry) fail(`"${name}" is not in the catalog inventory (see: video-monk catalog --list)`);
+  if (!entry) fail(`"${name}" is not in the catalog inventory (see: video-monk motion-catalog --list)`);
   return entry;
 }
 
@@ -206,7 +206,7 @@ export async function listImported(root = catalogRoot()) {
 }
 export async function findImported(name, root = catalogRoot()) {
   const item = (await listImported(root)).find(i => i.name === name);
-  if (!item) fail(`${name} is not imported: run  video-monk catalog --import ${name} --allow-download`);
+  if (!item) fail(`${name} is not imported: run  video-monk motion-catalog --import ${name} --allow-download`);
   return item;
 }
 export async function removeImported(name, root = catalogRoot()) {

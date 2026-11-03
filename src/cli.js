@@ -36,7 +36,7 @@ const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
-  catalog    [--list [--group G] [--status adapt|have|defer|skip] [--top] [--search text]] [--info <name>] [--imported]
+  motion-catalog [--list [--group G] [--status adapt|have|defer|skip] [--top] [--search text]] [--info <name>] [--imported]
              [--import <block> --allow-download [--vars '{"name":"Ada"}'] [--transparent true|false]] [--remove <block>]
              The captured HyperFrames catalog (448 items, Apache-2.0). --import downloads one standalone block once (fixed commit, github.com only), swaps its GSAP
              for the library vault, inlines its fonts and adds a seek bridge so it plays offline; it refuses blocks that cannot (video, nested compositions, other libraries).
@@ -221,7 +221,7 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
-  catalog: { list: 'boolean', info: 'string', import: 'string', imported: 'boolean', remove: 'string', 'allow-download': 'boolean', vars: 'string', transparent: 'string', group: 'string', status: 'string', top: 'boolean', search: 'string' },
+  'motion-catalog': { list: 'boolean', info: 'string', import: 'string', imported: 'boolean', remove: 'string', 'allow-download': 'boolean', vars: 'string', transparent: 'string', group: 'string', status: 'string', top: 'boolean', search: 'string' },
   libs: { list: 'boolean', add: 'string', remove: 'string', 'allow-download': 'boolean', version: 'string', with: 'string', supported: 'boolean' },
   brand: { output: 'string', name: 'string', background: 'string', surface: 'string', text: 'string', muted: 'string', accent: 'string', preset: 'string', font: 'string', logo: 'string', feel: 'string', never: 'string', 'on-twos': 'boolean', calm: 'boolean', rights: 'string', attribution: 'string' },
   'facts-check': { manifest: 'string', facts: 'string' },
@@ -501,7 +501,7 @@ export async function main(args) {
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
       break;
     }
-    case 'catalog': {
+    case 'motion-catalog': {
       if (opts.import) {
         const vars = opts.vars ? JSON.parse(opts.vars) : {};
         const r = await importBlock(opts.import, { allowDownload: opts['allow-download'], vars, transparent: opts.transparent === undefined ? undefined : opts.transparent === 'true' });
@@ -517,7 +517,7 @@ export async function main(args) {
       }
       const q = (opts.search || '').toLowerCase();
       const hits = (await catalogData()).items.filter(i => (!opts.group || i.group.toLowerCase() === opts.group.toLowerCase()) && (!opts.status || i.status === opts.status) && (!opts.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')}`.toLowerCase().includes(q)));
-      console.log(hits.map(i => `${i.name.padEnd(34)} ${i.type.padEnd(9)} ${i.status.padEnd(6)} ${i.group}${i.top ? '  *' : ''}`).join('\n') + `\n\n${hits.length} item(s). * = build next. Import a block with: video-monk catalog --import <name> --allow-download`);
+      console.log(hits.map(i => `${i.name.padEnd(34)} ${i.type.padEnd(9)} ${i.status.padEnd(6)} ${i.group}${i.top ? '  *' : ''}`).join('\n') + `\n\n${hits.length} item(s). * = build next. Import a block with: video-monk motion-catalog --import <name> --allow-download`);
       break;
     }
     case 'libs': {

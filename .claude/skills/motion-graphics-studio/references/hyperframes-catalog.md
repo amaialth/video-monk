@@ -159,15 +159,15 @@ Names link to the catalog page. The full list with needs, sizes and licences is 
 
 **Also portable:** [vfx-text-cursor](https://hyperframes.heygen.com/catalog/blocks/vfx-text-cursor), [cursor-context-menu](https://hyperframes.heygen.com/catalog/components/cursor-context-menu), [cursor-drag-drop](https://hyperframes.heygen.com/catalog/components/cursor-drag-drop), [cursor-glyph-trail](https://hyperframes.heygen.com/catalog/components/cursor-glyph-trail), [cursor-marquee-select](https://hyperframes.heygen.com/catalog/components/cursor-marquee-select), [cursor-text-select](https://hyperframes.heygen.com/catalog/components/cursor-text-select), [dart-cursor](https://hyperframes.heygen.com/catalog/components/dart-cursor), [magnetic-cursor](https://hyperframes.heygen.com/catalog/components/magnetic-cursor), [multiplayer-cursors](https://hyperframes.heygen.com/catalog/components/multiplayer-cursors), [press-ripple](https://hyperframes.heygen.com/catalog/components/press-ripple), [touch-indicator](https://hyperframes.heygen.com/catalog/components/touch-indicator)
 
-## Using a catalog block: `video-monk catalog --import`
+## Using a catalog block: `video-monk motion-catalog --import`
 
 Standalone **blocks** can be imported and played offline. This was built, and tested end to end on real blocks (`lt-clean-bar`, `data-chart`); components (paste-in fragments) cannot be imported and are rebuilt as templates.
 
 ```
 video-monk libs --add gsap --allow-download                # once: the block's animation library
-video-monk catalog --list --status adapt --group "Lower thirds"
-video-monk catalog --import lt-clean-bar --allow-download  # once per block: a fixed commit of github.com/heygen-com/hyperframes, Apache-2.0
-video-monk catalog --import data-chart --allow-download --vars '{"title":"..."}'   # blocks that declare variables take them here
+video-monk motion-catalog --list --status adapt --group "Lower thirds"
+video-monk motion-catalog --import lt-clean-bar --allow-download  # once per block: a fixed commit of github.com/heygen-com/hyperframes, Apache-2.0
+video-monk motion-catalog --import data-chart --allow-download --vars '{"title":"..."}'   # blocks that declare variables take them here
 ```
 
 What the importer does: downloads the block's files from **one fixed commit on raw.githubusercontent.com** (no other host, 40 MB limit); swaps the GSAP script for the library vault; embeds Google Fonts (latin subset) as data; adds a small bridge (`__hyperframes.getVariables()`, `assetUrl()`, and a `__seek(t)` that seeks every timeline the block registered and holds the last frame); keeps the Apache-2.0 header; and caches it under `~/.video-monk/catalog/<name>/`.

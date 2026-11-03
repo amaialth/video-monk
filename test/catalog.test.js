@@ -148,3 +148,16 @@ test('the inventory knows which items are importable blocks', async () => {
   assert.equal((await catalogEntry('lt-clean-bar')).type, 'block');
   assert.equal((await catalogEntry('confetti')).type, 'component');
 });
+
+test('the channel "catalog" command still takes its own options and the block importer is a separate command, motion-catalog', async () => {
+  const { run } = await import('../src/core.js');
+  const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+  const cli = path.join(root, 'bin', 'video-monk.js');
+  const old = await run(process.execPath, [cli, 'catalog', '--project', path.join(tmpdir(), 'video-monk-no-such-project'), '--help']);
+  assert.match(old.stdout, /catalog\s+--project <folder>/);
+  await assert.rejects(run(process.execPath, [cli, 'catalog', '--project', path.join(tmpdir(), 'video-monk-no-such-project')]), error => !/Unknown option/.test(String(error.message)));
+  const list = await run(process.execPath, [cli, 'motion-catalog', '--search', 'lt-clean-bar']);
+  assert.match(list.stdout, /lt-clean-bar\s+block/);
+  const help = (await run(process.execPath, [cli, 'motion-catalog', '--help'])).stdout;
+  assert.match(help, /motion-catalog \[--list/);
+});

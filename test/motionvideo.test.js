@@ -176,7 +176,7 @@ test('a catalog beat needs the block imported and gsap installed, and the check 
   const dir = await temporary(t);
   const home = await withLib(t, []);
   await writeFile(path.join(dir, 'b.json'), JSON.stringify(catBrief()));
-  await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' }), /lt-test is not imported: run  video-monk catalog --import lt-test --allow-download/);
+  await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' }), /lt-test is not imported: run  video-monk motion-catalog --import lt-test --allow-download/);
   await fakeImport(home);
   await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' }), /needs gsap: run  video-monk libs --add gsap/);
   assert.deepEqual(await libsNeeded(catBrief()), [{ id: 'gsap', installed: false, version: null }]);
