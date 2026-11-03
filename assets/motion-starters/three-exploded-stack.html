@@ -1,0 +1,48 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>three.js exploded stack</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block}</style></head><body>
+<!-- Starter: an isometric stack of layers that explodes apart, shows a label on each layer, then collapses. For architecture and "how it is built" diagrams.
+     Needs:  video-monk libs --add three --allow-download.   Edit the LAYERS list (names, colours) and the timing constants. Written for Video Monk. -->
+<vm-lib name="three"></vm-lib>
+<script type="module">
+import * as THREE from 'three';
+const GROUND = 0x0b1020;
+const LAYERS = [{ name: 'Interface', color: 0x4cc9f0 }, { name: 'Logic', color: 0xf72585 }, { name: 'Data', color: 0xffd166 }, { name: 'Infrastructure', color: 0x06d6a0 }];   // top to bottom
+const EXPLODE_AT = 1.0, EXPLODE = 1.1, HOLD = 2.4, COLLAPSE = 1.1;                       // seconds
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H); document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(GROUND);
+const aspect = W / H, span = 6.6, camera = new THREE.OrthographicCamera(-span * aspect / 2, span * aspect / 2, span / 2, -span / 2, 0.1, 50);
+camera.position.set(6, 6, 6); camera.lookAt(0, 0.4, 0);                                  // isometric
+scene.add(new THREE.AmbientLight(0xffffff, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2); sun.position.set(3, 8, 5); scene.add(sun);
+
+const label = (text, color) => {                                                         // a label drawn to a canvas texture (no font files needed)
+  const c = document.createElement('canvas'); c.width = 512; c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = 'rgba(11,16,32,0.0)'; g.fillRect(0, 0, 512, 128);
+  g.font = '700 54px system-ui, -apple-system, Helvetica, Arial, sans-serif'; g.textBaseline = 'middle'; g.fillStyle = '#' + color.toString(16).padStart(6, '0'); g.fillText(text, 8, 66);
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false })); sp.scale.set(2.4, 0.6, 1); sp.renderOrder = 10; return sp;
+};
+const slabs = LAYERS.map((l, i) => {
+  const g = new THREE.Group();
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.22, 2.6), new THREE.MeshStandardMaterial({ color: l.color, roughness: 0.45, metalness: 0.1, transparent: true, opacity: 0.94 }));
+  const edge = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.55 }));
+  const tag = label(l.name, l.color); tag.position.set(2.6, 0.1, 0.6);
+  g.add(mesh, edge, tag); scene.add(g); return { g, tag, i };
+});
+const ease = x => x * x * (3 - 2 * x), p = (t, a, d) => Math.min(1, Math.max(0, (t - a) / d));
+window.__seek = t => {
+  const out = ease(p(t, EXPLODE_AT, EXPLODE)) * (1 - ease(p(t, EXPLODE_AT + EXPLODE + HOLD, COLLAPSE)));   // 0 = stacked, 1 = exploded
+  const enter = ease(p(t, 0, 0.7));
+  slabs.forEach(({ g, tag, i }) => {
+    const rest = (LAYERS.length - 1 - i) * 0.24, apart = (LAYERS.length - 1 - i) * 0.9;
+    g.position.y = (rest + (apart - rest) * out) - 0.9 + (1 - enter) * (2.5 + i * 0.4);
+    g.rotation.y = (1 - enter) * 0.9;
+    tag.material.opacity = ease(p(out, 0.55, 0.45));
+  });
+  renderer.render(scene, camera);
+};
+window.__seek(0); window.__vmReady = true;
+</script></body></html>

@@ -44,7 +44,7 @@ The page must still define `window.__seek(t)` and set `window.__vmReady = true`.
 
 ## Starters
 
-`assets/motion-starters/` (inside the installed package) has a working page for each: `three-showcase.html` (PBR, bloom, a seeded star field), `three-gltf.html` (a turntable for your GLB, with its animation), `babylon-scene.html`, `playcanvas-scene.html`, `gsap-timeline.html`, `anime-timeline.html`, `motion-spring.html`, `lottie-player.html` and `rive-player.html` (untested). Copy one next to your project, edit it, then:
+`assets/motion-starters/` (inside the installed package) has a working page for each: `three-showcase.html` (PBR, bloom, a seeded star field), `three-gltf.html` (a turntable for your GLB, with its animation), `babylon-scene.html`, `playcanvas-scene.html`, `gsap-timeline.html`, `anime-timeline.html`, `motion-spring.html`, `lottie-player.html` and `rive-player.html` (untested), `three-exploded-stack.html` (isometric layers that explode apart with labels) and `three-extruded-mark.html` (a 3D mark that flips in with a glint; swap in your own shape). Copy one next to your project, edit it, then:
 
 ```
 video-monk graphic --html my-scene.html --output frame.png --at 2.5 --seconds 6     # look at it

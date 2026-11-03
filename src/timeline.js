@@ -14,7 +14,8 @@ export const RATES = [24, 25, 30, 50, 60];
 export const TRANSITIONS = ['fade', 'fadeblack', 'fadewhite', 'dissolve', 'wipeleft', 'wiperight', 'wipeup', 'wipedown',
   'slideleft', 'slideright', 'slideup', 'slidedown', 'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
   'circleopen', 'circleclose', 'radial', 'pixelize', 'zoomin', 'distance', 'hblur', 'squeezeh', 'squeezev'];
-export const MOTIONS = ['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'punch-in'];
+export const MOTIONS = ['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'punch-in', 'focus'];
+export const FOCUS_POINTS_MAX = 40;
 
 const fail = message => { throw new Error(`Timeline: ${message}`); };
 const check = (condition, message) => { if (!condition) fail(message); };
@@ -84,8 +85,20 @@ export async function loadTimeline(file, execute = run) {
 
   const motion = (value, label) => {
     if (value === undefined) return;
-    keys(value, ['type', 'amount'], label);
+    keys(value, ['type', 'amount', 'points'], label);
     check(MOTIONS.includes(value.type), `${label}.type must be one of ${MOTIONS.join(', ')}`);
+    if (value.type === 'focus') {
+      // Auto-zoom to a spot (a click, a field, a number) and back: each point eases in, holds, eases out. Times are seconds from the start of the scene.
+      check(value.amount === undefined, `${label}: focus takes points, not amount`);
+      check(Array.isArray(value.points) && value.points.length >= 1 && value.points.length <= FOCUS_POINTS_MAX, `${label}.points needs 1-${FOCUS_POINTS_MAX} focus points`);
+      value.points.forEach((p, i) => {
+        keys(p, ['at', 'x', 'y', 'amount', 'hold', 'ramp'], `${label}.points[${i}]`);
+        check(finite(p.at, 0, 86400) && finite(p.x, 0, 1) && finite(p.y, 0, 1), `${label}.points[${i}] needs at (seconds), x and y (0-1 of the frame)`);
+        check(opt(p.amount, v => finite(v, 0.1, 1)) && opt(p.hold, v => finite(v, 0, 10)) && opt(p.ramp, v => finite(v, 0.15, 2)), `${label}.points[${i}]: amount 0.1-1 (1 = 2x zoom), hold 0-10 s, ramp 0.15-2 s`);
+      });
+      return;
+    }
+    check(value.points === undefined, `${label}: points only belong to a focus motion`);
     check(opt(value.amount, v => finite(v, 0.01, 0.5)), `${label}.amount must be 0.01-0.5`);
   };
   const motionJob = async (value, label, { overlay }) => {

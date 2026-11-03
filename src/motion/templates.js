@@ -4,6 +4,7 @@
 
 import { EFFECTS } from './effects.js';
 import { EFFECTS2 } from './effects2.js';
+import { EFFECTS3 } from './effects3.js';
 
 const str = (max, required = false) => ({ type: 'string', max, required });
 const num = (required = false, min = -1e12, max = 1e12) => ({ type: 'number', required, min, max });
@@ -852,7 +853,7 @@ export const TEMPLATES = {
   }
 };
 
-Object.assign(TEMPLATES, EFFECTS, EFFECTS2);
+Object.assign(TEMPLATES, EFFECTS, EFFECTS2, EFFECTS3);
 
 // Validate template props against the mini schema. Returns a cleaned copy (unknown fields rejected).
 export function validateProps(template, props, location = 'props') {

@@ -24,6 +24,7 @@ import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
 import { catalogData, catalogEntry, importBlock, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
+import { focusManifest } from './focus.js';
 import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
@@ -75,6 +76,9 @@ AUTOMATED EDITING
              a beat can be a 3D / library scene: "starter": "three-showcase" (see assets/motion-starters); its libraries are checked and listed in PLAN.md.
              checks beat count, length, a 3 s hold on the last beat and facts-first numbers, then writes production.json with transitions, music and subtle SFX.
              Builds nothing: review the plan, then production-review --approve-plan and production-build.
+  focus      --manifest <production.json> --clicks <clicks.json> --output <new manifest in the same folder> [--amount 0.5] [--hold 1.4] [--ramp 0.5] [--asset id] [--replace]
+             Auto-zoom on a screen recording: clicks.json is { "clicks": [{ "at": 12.4, "x": 0.31, "y": 0.62 }] } (seconds in the source; x, y as fractions of the picture).
+             Each video scene gets a "focus" motion: the picture eases in on the spot, holds, eases out. Nothing is rendered.
   cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
              [--fit blur|cover|contain] [--max-seconds 55 | --from <s> --to <s>] [--highlight] [--width 1080]
              Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
@@ -230,6 +234,7 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
+  focus: { manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
   auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
@@ -619,6 +624,12 @@ export async function main(args) {
       }
       const result = await motionVideo(required(opts, 'brief'), required(opts, 'output'), { facts: opts.facts, sfx: opts.sfx || 'subtle', log: message => console.error(message) });
       console.log(`Motion video plan: ${result.scenes} graphic scenes, ${result.seconds}s, ${result.width}x${result.height}${result.sfx ? `, ${result.sfx} sound cues` : ''}${result.facts ? `, facts-check OK (${result.facts.checked} numbers)` : ''}.\nManifest: ${result.output}${result.warnings.length ? `\n${result.warnings.map(w => `  warning: ${w}`).join('\n')}` : ''}\nNext: production-review --manifest ${result.output} --approve-plan, then production-build --quality draft and read the contact sheet.`);
+      break;
+    }
+    case 'focus': {
+      const num = key => (opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })()));
+      const r = await focusManifest(required(opts, 'manifest'), required(opts, 'clicks'), required(opts, 'output'), { amount: num('amount'), hold: num('hold'), ramp: num('ramp'), asset: opts.asset, replace: opts.replace });
+      console.log(`Focus: ${r.points} zoom point(s) in ${r.scenes} scene(s)${r.dropped ? `, ${r.dropped} dropped (too close to the one before)` : ''}.${r.skipped.map(x => `\n  skipped: ${x}`).join('')}\nManifest: ${r.output}\nNext: production-review --approve-plan, then production-build.`);
       break;
     }
     case 'cutdown': {
