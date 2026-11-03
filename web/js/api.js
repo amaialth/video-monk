@@ -19,6 +19,14 @@ export const api = {
   presets: () => api.get('/api/presets'), savePreset: (name, options) => api.post('/api/presets', { name, options }), deletePreset: id => api.del(`/api/presets/${id}`),
   terms: () => api.get('/api/terms'), toggleTerm: (heard, term, enabled) => api.post('/api/terms/toggle', { heard, term, enabled }), deleteTerm: (heard, term) => api.post('/api/terms/delete', { heard, term }),
   recent: () => api.get('/api/recent'), approvals: () => api.get('/api/approvals'), db: () => api.get('/api/db'),
+  motion: () => api.get('/api/motion'), checkBrief: brief => api.post('/api/motion/brief/check', { brief }), planVideo: body => api.post('/api/motion/video', body),
+  addLib: (id, confirm) => api.post('/api/libs/add', { id, confirm }), removeLib: id => api.post('/api/libs/remove', { id }),
+  // a still as an object URL; a failure comes back as its message (the server answers errors as JSON)
+  async still(url) {
+    const res = await fetch(url, { credentials: 'same-origin' });
+    if (!res.ok) { let m = `Request failed (${res.status})`; try { m = (await res.json()).error || m; } catch { /* not JSON */ } throw new Error(m); }
+    return URL.createObjectURL(await res.blob());
+  },
   source: id => `/api/projects/${id}/source`
 };
 

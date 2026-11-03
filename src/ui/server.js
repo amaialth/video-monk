@@ -15,6 +15,7 @@ import { environment } from './env.js';
 import { roots, list as listDir, probeMedia, thumbnail, MEDIA_EXT } from './fsbrowse.js';
 import { discover, timelineOf } from './artifacts.js';
 import { Previews } from './previews.js';
+import { registerMotion } from './motion.js';
 
 const WEB = new URL('../../web/', import.meta.url).pathname;
 const FONTS = new URL('../../assets/fonts/', import.meta.url).pathname;
@@ -187,6 +188,9 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = nul
     const entries = lib.search(query.get('q') || '', { kind: query.get('kind') || null, limit: 120 }).map(r => r.entry || r);
     return { enabled: true, root: lib.root, entries: entries.map(({ id, kind, name, description, tags, rights, attribution, uses, bytes, createdAt, meta }) => ({ id, kind, name, description, tags, rights, attribution, uses, bytes, createdAt, template: meta?.template, width: meta?.width, height: meta?.height })), stats: lib.stats() };
   });
+
+  // ---- motion studio: template previews, standalone-video planner, library vault
+  registerMotion(on, { previews, serveFile, HANDLED });
 
   // ---- things remembered between projects (all in the local database)
   on('GET', '/api/db', async () => ({ ...store.db.info(), file: store.db.file, usage: usageSummary(), schemaTarget: store.db.version }));

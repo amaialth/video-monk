@@ -3,6 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { TEMPLATES, validateProps, templateCatalog } from '../src/motion/templates.js';
 import { EFFECTS } from '../src/motion/effects.js';
+import { EXAMPLES } from '../src/motion/examples.js';
 
 const SAMPLES = {
   'chart-morph': { labels: ['A', 'B', 'C'], values: [1, 3, 2], illustrative: true },
@@ -39,4 +40,9 @@ test('effect props validate, reject unknown fields and missing required fields',
 
 test('a chart morph labelled as a sample keeps the illustrative flag', () => {
   assert.equal(validateProps('chart-morph', SAMPLES['chart-morph']).illustrative, true);
+});
+
+test('every template example validates, so the studio can always preview it', () => {
+  for (const [name, props] of Object.entries(EXAMPLES)) assert.doesNotThrow(() => validateProps(name, props), name);
+  for (const name of Object.keys(EFFECTS)) assert.ok(EXAMPLES[name], `an example for ${name}`);
 });
