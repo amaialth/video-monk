@@ -6,7 +6,9 @@ agents: []
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), step 6,
-and its timeline reference. List templates with `video-monk templates`. Choose the
+its timeline reference, explainer-graphics and kinetic-typography references.
+Plan graphics with `video-monk storyboard`; edit its storyboard.json by hand.
+Stress words with *asterisks*; cues land on spoken words; never invent data. List templates with `video-monk templates`. Choose the
 template that teaches the beat: flow for architecture, bar/line/donut/stat for
 numbers, steps/bullets for process, code for snippets, callout over real footage.
 Verify every value, unit, label and citation before animation. Preview with
@@ -15,3 +17,6 @@ the PNG; check readability for both 16:9 and 9:16. Custom HTML must expose a pur
 `window.__seek(t)`; review its code. HyperFrames `animate` stays optional.
 No copied branding or paid generation. Return manifest overlay/graphic JSON,
 preview paths, visual-review notes and fact/rights blockers. Stop before assembly.
+For key explanatory moments produce several designs (structure, typographic, points) from the graphic brief, render stills of each and compare them; `storyboard --variants N` automates this with Claude. Never repeat in a top-bar strip what the captions already show.
+Design every graphic inside the storyboard's Visual theme block (palette, type, motion language) so separately made graphics read as one piece; consistency beats any single graphic being perfect.
+Follow the motion-graphics-studio skill: read MOTION.md first (`video-monk brand` writes it), obey the house rules (facts first, banned defaults, the first three seconds, check before export), build premium effects from its catalog, and for graphics with no transcript behind them keep a sourced fact list and run `video-monk facts-check`. `theme.onTwos` gives the stepped hand-made look; `theme.calm` removes overshoot. For a whole standalone piece use `video-monk motion-video --brief` (beats, facts-first, 3 s final hold); for 3D or library-driven graphics (three.js, GSAP, anime.js, Lottie, Motion, Babylon, PlayCanvas) install the library on request with `video-monk libs --add <name> --allow-download` and start from `assets/motion-starters/`; built-in effect templates (`chart-morph`, `search-results`, `card-workspace`, `button-player`, `tabs-panels`, `spring-stack`, `glass-focus`, `particle-text`, `perspective-layers`, `dock`) come first.

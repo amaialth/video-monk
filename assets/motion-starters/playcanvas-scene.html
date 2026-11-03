@@ -1,0 +1,20 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>PlayCanvas scene</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head><body>
+<!-- Starter: a PlayCanvas scene stepped by hand. Needs:  video-monk libs --add playcanvas --allow-download -->
+<vm-lib name="playcanvas"></vm-lib>
+<canvas id="c"></canvas>
+<script>
+const canvas = document.getElementById('c'); canvas.width = innerWidth; canvas.height = innerHeight;
+const app = new pc.Application(canvas, { graphicsDeviceOptions: { preserveDrawingBuffer: true, antialias: true } });
+app.setCanvasFillMode(pc.FILLMODE_NONE); app.resizeCanvas(innerWidth, innerHeight);
+app.scene.ambientLight = new pc.Color(0.35, 0.4, 0.5);
+const cam = new pc.Entity('cam'); cam.addComponent('camera', { clearColor: new pc.Color(0.043, 0.063, 0.125), fov: 40 }); cam.setPosition(0, 0.8, 6); cam.lookAt(0, 0, 0); app.root.addChild(cam);
+const light = new pc.Entity('light'); light.addComponent('light', { type: 'directional', intensity: 1.6 }); light.setEulerAngles(45, 35, 0); app.root.addChild(light);
+const mat = new pc.StandardMaterial(); mat.diffuse = new pc.Color(0.3, 0.79, 0.94); mat.metalness = 0.2; mat.gloss = 0.75; mat.useMetalness = true; mat.update();
+const box = new pc.Entity('box'); box.addComponent('render', { type: 'box', material: mat }); app.root.addChild(box);
+app.autoRender = false;
+window.__seek = t => { box.setLocalScale(1.5, 1.5, 1.5); box.setEulerAngles(25 + t * 20, t * 40, 0); app.update(0); app.render(); };
+app.start(); app.autoRender = false;
+requestAnimationFrame(() => { window.__seek(0); window.__vmReady = true; });
+</script></body></html>

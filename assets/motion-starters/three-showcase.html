@@ -1,0 +1,47 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>three.js showcase</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block}</style></head><body>
+<!-- Starter: a 3D scene as a seekable graphic. Needs:  video-monk libs --add three --allow-download
+     Palette comes from MOTION.md: replace the three constants below. Every frame is a pure function of t (seeded, no Math.random). -->
+<vm-lib name="three"></vm-lib>
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const GROUND = 0x0b1020, ACCENT = 0x4cc9f0, SECOND = 0xf72585;           // from MOTION.md
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H); document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(GROUND);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+
+// hero: a faceted solid with a glassy finish, ringed by rounded blocks
+const hero = new THREE.Mesh(new THREE.IcosahedronGeometry(1.15, 1), new THREE.MeshPhysicalMaterial({ color: ACCENT, metalness: 0.15, roughness: 0.18, clearcoat: 1, flatShading: true }));
+scene.add(hero);
+const ring = new THREE.Group(); scene.add(ring);
+const blocks = Array.from({ length: 10 }, (_, i) => { const m = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.34), new THREE.MeshStandardMaterial({ color: i % 3 === 0 ? SECOND : 0xf4f6fb, roughness: 0.35, metalness: 0.1 })); ring.add(m); return m; });
+// seeded star field
+let s = 7; const rnd = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
+const pts = new Float32Array(900); for (let i = 0; i < pts.length; i++) pts[i] = (rnd() - 0.5) * 24;
+const stars = new THREE.Points(new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(pts, 3)), new THREE.PointsMaterial({ size: 0.03, color: 0xffffff, transparent: true, opacity: 0.7 }));
+scene.add(stars);
+
+const composer = new EffectComposer(renderer); composer.setSize(W, H);
+composer.addPass(new RenderPass(scene, camera)); composer.addPass(new UnrealBloomPass(new THREE.Vector2(W, H), 0.45, 0.5, 0.9)); composer.addPass(new OutputPass());
+const ease = x => x * x * (3 - 2 * x);
+window.__seek = t => {
+  const k = ease(Math.min(1, t / 1.4));                       // entrance
+  hero.scale.setScalar(0.2 + 0.8 * k); hero.rotation.set(0.3 + t * 0.35, t * 0.6, 0);
+  ring.rotation.set(0.5, t * -0.45, 0.1);
+  blocks.forEach((b, i) => { const a = (i / blocks.length) * Math.PI * 2; b.position.set(Math.cos(a) * 2.3 * k, Math.sin(a * 2 + t) * 0.35, Math.sin(a) * 2.3 * k); b.rotation.set(t + i, t * 0.7, 0); b.scale.setScalar(k); });
+  stars.rotation.y = t * 0.03;
+  camera.position.set(Math.sin(t * 0.25) * 0.6, 0.9, 6.2 - 0.8 * k); camera.lookAt(0, 0, 0);
+  composer.render();
+};
+window.__seek(0); window.__vmReady = true;
+</script></body></html>

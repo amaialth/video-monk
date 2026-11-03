@@ -105,7 +105,7 @@ test('CLI rejects unknown flags, missing values and prototype command names', as
 test('installer installs discoverable skills and agents without overwriting', async t => {
   const folder = await temporary(t);
   const files = await install(folder);
-  assert.equal(files.length, 24);
+  assert.equal(files.length, 27);
   const skills = await readdir(path.join(folder, '.github', 'skills'));
   assert.equal(skills.length, 3);
   for (const skill of skills) {
@@ -380,7 +380,7 @@ test('npm manifest allowlist excludes tests, media and environment files', async
   const manifest = await readJson(path.join(root, 'package.json'));
   assert.equal(manifest.name, '@amailath/video-monk');
   assert.equal(manifest.publishConfig.registry, 'https://registry.npmjs.org/');
-  assert.deepEqual(manifest.files, ['bin', 'src', 'templates', 'README.md', 'LICENSE']);
+  assert.deepEqual(manifest.files, ['bin', 'src', 'templates', 'assets', 'web', 'README.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md']);
   assert.equal(manifest.dependencies, undefined);
   assert.equal(manifest.scripts.prepack, 'npm run check && npm test');
 });

@@ -30,6 +30,11 @@ Audio never leaves the machine. `small.en`/`medium.en` are more accurate and slo
 `VIDEO_MONK_WHISPER_MODEL` (model path) to override discovery. Word ends are
 refined against measured silence so cuts and captions do not bleed into pauses.
 
+## Optional: HyperFrames agent skills (your choice, not installed by Video Monk)
+
+HeyGen publishes agent skills for HyperFrames (`npx skills add heygen-com/hyperframes`). They are written for a HyperFrames project (an `index.html` composition per video) and its CLI, so they are a second workflow, not an add-on to this one. Reviewed for this toolkit (Apache-2.0): the craft ideas are useful and are adapted in `motion-graphics-studio/references/scene-seams.md`; the skills themselves are not installed here because they direct agents to fetch and run packages from the network (`npx hyperframes ...`), to sign in to HeyGen and use paid generation, and to render or publish in the cloud, none of which this toolkit does without a separate approval.
+If you want them anyway: run the command yourself in a separate project folder (not in this repo), read what it installs first, and keep Video Monk's approvals (`--allow-render`, `--allow-tool-network`, rights and plan approval) for anything that leaves the machine. `video-monk animate` and `transcribe --engine parakeet` still call an installed `hyperframes` CLI as before.
+
 ## Optional: HyperFrames + Parakeet route
 
 Kept for teams already using HyperFrames (`transcribe --engine parakeet`, `animate`).
@@ -125,3 +130,17 @@ lawfully downloaded local audio. No music subscription or purchase is required.
 Local Parakeet/HyperFrames execution must be verified after installation. Mock
 adapter tests establish command/output contracts only, not upstream compatibility
 or model accuracy. The native FFmpeg production tests are a separate validation.
+
+## Optional: Mirelo sound effects
+
+`MIRELO_API_KEY` in the environment or a `.env` file (git ignores `.env`; copy `.env.example`). Used only with `--allow-mirelo`. Check with `video-monk sfx --credits`. See [sound effects](./sound-effects.md).
+
+For Claude Code agents the Mirelo MCP server is registered in `.mcp.json` (token from the environment). Start Claude Code with the variable set: `set -a; . ./.env; set +a; claude`, then check `/mcp`.
+
+## Optional: Pixabay B-roll
+
+`PIXABAY_API_KEY` in the environment or a `.env` file (git ignores `.env`; see `.env.example`). Used by `stock-search` (`--provider auto` picks Pixabay when the key is set) and only with `--allow-search`; downloads need `--allow-download --rights-confirmed`. See [B-roll](./broll.md).
+
+## Optional: Unsplash photos
+
+`UNSPLASH_ACCESS_KEY` in the environment or a `.env` file (git ignores `.env`; see `.env.example`). Photos only. Used by `stock-search --provider unsplash --type image` and by `broll-fetch` when it falls back to a photo, only with `--allow-search`; downloads need `--allow-download --rights-confirmed`. Optional `UNSPLASH_APP_NAME` is the name used in credit-link `utm_source` (your registered app name). `UNSPLASH_APP_ID` and `UNSPLASH_SECRET_KEY` are not used. Demo apps are limited to 50 API requests an hour; see [B-roll](./broll.md).

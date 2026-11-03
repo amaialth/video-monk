@@ -1,3 +1,4 @@
+import './setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, realpath, rm, readFile, stat } from 'node:fs/promises';
@@ -85,13 +86,13 @@ test('motion template props are schema-validated and documented', () => {
   assert.deepEqual(validateProps('stat', { value: 42, label: 'Median' }), { value: 42, label: 'Median' });
   assert.throws(() => validateProps('stat', { value: 42 }), /label is required/);
   assert.throws(() => validateProps('stat', { value: 42, label: 'x', script: 'alert(1)' }), /unsupported field/);
-  assert.throws(() => validateProps('title', { title: 'x'.repeat(91) }), /at most 90/);
+  assert.throws(() => validateProps('title', { title: 'x'.repeat(111) }), /at most 110/);
   assert.throws(() => validateProps('bar-chart', { bars: [{ label: 'a\u0007', value: 1 }] }), /control/);
   assert.throws(() => validateProps('bar-chart', { bars: [{ label: 'a', value: 1, color: 'red' }] }), /#RRGGBB/);
   assert.throws(() => validateProps('nope', {}), /unknown template/);
   assert.ok(validateProps('code', { code: 'a\n\tb' }).code.includes('\n'));
   for (const def of Object.values(TEMPLATES)) assert.equal(typeof def.render, 'function');
-  assert.deepEqual(placementBox('right', 1920, 1080), { x: 960, y: 86, w: 883, h: 907 });
+  assert.deepEqual(placementBox('right', 1920, 1080), { x: 960, y: 65, w: 883, h: 821 });
   assert.equal(placementBox('right', 1080, 1920).y > 900, true, 'portrait maps right to bottom half');
 });
 

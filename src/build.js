@@ -1,13 +1,18 @@
 // Version 2 build pipeline: motion graphics (headless Chrome) -> per-scene composites (FFmpeg) ->
 // transition joins -> audio mix with ducking -> loudness mastering -> final encode -> verified deliverables.
 import path from 'node:path';
-import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { exists, readJson, run, writeJson, writeNew } from './core.js';
 import { inspectMedia, digest } from './production.js';
 import { loadTimeline, chapters } from './timeline.js';
-import { MotionRenderer, pool } from './motion/render.js';
+import { MotionRenderer, pool, resolveTheme } from './motion/render.js';
 import { pageWords, pagesToSrt, pagesToVtt } from './captions.js';
+import { youtubePackage } from './publish.js';
+import { markStress } from './stress.js';
+import { RGB_TO_YUV, videoArgs, hdrInfo, sourceColorFix } from './delivery.js';
+import { measureVoice, voiceChain, describeVoice } from './voice.js';
+import { Library, textPreview } from './library.js';
 
 const fail = message => { throw new Error(`Build: ${message}`); };
 const check = (condition, message) => { if (!condition) fail(message); };
@@ -38,16 +43,24 @@ export async function reviewTimeline(file, output, approve = false, execute = ru
 }
 
 // Fit a visual stream to the frame, with optional camera motion. `frames` = output frame count of that layer.
-function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames) {
+let blurCount = 0;
+function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames, speed = 1) {
   const type = motion?.type || 'none';
+  const retime = speed === 1 ? '' : `setpts=(PTS-STARTPTS)/${speed},`;
   const cover = (w, h) => `scale=${w}:${h}:force_original_aspect_ratio=increase:flags=lanczos,crop=${w}:${h}`;
   const contain = (w, h, bg) => `scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos,pad=${w}:${h}:(ow-iw)/2:(oh-ih)/2:color=${bg}`;
-  const fitTo = (w, h) => (fit === 'contain' ? contain(w, h, '0x0b1020') : cover(w, h));
-  if (type === 'none') return `fps=${fps},${fitTo(W, H)},setsar=1`;
+  // blur: the whole picture is shown, over a darkened blurred copy of itself that fills the frame (the standard vertical reframe).
+  const blur = (w, h) => {
+    const n = ++blurCount, bw = Math.max(2, Math.round(w / 8 / 2) * 2), bh = Math.max(2, Math.round(h / 8 / 2) * 2);
+    return `split=2[bga${n}][fga${n}];[bga${n}]scale=${bw}:${bh}:force_original_aspect_ratio=increase:flags=bilinear,crop=${bw}:${bh},boxblur=3:2,scale=${w}:${h}:flags=bilinear,eq=brightness=-0.12:saturation=0.85[bgb${n}];` +
+      `[fga${n}]scale=${w}:${h}:force_original_aspect_ratio=decrease:flags=lanczos[fgb${n}];[bgb${n}][fgb${n}]overlay=(W-w)/2:(H-h)/2`;
+  };
+  const fitTo = (w, h) => (fit === 'contain' ? contain(w, h, '0x0b1020') : fit === 'blur' ? blur(w, h) : cover(w, h));
+  if (type === 'none') return `${retime}fps=${fps},${fitTo(W, H)},setsar=1`;
   if (type === 'punch-in') {
     const a = motion.amount ?? 0.12;
     const w = Math.ceil(W * (1 + a) / 2) * 2, h = Math.ceil(H * (1 + a) / 2) * 2;
-    return `fps=${fps},${fitTo(w, h)},crop=${W}:${H},setsar=1`;
+    return `${retime}fps=${fps},${fitTo(w, h)},crop=${W}:${H},setsar=1`;
   }
   // Smooth (cosine-eased) zoom/pan via zoompan on a 2x canvas for sub-pixel precision.
   const a = motion.amount ?? (type.startsWith('zoom') ? 0.1 : 0.15);
@@ -57,7 +70,7 @@ function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames) {
   const cx = 'iw/2-iw/zoom/2', cy = 'ih/2-ih/zoom/2';
   const x = type === 'pan-left' ? `(iw-iw/zoom)*(1-${e})` : type === 'pan-right' ? `(iw-iw/zoom)*${e}` : cx;
   const y = type === 'pan-up' ? `(ih-ih/zoom)*(1-${e})` : type === 'pan-down' ? `(ih-ih/zoom)*${e}` : cy;
-  return `fps=${fps},${fitTo(W * 2, H * 2)},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${W}x${H}:fps=${fps},setsar=1`;
+  return `${retime}fps=${fps},${fitTo(W * 2, H * 2)},zoompan=z='${z}':x='${x}':y='${y}':d=1:s=${W}x${H}:fps=${fps},setsar=1`;
 }
 
 async function ffmpeg(args, execute, cwd) {
@@ -78,7 +91,8 @@ function motionJob(loaded, spec, duration, overlay) {
     template: spec.template, html: spec.html ? path.resolve(loaded.base, spec.html) : undefined, props: spec.props ?? {},
     width: m.width, height: m.height, fps: m.fps, duration, theme: m.theme ? { ...m.theme, font: undefined } : undefined,
     font: loaded.font, placement: spec.placement, panel: spec.panel,
-    background: overlay ? 'transparent' : (spec.background || 'grid'), exit: overlay
+    background: overlay ? (spec.background || 'transparent') : (spec.background || 'grid'), exit: overlay,
+    fadeFrame: overlay && Boolean(spec.background) && spec.background !== 'transparent', audit: true
   };
 }
 
@@ -94,8 +108,32 @@ export async function buildTimeline(file, approval, output, options = {}) {
   const draft = quality === 'draft';
   const work = path.join(output, 'work');
   await mkdir(work, { recursive: true });
+  // Rendered graphics live in the shared asset library when enabled, so other projects reuse identical ones.
+  const library = await Library.open();
+  const motionRoot = library ? library.objectDir('graphic') : path.join(work, 'motion');
   await mkdir(path.join(output, 'stems'), { recursive: true });
   const started = Date.now();
+
+  const warnings = [];
+  for (const asset of assets.values()) {
+    const info = asset.kind === 'video' ? hdrInfo(asset.metadata.video) : null;
+    if (info?.hdr) { warnings.push(`hdr-source: ${asset.id} is HDR (${info.transfer}); it will look flat and dim as SDR. Convert it to SDR BT.709 before editing.`); log(`  Warning: ${warnings.at(-1)}`); }
+  }
+
+  // Voice treatment: measure each spoken source once, treat only what it needs (see voice.js).
+  const voiceMode = m.audio?.voice?.enhance ?? 'auto';
+  const voiceChains = new Map();
+  const voiceReport = {};
+  if (voiceMode !== 'off') {
+    const spoken = new Set([...(m.audio?.narration ? [m.audio.narration.asset] : []), ...timeline.filter(t => t.scene.audio).map(t => t.scene.asset)]);
+    for (const id of spoken) {
+      const profile = await measureVoice(assets.get(id).path, execute);
+      const chain = voiceChain(profile, voiceMode);
+      voiceChains.set(id, chain);
+      voiceReport[id] = { ...profile, treatment: describeVoice(profile, chain) };
+      log(`  Voice ${id}: ${voiceReport[id].treatment}`);
+    }
+  }
 
   // 1. Motion graphics
   const jobs = [];
@@ -105,12 +143,30 @@ export async function buildTimeline(file, approval, output, options = {}) {
   }
   (m.globalOverlays || []).forEach((o, i) => jobs.push({ key: `global-${i}`, job: motionJob(loaded, o, o.duration, true) }));
   let captionPages = null;
+  const captionChunks = [];
   if (loaded.words) {
     const c = m.captions;
-    captionPages = pageWords(loaded.words, { maxWords: c.maxWords ?? (m.height > m.width ? 4 : 7), maxChars: c.maxChars ?? (m.height > m.width ? 22 : 38) });
+    const portrait = m.height > m.width;
+    captionPages = pageWords(loaded.words, { maxWords: c.maxWords ?? (portrait ? 4 : 7), maxChars: c.maxChars ?? (portrait ? 22 : 38) });
+    // Stress words (italic serif + accent) are decided per page from the transcript; explicit word.stress flags win.
+    const stressed = markStress(captionPages.flatMap(p => p.words));
+    let at = 0;
+    for (const page of captionPages) page.words = page.words.map(() => stressed[at++]);
     if (c.burnIn !== false) {
-      jobs.push({ key: 'captions', job: { ...motionJob(loaded, { template: 'captions' }, duration, true), exit: false,
-        props: { pages: captionPages, style: c.style || 'karaoke', position: c.position || 'bottom' } } });
+      // Render captions in ~40 s chunks so they run in parallel and silent gaps cost nothing.
+      const frame = 1 / m.fps;
+      for (let i = 0; i < captionPages.length;) {
+        let j = i;
+        while (j + 1 < captionPages.length && captionPages[j + 1].end - captionPages[i].start < 40) j++;
+        const start = Math.max(0, Math.floor((captionPages[i].start - 0.08) / frame) * frame);
+        const end = Math.min(duration, Math.ceil((captionPages[j].end + 0.08) / frame) * frame);
+        const chunk = captionPages.slice(i, j + 1).map(p => ({ start: p.start - start, end: p.end - start,
+          words: p.words.map(w => ({ text: w.text, start: w.start - start, end: w.end - start, stress: w.stress })) }));
+        captionChunks.push({ key: `captions-${captionChunks.length}`, start: Math.round(start * 1000) / 1000, duration: Math.round((end - start) * 1000) / 1000 });
+        jobs.push({ key: `captions-${captionChunks.length - 1}`, job: { ...motionJob(loaded, { template: 'captions' }, Math.round((end - start) * m.fps) / m.fps, true), exit: false,
+          props: { pages: chunk, style: c.style || 'kinetic', position: c.position || 'bottom' } } });
+        i = j + 1;
+      }
     }
   }
   const rendered = new Map();
@@ -120,13 +176,47 @@ export async function buildTimeline(file, approval, output, options = {}) {
     try {
       await renderer.start();
       await pool(jobs, concurrency, async ({ key, job }) => {
-        const result = await renderer.render(job, path.join(work, 'motion'));
+        const result = await renderer.render(job, motionRoot);
         rendered.set(key, result);
         log(`  motion ${key}: ${result.frames} frames (${result.captured} captured)`);
       });
     } finally {
       await renderer.close();
     }
+  }
+
+  // Readability audit results (text off-canvas / clipped / too small / low contrast) per graphic, with where each sits in the video.
+  const graphicAudit = [];
+  for (const { key, job } of jobs) {
+    const issues = rendered.get(key)?.audit;
+    if (!issues?.length) continue;
+    let start = 0;
+    const scene = key.match(/^[go](\d+)/);
+    if (scene) start = timeline[Number(scene[1])]?.start ?? 0;
+    const local = key.match(/^o\d+-(\d+)$/);
+    if (local) start += timeline[Number(key.match(/^o(\d+)/)[1])]?.overlays[Number(local[1])]?.start ?? 0;
+    const global = key.match(/^global-(\d+)$/);
+    if (global) start = (m.globalOverlays || [])[Number(global[1])]?.start ?? 0;
+    graphicAudit.push({ key, template: job.template, start: Math.round(start * 1000) / 1000, duration: job.duration, issues });
+  }
+
+  let libraryStats = null;
+  if (library && jobs.length) {
+    let reused = 0, added = 0;
+    for (const { key, job } of jobs) {
+      const r = rendered.get(key);
+      if (!r || !job.template || job.template === 'captions' || r.cached === undefined) continue;
+      if (r.cached) reused++; else added++;
+      const text = textPreview(job.props);
+      await library.add({ id: `graphic-${path.basename(r.dir)}`, kind: 'graphic', relativePath: path.join('objects', 'graphic', path.basename(r.dir)),
+        name: `${job.template}: ${text.slice(0, 50)}`, description: `${job.template} graphic, ${job.width}x${job.height} @ ${job.fps} fps, ${r.frames} frames`,
+        tags: [job.template, job.theme?.preset || 'night', job.height > job.width ? 'portrait' : 'landscape', key.startsWith('g') ? 'scene' : 'overlay'],
+        meta: { template: job.template, text, props: job.props, width: job.width, height: job.height, fps: job.fps, frames: r.frames, duration: job.duration,
+          theme: job.theme?.preset || 'night', background: job.background || 'transparent', placement: job.placement || 'full' },
+        createdBy: 'build', project: m.title });
+    }
+    libraryStats = { root: library.root, graphicsAdded: added, graphicsReused: reused };
+    if (reused) log(`  ${reused} graphic(s) reused from the asset library, ${added} new`);
   }
 
   // 2. Scene composites (video only) + source-audio clips
@@ -139,12 +229,14 @@ export async function buildTimeline(file, approval, output, options = {}) {
     const add = args => { inputs.push(...args); return inputs.filter(a => a === '-i').length - 1; };
     const graph = [];
     const asset = s.asset ? assets.get(s.asset) : null;
-    if (s.kind === 'video') add(['-ss', sec(s.in ?? 0), '-t', sec(s.duration + 0.5), '-i', asset.path]);
+    const speed = s.speed ?? 1;
+    if (s.kind === 'video') add(['-ss', sec(s.in ?? 0), '-t', sec(s.duration * speed + 0.5), '-i', asset.path]);
     else if (s.kind === 'image') add(['-loop', '1', '-framerate', String(m.fps), '-t', sec(s.duration), '-i', asset.path]);
     else if (s.kind === 'graphic') add(['-framerate', String(m.fps), '-i', rendered.get(`g${t.index}`).pattern]);
     else add(['-f', 'lavfi', '-i', `color=c=${hex(s.color)}:s=${m.width}x${m.height}:r=${m.fps}:d=${sec(s.duration)}`]);
-    const baseFit = s.kind === 'graphic' ? `fps=${m.fps},setsar=1` : fitChain(m, s.fit, s.motion, t.frames);
-    graph.push(`[0:v]${baseFit},tpad=stop_mode=clone:stop_duration=2,trim=end_frame=${t.frames},setpts=PTS-STARTPTS,format=yuv444p[l0]`);
+    const baseFit = s.kind === 'graphic' ? `fps=${m.fps},setsar=1` : (s.kind === 'video' ? sourceColorFix(asset.metadata.video) : '') + fitChain(m, s.fit, s.motion, t.frames, speed);
+    // Graphic scenes come from RGB PNGs: convert with an explicit BT.709 matrix instead of FFmpeg's BT.601 default.
+    graph.push(`[0:v]${baseFit},tpad=stop_mode=clone:stop_duration=2,trim=end_frame=${t.frames},setpts=PTS-STARTPTS,${s.kind === 'graphic' ? `${RGB_TO_YUV},` : ''}format=yuv444p[l0]`);
     let current = 'l0';
     t.broll.forEach((b, i) => {
       const ba = assets.get(b.asset);
@@ -158,7 +250,7 @@ export async function buildTimeline(file, approval, output, options = {}) {
     });
     t.overlays.forEach((o, i) => {
       const idx = add(['-framerate', String(m.fps), '-i', rendered.get(`o${t.index}-${i}`).pattern]);
-      graph.push(`[${idx}:v]format=rgba,setpts=PTS-STARTPTS+${sec(o.start)}/TB[o${i}]`);
+      graph.push(`[${idx}:v]format=rgba,${RGB_TO_YUV},format=yuva444p,setpts=PTS-STARTPTS+${sec(o.start)}/TB[o${i}]`);
       graph.push(`[${current}][o${i}]overlay=eof_action=pass:format=yuv444:enable='between(t,${sec(o.start)},${sec(o.start + o.duration - 0.5 / m.fps)})'[lo${i}]`);
       current = `lo${i}`;
     });
@@ -167,8 +259,8 @@ export async function buildTimeline(file, approval, output, options = {}) {
     if (s.audio) {
       const fadeIn = s.audio.fadeIn ?? Math.max(0.012, timeline[t.index - 1]?.transition?.duration ?? 0);
       const fadeOut = s.audio.fadeOut ?? Math.max(0.012, t.transition?.duration ?? 0);
-      await ffmpeg(['-ss', sec(s.in ?? 0), '-t', sec(s.duration), '-i', asset.path, '-vn',
-        '-af', `aresample=48000,aformat=channel_layouts=stereo,volume=${s.audio.gainDb ?? 0}dB,apad,atrim=0:${sec(s.duration)},` +
+      await ffmpeg(['-ss', sec(s.in ?? 0), '-t', sec(s.duration * speed + 0.2), '-i', asset.path, '-vn',
+        '-af', `${speed === 1 ? '' : `atempo=${speed},`}aresample=48000,aformat=channel_layouts=stereo,${voiceChains.get(s.asset) ? `${voiceChains.get(s.asset)},` : ''}volume=${s.audio.gainDb ?? 0}dB,apad,atrim=0:${sec(s.duration)},` +
           `afade=t=in:d=${sec(fadeIn)},afade=t=out:st=${sec(Math.max(0, s.duration - fadeOut))}:d=${sec(fadeOut)}`,
         '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s24le', `scene-${pad3(t.index + 1)}.wav`], execute, work);
     }
@@ -198,7 +290,8 @@ export async function buildTimeline(file, approval, output, options = {}) {
   if (audio.narration) {
     const i = aAdd(['-i', assets.get(audio.narration.asset).path]);
     const delay = Math.round((audio.narration.start ?? 0) * 1000);
-    ag.push(`[${i}:a]${norm},volume=${audio.narration.gainDb ?? 0}dB,adelay=${delay}:all=1[n0]`);
+    const nv = voiceChains.get(audio.narration.asset);
+    ag.push(`[${i}:a]${norm},${nv ? `${nv},` : ''}volume=${audio.narration.gainDb ?? 0}dB,adelay=${delay}:all=1[n0]`);
     voiceParts.push('[n0]');
   }
   for (const t of timeline) {
@@ -247,23 +340,29 @@ export async function buildTimeline(file, approval, output, options = {}) {
     '-map', '[xstem]', ...pcm, path.join(output, 'stems', 'sfx.wav'),
     '-map', '[mix]', ...pcm, 'mix.wav'], execute, work);
 
-  // 5. Two-pass loudness mastering to the delivery target
+  // 5. Two-pass loudness mastering to the delivery target (re-run with more headroom if the AAC encode overshoots)
   const target = loaded.delivery;
   const measured = await measureLoudness(path.join(work, 'mix.wav'), execute, target);
   const master = path.join(output, 'stems', 'master.wav');
-  if (Number.isFinite(measured.input_i) && measured.input_i > -70) {
-    // Gain to target, then an oversampled peak limiter; a second corrective pass absorbs limiter loss.
-    const ceiling = Math.pow(10, (target.truePeak - 0.8) / 20).toFixed(4);
-    const limit = gain => `volume=${gain.toFixed(2)}dB,aresample=192000,alimiter=limit=${ceiling}:level=false:attack=1:release=60:latency=1,aresample=48000`;
-    let gain = target.targetLufs - measured.input_i;
-    const pass = path.join(work, 'master-pass1.wav');
-    await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, pass], execute, work);
-    const check1 = await measureLoudness(pass, execute, target);
-    if (Math.abs(check1.input_i - target.targetLufs) > 0.3) gain += target.targetLufs - check1.input_i;
-    await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, master], execute, work);
-  } else {
-    await copyFile(path.join(work, 'mix.wav'), master);
-  }
+  const masterAudio = async (headroomDb, dips = []) => {
+    if (Number.isFinite(measured.input_i) && measured.input_i > -70) {
+      // Gain to target, then an oversampled peak limiter; a second corrective pass absorbs limiter loss.
+      const ceiling = Math.pow(10, (target.truePeak - 0.8 - headroomDb) / 20).toFixed(4);
+      // Brief local gain dips (from earlier encode checks) are applied last so loudness stays on target.
+      const dip = dips.map(d => `,volume=${d.gain.toFixed(2)}dB:enable='between(t,${sec(d.from)},${sec(d.to)})'`).join('');
+      const limit = gain => `volume=${gain.toFixed(2)}dB,aresample=192000,alimiter=limit=${ceiling}:level=false:attack=1:release=60:latency=1,aresample=48000${dip}`;
+      let gain = target.targetLufs - measured.input_i;
+      const pass = path.join(work, 'master-pass1.wav');
+      await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, pass], execute, work);
+      const check1 = await measureLoudness(pass, execute, target);
+      if (Math.abs(check1.input_i - target.targetLufs) > 0.3) gain += target.targetLufs - check1.input_i;
+      await ffmpeg(['-i', path.join(work, 'mix.wav'), '-af', limit(gain), ...pcm, master], execute, work);
+    } else {
+      await copyFile(path.join(work, 'mix.wav'), master);
+    }
+  };
+  await masterAudio(0);
+  let dips = [];
 
   // 6. Final encode: transitions + captions + global overlays + mastered audio in one pass
   log('Encoding final video...');
@@ -281,23 +380,102 @@ export async function buildTimeline(file, approval, output, options = {}) {
     length += runFiles[i].frames - d;
   }
   check(length === totalFrames, `internal frame accounting mismatch (${length} vs ${totalFrames})`);
+  // Split layouts: while a side panel is up, the picture scales down (eased) beside it so the content being explained stays fully
+  // visible, then expands back. Only the panel windows are processed, each on the theme's background.
+  const SPLIT_SCALE = 0.47;
+  const windows = (m.globalOverlays || []).filter(o => o.layout === 'split' && ['left', 'right'].includes(o.placement) && o.duration >= 1.5)
+    .map(o => ({ from: Math.round(o.start * m.fps), to: Math.round((o.start + o.duration) * m.fps), side: o.placement })).sort((a, b) => a.from - b.from)
+    .filter((w, i, all) => w.to <= totalFrames && (i === 0 || w.from >= all[i - 1].to));
+  let splitCount = 0;
+  if (windows.length) {
+    const bg = `0x${resolveTheme(m.theme).background.replace('#', '')}`;
+    const parts = [];
+    let at = 0;
+    for (const w of windows) {
+      if (w.from > at) parts.push({ type: 'normal', from: at, to: w.from });
+      parts.push({ type: 'split', from: w.from, to: w.to, side: w.side });
+      at = w.to;
+    }
+    if (at < totalFrames) parts.push({ type: 'normal', from: at, to: totalFrames });
+    fg.push(`[${cur}]format=yuv444p,split=${parts.length}${parts.map((_, i) => `[p${i}]`).join('')}`);
+    parts.forEach((part, i) => {
+      const trim = `trim=start_frame=${part.from}:end_frame=${part.to},setpts=PTS-STARTPTS`;
+      if (part.type === 'normal') { fg.push(`[p${i}]${trim},setsar=1[t${i}]`); return; }
+      splitCount++;
+      const d = (part.to - part.from) / m.fps;
+      const a = Math.min(0.45, d / 3);
+      const P = `clip(min(t/${sec(a)},(${sec(d)}-t)/${sec(a)}),0,1)`;
+      const Q = `(${P}*${P}*(3-2*${P}))`;
+      const W = m.width, H = m.height;
+      const xTarget = part.side === 'right' ? (W * 0.5 - W * SPLIT_SCALE) / 2 : W * 0.5 + (W * 0.5 - W * SPLIT_SCALE) / 2;
+      const yTarget = (H - H * SPLIT_SCALE) / 2;
+      fg.push(`[p${i}]${trim},scale=w='trunc(iw*(1-${1 - SPLIT_SCALE}*${Q})/2)*2':h='trunc(ih*(1-${1 - SPLIT_SCALE}*${Q})/2)*2':eval=frame:flags=bicubic[sv${i}]`);
+      fg.push(`color=c=${bg}:s=${W}x${H}:r=${m.fps}:d=${sec(d)},format=yuv444p[cv${i}]`);
+      fg.push(`[cv${i}][sv${i}]overlay=x='${xTarget.toFixed(2)}*${Q}':y='${yTarget.toFixed(2)}*${Q}':shortest=1:format=yuv444,setsar=1[t${i}]`);
+    });
+    fg.push(`${parts.map((_, i) => `[t${i}]`).join('')}concat=n=${parts.length}:v=1:a=0[spl]`);
+    cur = 'spl';
+  }
   const overlaysFinal = [];
   (m.globalOverlays || []).forEach((o, i) => overlaysFinal.push({ key: `global-${i}`, start: o.start, duration: o.duration }));
-  if (rendered.has('captions')) overlaysFinal.push({ key: 'captions', start: 0, duration });
+  for (const chunk of captionChunks) overlaysFinal.push({ key: chunk.key, start: chunk.start, duration: chunk.duration });
   if (overlaysFinal.length) fg.push(`[${cur}]format=yuv444p[base]`), cur = 'base';
   overlaysFinal.forEach((o, k) => {
     const i = fAdd(['-framerate', String(m.fps), '-i', rendered.get(o.key).pattern]);
-    fg.push(`[${i}:v]format=rgba,setpts=PTS-STARTPTS+${sec(o.start)}/TB[g${k}]`);
+    fg.push(`[${i}:v]format=rgba,${RGB_TO_YUV},format=yuva444p,setpts=PTS-STARTPTS+${sec(o.start)}/TB[g${k}]`);
     fg.push(`[${cur}][g${k}]overlay=eof_action=pass:format=yuv444:enable='between(t,${sec(o.start)},${sec(o.start + o.duration - 0.5 / m.fps)})'[go${k}]`);
     cur = `go${k}`;
   });
+  // Brand bug: a small logo in a corner for the whole video (or a window of it), under the captions' layer order but over everything else.
+  if (m.watermark) {
+    const w = m.watermark, wa = assets.get(w.asset);
+    const wi = fAdd(['-loop', '1', '-framerate', String(m.fps), '-i', wa.path]);
+    const wide = Math.max(16, Math.round(m.width * (w.size ?? 0.1) / 2) * 2);
+    const margin = Math.round(m.width * (w.margin ?? 0.03));
+    const [vert, horiz] = (w.position || 'top-right').split('-');
+    const x = horiz === 'left' ? margin : `W-w-${margin}`, y = vert === 'top' ? margin : `H-h-${margin}`;
+    const from = w.start ?? 0, until = w.end ?? duration;
+    fg.push(`[${wi}:v]format=rgba,scale=${wide}:-2:flags=lanczos,colorchannelmixer=aa=${w.opacity ?? 0.85},${RGB_TO_YUV},format=yuva444p,setpts=PTS-STARTPTS[wm]`);
+    fg.push(`[${cur}]format=yuv444p[wmbase]`);
+    fg.push(`[wmbase][wm]overlay=x=${x}:y=${y}:format=yuv444:shortest=0:enable='between(t,${sec(from)},${sec(until)})'[wmo]`);
+    cur = 'wmo';
+  }
   fg.push(`[${cur}]format=yuv420p[vout]`);
-  const ai = fAdd(['-i', master]);
+  const videoFile = path.join(work, 'video.mp4');
+  // Capped CRF, High profile, closed GOPs and BT.709 tags (see delivery.js); the target comes from manifest.delivery.target.
+  const encoder = videoArgs({ width: m.width, height: m.height, fps: m.fps, delivery: { ...m.delivery, ...loaded.delivery, maxrateMbps: loaded.delivery.maxrateMbps }, draft });
+  await ffmpeg([...fIn, '-filter_complex', fg.join(';'), '-map', '[vout]', '-an', '-frames:v', String(totalFrames), ...encoder.args, videoFile], execute, work);
   const finalFile = path.join(output, 'final.mp4');
-  await ffmpeg([...fIn, '-filter_complex', fg.join(';'), '-map', '[vout]', '-map', `${ai}:a`, '-frames:v', String(totalFrames),
-    '-c:v', 'libx264', '-preset', draft ? 'veryfast' : target.preset, '-crf', String(draft ? 26 : target.crf), '-pix_fmt', 'yuv420p',
-    '-r', String(m.fps), '-g', String(m.fps * 2), '-c:a', 'aac', '-b:a', `${target.audioBitrate}k`, '-ar', '48000',
-    '-movflags', '+faststart', '-metadata', `title=${m.title}`, '-shortest', finalFile], execute, work);
+  const mux = () => ffmpeg(['-i', videoFile, '-i', master, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', `${target.audioBitrate}k`,
+    '-ar', '48000', '-movflags', '+faststart', '-metadata', `title=${m.title}`, '-shortest', finalFile], execute, work);
+  // AAC can overshoot a limited master on a transient by 1-3 dB. Measure the real file; first fix only the offending 10 ms windows
+  // with brief local gain dips (loudness stays on target), and fall back to more overall headroom if that is not enough.
+  let headroom = 0;
+  let remasters = 0;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await mux();
+    const encoded = await measureLoudness(finalFile, execute, target);
+    if (!(encoded.input_i > -70) || encoded.input_tp <= target.truePeak + 0.1) break;
+    if (attempt === 3) break;
+    remasters++;
+    const limitDb = target.truePeak - 0.6;
+    const hot = attempt < 2 ? await overshootWindows(finalFile, limitDb, execute) : [];
+    if (hot.length && hot.length <= 60) {
+      const merged = [];
+      for (const h of hot) {
+        const from = Math.max(0, h.t - 0.02), to = h.t + 0.03;
+        const last = merged.at(-1);
+        if (last && from <= last.to) { last.to = Math.max(last.to, to); last.gain = Math.min(last.gain, limitDb - h.peak - 0.6); }
+        else merged.push({ from, to, gain: limitDb - h.peak - 0.6 });
+      }
+      dips = dips.concat(merged);
+      log(`  AAC overshoot (${encoded.input_tp.toFixed(1)} dBTP) in ${hot.length} short window(s): applying local gain dips`);
+    } else {
+      headroom += encoded.input_tp - target.truePeak + 0.3;
+      log(`  AAC overshoot (${encoded.input_tp.toFixed(1)} dBTP): re-mastering with ${headroom.toFixed(1)} dB more headroom`);
+    }
+    await masterAudio(headroom, dips);
+  }
 
   // 7. Deliverables
   log('Writing captions, chapters, thumbnail, contact sheet and verification...');
@@ -312,14 +490,17 @@ export async function buildTimeline(file, approval, output, options = {}) {
   await writeNew(path.join(output, 'timeline.xml'), timelineXml(loaded, work, output));
   const verification = await verifyMedia(finalFile, loaded, execute);
   const credits = [...assets.values()].map(({ id, rights, attribution, sourceUrl }) => ({ id, rights, attribution, sourceUrl }));
+  await writeNew(path.join(output, 'YOUTUBE.md'), youtubePackage({ title: m.title, duration, width: m.width, height: m.height, words: loaded.words, chapters: chapterList, credits,
+    captionsFile: captionPages ? 'captions.srt' : null, warnings }));
   await writeNew(path.join(output, 'CREDITS.txt'), credits.map(a => `${a.attribution} — ${a.rights}${a.sourceUrl ? ` (${a.sourceUrl})` : ''}`).join('\n') + '\n');
   const report = {
     version: 2, status: verification.passed ? 'technical-checks-passed-needs-human-review' : 'failed-technical-checks',
     fingerprint: loaded.fingerprint, quality, renderSeconds: Math.round((Date.now() - started) / 1000),
-    outputs: { video: 'final.mp4', captions: captionPages ? ['captions.srt', 'captions.vtt'] : [], chapters: chapterList.length ? 'chapters.txt' : null,
+    outputs: { video: 'final.mp4', captions: captionPages ? ['captions.srt', 'captions.vtt'] : [], chapters: chapterList.length ? 'chapters.txt' : null, publishing: 'YOUTUBE.md',
       thumbnail: 'thumbnail.png', contactSheet: 'contact-sheet.png', stems: ['stems/voice.wav', 'stems/music.wav', 'stems/sfx.wav', 'stems/master.wav'],
       resolveTimeline: 'timeline.xml' },
-    timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length },
+    timeline: { duration, frames: totalFrames, scenes: timeline.length, transitions: runFiles.length - 1, motionGraphics: jobs.length, audioRemasters: remasters, splitLayouts: splitCount },
+    library: libraryStats, warnings, voice: voiceReport, graphicAudit,
     verification,
     humanReview: { facts: 'NOT VERIFIED', captionsWording: captionPages ? 'NOT VERIFIED' : 'N/A', rights: 'USER ATTESTED', wholeVideoPlayback: 'NOT VERIFIED' },
     credits
@@ -343,6 +524,23 @@ export async function buildTimeline(file, approval, output, options = {}) {
   return report;
 }
 
+// 10 ms windows of the decoded file whose sample peak exceeds limitDb (decoded from the start, as players do).
+export async function overshootWindows(media, limitDb, execute = run) {
+  const { stdout } = await execute(tool('ffmpeg'), ['-hide_banner', '-nostdin', '-i', media, '-vn', '-af',
+    'aresample=48000,asetnsamples=n=480:p=0,astats=metadata=1:reset=1,ametadata=print:key=lavfi.astats.Overall.Peak_level:file=-', '-f', 'null', '-'],
+  { timeout: 6 * 3600_000, maxBuffer: 512 * 1024 * 1024 });
+  const hot = [];
+  let index = 0;
+  for (const line of String(stdout).split(/\r?\n/)) {
+    const m = line.match(/Peak_level=(-?[0-9.]+|-inf)/);
+    if (!m) continue;
+    const peak = Number(m[1]);
+    if (Number.isFinite(peak) && peak > limitDb) hot.push({ t: index * 0.01, peak });
+    index++;
+  }
+  return hot;
+}
+
 export async function measureLoudness(media, execute = run, target = { targetLufs: -14, truePeak: -1 }) {
   const { stderr } = await execute(tool('ffmpeg'), ['-hide_banner', '-nostdin', '-i', media, '-vn',
     '-af', `loudnorm=I=${target.targetLufs}:TP=${target.truePeak}:LRA=11:print_format=json`, '-f', 'null', '-'], { timeout: 6 * 3600_000 });
@@ -360,6 +558,10 @@ export async function verifyMedia(media, loaded, execute = run) {
   await execute(tool('ffmpeg'), ['-v', 'error', '-nostdin', '-i', media, '-f', 'null', '-'], { timeout: 6 * 3600_000 });
   const loud = await measureLoudness(media, execute, loaded.delivery);
   const silent = !(loud.input_i > -70);
+  const v = info.video || {};
+  const tagged = [v.color_space, v.color_transfer, v.color_primaries];
+  const cap = videoArgs({ width: m.width, height: m.height, fps: m.fps, delivery: { target: loaded.delivery.target, maxrateMbps: loaded.delivery.maxrateMbps } }).capMbps;
+  const totalMbps = (await stat(media)).size * 8 / Math.max(0.1, info.duration) / 1e6;
   const checks = {
     decode: 'PASS',
     dimensions: info.video?.width === m.width && info.video?.height === m.height ? 'PASS' : 'FAIL',
@@ -367,12 +569,14 @@ export async function verifyMedia(media, loaded, execute = run) {
     duration: Math.abs(info.duration - loaded.duration) <= 2 / m.fps + 0.05 ? 'PASS' : 'FAIL',
     audioPresent: info.audio ? 'PASS' : 'FAIL',
     loudness: silent ? 'SILENT' : Math.abs(loud.input_i - loaded.delivery.targetLufs) <= 1 ? 'PASS' : 'FAIL',
-    truePeak: silent ? 'SILENT' : loud.input_tp <= loaded.delivery.truePeak + 0.3 ? 'PASS' : 'FAIL'
+    truePeak: silent ? 'SILENT' : loud.input_tp <= loaded.delivery.truePeak + 0.3 ? 'PASS' : 'FAIL',
+    colorTags: tagged.every(x => x === 'bt709') ? 'PASS' : tagged.every(x => !x || x === 'unknown') ? 'NOT TAGGED' : 'FAIL',
+    bitrate: cap ? (totalMbps <= (cap + loaded.delivery.audioBitrate / 1000) * 1.3 ? 'PASS' : 'FAIL') : 'UNCAPPED'
   };
   return {
     passed: !Object.values(checks).includes('FAIL'), checks, sha256: await digest(media),
     measured: { width: info.video?.width, height: info.video?.height, fps, duration: info.duration,
-      integratedLufs: silent ? null : loud.input_i, truePeakDb: silent ? null : loud.input_tp },
+      integratedLufs: silent ? null : loud.input_i, truePeakDb: silent ? null : loud.input_tp, totalMbps: Math.round(totalMbps * 10) / 10, capMbps: cap },
     targets: { integratedLufs: loaded.delivery.targetLufs, toleranceLu: 1, maxTruePeakDb: loaded.delivery.truePeak }
   };
 }

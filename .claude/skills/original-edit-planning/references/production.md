@@ -18,9 +18,9 @@ Final approval/export remains in Resolve Free; generated MP4s are drafts.
 3. Route each beat to an original recording, stock illustration, infographic or
    verification lead. Stock pictures can't prove identities, incidents or metrics.
    Do not copy creator footage or download YouTube references.
-4. Optional stock search sends query text to Pexels:
+4. Optional stock search sends query text to Pixabay (when `PIXABAY_API_KEY` is set) or Pexels:
    `video-monk stock-search --query "server racks" --output <candidates.json> --allow-search`.
-   Requires `PEXELS_API_KEY`. Review candidates/source pages before selection.
+   Requires `PIXABAY_API_KEY` or `PEXELS_API_KEY`. Review candidates/source pages before selection.
    `video-monk stock-fetch --catalog <candidates.json> --id <video-id> --file-id <file-id> --output <new-asset-folder> --allow-download --rights-confirmed`.
    These flags apply to that selected asset only. Preserve provenance/credit and
    inspect the downloaded MP4. Adjust its relative path when adding asset.json

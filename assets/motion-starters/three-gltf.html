@@ -1,0 +1,31 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>three.js glTF turntable</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block}</style></head><body>
+<!-- Starter: a model from Blender (glTF/GLB), or a Substance-textured asset, on a turntable.
+     Needs:  video-monk libs --add three --allow-download   and your file next to this page as model.glb (edit the src below). -->
+<vm-lib name="three"></vm-lib>
+<vm-asset name="model" src="model.glb"></vm-asset>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1); renderer.setSize(W, H); renderer.toneMapping = THREE.ACESFilmicToneMapping; document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b1020);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(35, W / H, 0.01, 100);
+const bytes = await (await fetch(window.__vmAssets.model)).arrayBuffer();      // data URL: no network
+const gltf = await new GLTFLoader().parseAsync(bytes, '');
+const root = new THREE.Group(); root.add(gltf.scene); scene.add(root);
+const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+gltf.scene.position.sub(centre);                                              // centre it, then frame it
+const fit = 1.2 * Math.max(size.x, size.y, size.z) / (2 * Math.tan(THREE.MathUtils.degToRad(35) / 2));
+const mixer = gltf.animations.length ? new THREE.AnimationMixer(gltf.scene) : null; mixer?.clipAction(gltf.animations[0]).play();
+window.__seek = t => {
+  root.rotation.y = t * 0.6; camera.position.set(0, size.y * 0.25, fit * 1.25); camera.lookAt(0, 0, 0);
+  if (mixer) mixer.setTime(t);                                                  // exact, repeatable animation time
+  renderer.render(scene, camera);
+};
+window.__seek(0); window.__vmReady = true;
+</script></body></html>

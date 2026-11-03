@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Motion springs</title>
+<style>
+html,body{margin:0;height:100%;background:#0b1020;overflow:hidden;color:#f4f6fb;font:700 6vh system-ui,sans-serif}
+.stack{position:absolute;inset:0;display:grid;place-items:center}.c{position:absolute;width:44vh;height:14vh;border-radius:3vh;background:#151d33;display:grid;place-items:center;box-shadow:0 2vh 6vh rgba(0,0,0,.45)}
+</style></head><body>
+<!-- Starter: spring-driven cards with the Motion library (formerly Framer Motion, vanilla). Needs:  video-monk libs --add motion --allow-download
+     Every animation is created paused and given an exact time in __seek, so frames repeat. Use bounce 0 unless a flick caused the move. -->
+<vm-lib name="motion"></vm-lib>
+<div class="stack"><div class="c">First</div><div class="c">Second</div><div class="c">Third</div></div>
+<script>
+const { animate } = Motion;
+const cards = [...document.querySelectorAll('.c')];
+const runs = cards.map((el, i) => animate(el, { y: [160, i * 22 - 22], scale: [0.85, 1 - i * 0.04], opacity: [0, 1] }, { type: 'spring', bounce: 0, duration: 0.7, delay: 0.25 * i }));
+runs.forEach(r => r.pause());
+const end = Math.max(...runs.map(r => r.duration));
+window.__seek = t => runs.forEach(r => { r.time = Math.min(t, end); });
+window.__seek(0); window.__vmReady = true;
+</script></body></html>

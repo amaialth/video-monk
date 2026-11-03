@@ -13,14 +13,48 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 - **Gated.** Nothing renders until a plan review approves the exact manifest, media and
   captions (by content hash). Rights and facts stay human decisions.
 
+## The web studio
+
+```bash
+video-monk ui          # opens http://127.0.0.1:4173/?token=... in your browser
+```
+
+A local, professional-grade app for the whole toolkit. Pick a video from a built-in file browser, answer a few questions (long-form, vertical short or both, footage type, pace, graphics, sound, B-roll), then watch every step happen:
+
+- **A pipeline you can see**: footage analysis (waveform, loudness, frames), transcript, script check, cut (before and after), storyboard (a preview of every graphic on a multi-lane timeline with B-roll and sound), render progress, the finished video with its technical checks, and a vertical short.
+- **Approvals built in**: it pauses and waits for you at the script (approve each correction of mis-heard words, with a "Hear it" button), the storyboard (remove graphics, fetch and keep or drop B-roll clips, then approve before anything renders), optionally the cut, and a final sign-off with a checklist. Every decision is recorded with your name, the time and a fingerprint of what you approved (`APPROVALS.md` in the project).
+- **The review loops, visible**: each independent reviewer's findings, what was sent back, what the producer fixed, and the re-check.
+- **Open any earlier output**: "Open an existing output" shows the results of a past `video-monk auto` run read-only.
+
+**It remembers, and it resumes.** Everything lives in one local SQLite file (`~/.video-monk/video-monk.db`, built into Node 22.13+, no dependency): projects, every step's status, the event log, approvals, run history and checkpoints. If the app is closed or a step fails, **Resume** continues from the first unfinished step; steps you finished are kept ("kept" chips), approvals are not asked twice, and the run history shows each attempt. The database also remembers your wizard **presets**, the **glossary corrections** you approved (so "wrist" becomes REST in your next project without being told), recent footage, and usage counts that protect stock-API limits (for example Unsplash's 50 requests an hour). `video-monk db` shows where it is and what it holds.
+
+It listens only on 127.0.0.1, behind a one-time token in the printed address; nothing leaves your machine unless you turn on stock search, Claude or Mirelo for a project. No dependencies and no build step. Projects live in `~/.video-monk/ui/projects`.
+
+## What's new
+
+- **0.5: production-grade, in the format you need, now with a web studio.** (A motion-graphics skill adds brand intake (`video-monk brand`), `theme.onTwos`, a facts-first check (`facts-check`) and a catalog of premium effects. Storyboards now follow a story arc and a shared visual theme, with beat labels and an optional closing call to action: `--cta`.) Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
+  from the long edit (`cutdown`, blurred-background fit), tuned delivery (capped CRF, BT.709, accurate colours), voice treatment, caption and
+  graphic readability audits, a logo bug and a drafted `YOUTUBE.md`, a script verifier that fixes mis-heard terms in context (REST, not wrist),
+  and sound effects (`--sfx subtle`): built-in synthesis, or Mirelo with your own key (`--sfx-engine mirelo --allow-mirelo`).
+  For motion graphics: ten effect templates (chart morph, search to results, card to workspace, button to player, tabs, spring stack, glass focus, particle text, perspective layers, dock), `motion-video` (a standalone launch, explainer, chart, milestone, opener or promo from a brief, facts-first) and 3D/animation libraries on request (`libs --add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download`; never bundled, integrity-checked, rendered offline). The web studio (`video-monk ui`) has a Motion studio page for all three.
+- **0.4: checked, reusable, on-style.** Pacing measured from your recording's noise floor (quiet time in one real edit fell from 8.9% to
+  0.3%), an independent reviewer for every stage with fixes limited to what was flagged (`REVIEW-LOOP.md`), a shared asset library that
+  reuses graphics, transcripts and storyboards, and a ByteMonk-inspired house style by default.
+- **0.3: explains with graphics, modern type.** Graphics planned from the transcript, stressed words in italic serif, kinetic captions.
+- **0.2: automated editing.** One command from recording to a verified `final.mp4`.
+
+Defaults changed in 0.4 (pace, style, review loops, library); each has a switch back. See [CHANGELOG.md](CHANGELOG.md) for details and
+[docs/architecture.html](docs/architecture.html) for the big picture and every part explained.
+
 ## What it does
 
 | Stage | Command | Result |
 |---|---|---|
 | Analyze | `inspect` | Loudness, true peak, pauses, speech ratio, scene-change pacing and suggestions |
 | Transcribe | `transcribe` | Local whisper.cpp word timestamps, refined against measured silence |
-| Plan / cut | `autocut` | Removes pauses and filler words ("um", "uh"), adds jump-cut punch-ins, remaps captions, writes a version-2 timeline |
-| Design | edit `production.json`; `templates`, `graphic` | 17 motion and infographic templates, B-roll layers, camera moves, 25 transitions |
+| Plan / cut | `autocut` | Measures the recording's noise floor, removes pauses, breaths, hums and filler words, trims quiet edges, optionally speeds speech up (`--pace`, `--speed`), adds jump-cut punch-ins, remaps captions, writes a version-2 timeline |
+| Explain | `storyboard` (also run by `auto`) | Reads the transcript and places motion graphics wherever an idea can be shown: definitions, flows, steps, lists, numbers, comparisons, chapters, pull-text. Offline rules, or Claude designs the diagrams (`--engine claude`) |
+| Design | edit `production.json`; `templates`, `graphic` | 18 motion and infographic templates, B-roll layers, camera moves, 25 transitions |
 | Build | `production-build` | Composites, transitions, karaoke captions, music ducking, SFX, two-pass loudness mastering, final encode |
 | Deliver | (included) | `final.mp4`, `captions.srt/.vtt`, `chapters.txt`, `thumbnail.png`, `contact-sheet.png`, stems, `timeline.xml`, verification report |
 | One shot | `auto` | Runs all of the above for a talking-head or screen recording |
@@ -28,13 +62,59 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 ### Motion graphics and infographics
 
 `title` · `chapter` · `lower-third` · `kinetic-text` · `bar-chart` · `line-chart` ·
-`donut` · `stat` (count-up) · `comparison` · `flow` (architecture diagram with icons
+`donut` · `stat` (count-up) · `term` (definition card) · `comparison` · `flow` (architecture diagram with icons
 and moving packets) · `steps` · `bullets` · `callout` (highlight part of the shot) ·
 `quote` · `code` (typed, syntax-highlighted) · `table` · `progress-bar`, plus
 word-timed karaoke captions. Each template has a validated props schema
 (`video-monk templates`), adapts to 16:9, 9:16 and 1:1, and can be full-screen or
 boxed in any of ten placements over footage. You can also supply your own seekable
 HTML page for fully custom animation.
+
+### Review loops
+
+Every stage has an independent reviewer. `auto` runs **transcript → cut → storyboard → render**; after each stage the reviewer approves or
+rejects with structured findings (blocker / major / minor, an owner stage, a target and, when mechanical, a fix). The producer revises
+**only the flagged parts**, the reviewer checks again (3 rounds, then a human decides), and findings owned by an earlier stage are routed
+back to it with downstream stages re-produced. Reviewers measure rather than guess: quiet stretches and lost speech from the audio, numbers
+and labels checked against the transcript, cutaway share, empty stretches, black frames, dead air and loudness in the rendered file. An
+optional Claude reviewer (`--review-agent claude --allow-llm`) adds judgment, including a look at sampled frames. Every round is written to
+`loop-ledger.json` and `REVIEW-LOOP.md`. Subagents use the same schema through `video-monk review`. See
+[review-loop.md](templates/workflows/non-resolve/skills/non-resolve-production/references/review-loop.md).
+
+### Asset library
+
+Everything generated is indexed in a shared library (`~/.video-monk/library`) so other projects reuse it: rendered graphics are cached and
+searchable, the same recording is never transcribed twice, and a paid Claude storyboard is not repeated for the same transcript. Add licensed
+music, SFX, images and fonts with rights recorded once, then `video-monk assets --search`, `--get` and `--export`. See
+[asset-library.md](templates/workflows/non-resolve/skills/non-resolve-production/references/asset-library.md).
+
+### House style
+
+`--style bytemonk` (default) applies the approved provisional ByteMonk-inspired direction: dark neutral cards, calm reveals tied to the
+narration, diagram-first graphics, conceptual schematics labelled, a ducked ambient bed, and a structure that opens with a concrete question
+and ends with a recap and next step. It is creative direction derived from unverified notes, never a copy of the channel.
+See [style-bytemonk.md](templates/skills/original-edit-planning/references/style-bytemonk.md).
+
+### Typography
+
+Text follows modern kinetic-type practice. Headlines are bold Geist; **stressed words switch to an italic
+serif (Instrument Serif) in the accent colour**, written `*like this*` in any headline-style prop. Captions
+pick stress automatically from the transcript (numbers, acronyms, proper terms, intensifiers, words the
+speaker lingers on). Reveals are masked word-by-word rises with expo-out easing, stressed words focus-pull
+into place, and `cues` land each word or bullet on the moment it is spoken. Two theme presets:
+`night` and `paper` (warm gray, black ink, orange accent), chosen automatically from the footage brightness.
+Fonts are bundled (SIL OFL). Details: [kinetic-typography.md](templates/workflows/non-resolve/skills/non-resolve-production/references/kinetic-typography.md).
+
+### Explainer graphics
+
+`video-monk storyboard` (and `auto`, by default) plans graphics for every idea the speaker explains, then
+writes a reviewable `STORYBOARD.md` table and an editable `storyboard.json`. For each idea it chooses a
+full-frame **cutaway**, a **side panel** (long ideas, keeps the picture visible) or a pull-text **overlay**,
+under a density budget (`light` 3, `medium` 6, `heavy` 10 per minute), with at least two seconds of face time
+between cutaways, nothing in the first second, and every label and number taken from the transcript.
+Engines: `rules` (offline, deterministic) and `claude` (Claude designs the diagrams through your local
+Claude Code login; opt-in with `--allow-llm`, the transcript is sent to Anthropic). See
+[explainer-graphics.md](templates/workflows/non-resolve/skills/non-resolve-production/references/explainer-graphics.md).
 
 ### Editing features
 
@@ -69,9 +149,26 @@ required; all text renders in Chrome.
 video-monk auto --media talk.mp4 --output talk-v1 --transcribe \
   --allow-render --approve-plan --rights-confirmed
 
-# Vertical short from the same recording, fast draft quality
-video-monk auto --media talk.mp4 --output talk-short --transcribe --format vertical \
+# Same, with Claude designing the diagrams (needs the claude CLI; sends the transcript to Anthropic)
+video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude --allow-llm \
+  --graphics medium --allow-render --approve-plan --rights-confirmed
+
+# Not sure which format? Answer a few questions first (long-form, vertical short, or both)
+video-monk brief --output brief.json
+video-monk auto --brief brief.json --media talk.mp4 --output talk-both --transcribe \
+  --allow-render --approve-plan --rights-confirmed
+
+# Long-form plus a 9:16 short cut from it (render/final.mp4 and short/final.mp4)
+video-monk auto --media talk.mp4 --output talk-both --transcribe --deliverables both --short-max 55 \
+  --allow-render --approve-plan --rights-confirmed
+
+# Only a vertical short, whole picture over a blurred background
+video-monk auto --media talk.mp4 --output talk-short --transcribe --deliverables short --fit blur \
   --quality draft --allow-render --approve-plan --rights-confirmed
+
+# Re-cut a finished edit into another format or time window
+video-monk cutdown --manifest talk-v1/edit/production.graphics.json --output talk-v1/edit/short.json \
+  --aspect 9:16 --from 30 --to 85
 ```
 
 `talk-v1/render/final.mp4` is the result. Read `REVIEW.txt` and watch the whole file
@@ -128,12 +225,17 @@ Run `video-monk --help` for every option.
 | `transcribe` | Local word-level transcription (`--engine whisper` default, or `parakeet` via HyperFrames) |
 | `models` | List/download whisper.cpp models |
 | `autocut` | Silence/filler removal to a version-2 manifest with remapped captions |
+| `storyboard` | Plan explainer graphics from the transcript; writes the manifest, `.storyboard.json` and `.STORYBOARD.md` |
+| `review` | Run one stage's reviewer on files (transcript, cut, storyboard, render); appends to the loop ledger |
+| `assets` | Search, add, check out, export and prune the shared asset library |
 | `templates` | Motion template catalog and props |
 | `graphic` | Render one template to `.png` (still), `.mp4` or `.mov` (ProRes 4444 with alpha) |
 | `production-review` | Validate a v1/v2 manifest; `--approve-plan` records approval of its fingerprint |
 | `production-build` | Render the approved timeline (`--quality draft` for fast iterations) |
 | `production-verify` | Re-verify any exported file against the manifest's targets |
-| `stock-search` / `stock-fetch` | Opt-in Pexels B-roll candidates and a selected download with attribution |
+| `stock-search` / `stock-fetch` | Opt-in B-roll candidates and a selected download with attribution: Pixabay (video and photos), Unsplash (photos), Pexels (video) |
+| `broll-plan` / `broll-fetch` / `broll-apply` | Plan where B-roll is needed, fetch and preview a clip per moment, then place the ones you keep |
+| `broll-add` | Lay a downloaded clip or photo over a stretch of the timeline, continuous across the speech cuts |
 | `catalog` / `fetch` / `analyze` / `style` | Reference-channel editing study (metadata, sampled frames, optional LLM style notes) |
 | `plan` / `import-plan` / `validate` / `handoff` | Picture-only rough cut plans and Resolve XML handoff |
 | `install` | Copy Claude Code or Copilot skills and agents into a workspace |
@@ -161,11 +263,15 @@ Typical speed on an M-series Mac: about 55 ms per captured 1080p motion frame; a
 
 - ASR output is a draft. Proofread names, numbers and jargon before publishing captions.
 - Charts show the numbers you give them. The toolkit checks structure, not truth.
-- `autocut` judges pauses acoustically. Music under speech or a noisy room needs
-  `--noise-db` tuning, and cuts should be watched.
+- `autocut` judges pauses acoustically (threshold measured from the recording). Whisper never transcribes "hm" or "um"
+  for many speakers, so those are removed only as low-level stretches, not by name. Music under speech or a
+  noisy room needs `--noise-db` tuning, and cuts should be watched.
 - Ducking uses a sidechain compressor; very dense music may still need manual gain.
-- Automatic graphic placement is the editor's (Claude's) job via the manifest;
-  `auto` alone produces cuts, punch-ins and captions, not infographics.
+- The offline `rules` planner works from patterns in the words. On conversational speech it mostly yields
+  pull-text plus a few definition cards, lists and flows; `--engine claude` (or Claude editing the
+  storyboard) is what turns ideas into real diagrams. Always review the storyboard table.
+- Graphics show what was said. They never add facts, but a transcription error becomes a labelling error.
+- Reviewers catch what can be measured. Judgment of taste, facts and rights still needs a person, and an unfixable finding stops the run.
 - Rights, attribution, factual accuracy and publishing are always human decisions.
 
 ## Reference study, Resolve handoff and version-1 manifests
@@ -194,4 +300,5 @@ The v1 real-media test runs when `VIDEO_MONK_FFMPEG`, `VIDEO_MONK_FFPROBE` and
 `VIDEO_MONK_WHISPER_MODEL`, `VIDEO_MONK_HYPERFRAMES`.
 
 Independent of ByteMonk, YouTube, OpenAI, Blackmagic Design, Google and HeyGen.
-MIT licensed.
+MIT licensed. Bundled fonts are SIL OFL; methods credit the kinetic-typography-skills (iart.ai) and
+motion-graphics (Barty-Bart) projects, both MIT. See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

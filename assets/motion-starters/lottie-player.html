@@ -1,0 +1,17 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Lottie player</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}#a{width:100%;height:100%}</style></head><body>
+<!-- Starter: play a Lottie animation (After Effects via Bodymovin, or any Lottie JSON) frame exact.
+     Needs:  video-monk libs --add lottie-web --allow-download.  Put your file next to this page as animation.json (edit the src below);
+     without it a small built-in demo plays. -->
+<vm-lib name="lottie-web"></vm-lib>
+<!-- <vm-asset name="anim" src="animation.json"></vm-asset> -->
+<div id="a"></div>
+<script type="module">
+const demo = {"v":"5.7.0","fr":30,"ip":0,"op":60,"w":400,"h":400,"nm":"demo","ddd":0,"assets":[],"layers":[{"ddd":0,"ind":1,"ty":4,"nm":"sq","sr":1,"ks":{"o":{"a":0,"k":100},"r":{"a":1,"k":[{"t":0,"s":[0],"e":[180],"i":{"x":[0.5],"y":[1]},"o":{"x":[0.5],"y":[0]}},{"t":60,"s":[180]}]},"p":{"a":0,"k":[200,200,0]},"a":{"a":0,"k":[0,0,0]},"s":{"a":1,"k":[{"t":0,"s":[40,40,100],"e":[100,100,100],"i":{"x":[0.5,0.5,0.5],"y":[1,1,1]},"o":{"x":[0.5,0.5,0.5],"y":[0,0,0]}},{"t":60,"s":[100,100,100]}]}},"ao":0,"shapes":[{"ty":"gr","it":[{"ty":"rc","d":1,"s":{"a":0,"k":[120,120]},"p":{"a":0,"k":[0,0]},"r":{"a":0,"k":24}},{"ty":"fl","c":{"a":0,"k":[0.3,0.79,0.94,1]},"o":{"a":0,"k":100}},{"ty":"tr","p":{"a":0,"k":[0,0]},"a":{"a":0,"k":[0,0]},"s":{"a":0,"k":[100,100]},"r":{"a":0,"k":0},"o":{"a":0,"k":100}}]}],"ip":0,"op":60,"st":0,"bm":0}]};
+const data = window.__vmAssets?.anim ? await (await fetch(window.__vmAssets.anim)).json() : demo;   // data URL: no network
+const anim = lottie.loadAnimation({ container: document.getElementById('a'), renderer: 'svg', loop: false, autoplay: false, animationData: data });
+const fps = data.fr, last = data.op - data.ip - 1;
+window.__seek = t => { anim.goToAndStop(Math.min(last, Math.round(t * fps)), true); };         // true = frame number, not milliseconds
+anim.addEventListener('DOMLoaded', () => { window.__seek(0); window.__vmReady = true; });
+</script></body></html>

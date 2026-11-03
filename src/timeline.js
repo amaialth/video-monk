@@ -7,7 +7,8 @@ import { exists, run } from './core.js';
 import { inspectMedia, digest } from './production.js';
 import { TEMPLATES, validateProps } from './motion/templates.js';
 import { PLACEMENTS } from './motion/render.js';
-import { validateWords } from './captions.js';
+import { validateWords, cleanCaptionWords } from './captions.js';
+import { resolveDelivery } from './delivery.js';
 
 export const RATES = [24, 25, 30, 50, 60];
 export const TRANSITIONS = ['fade', 'fadeblack', 'fadewhite', 'dissolve', 'wipeleft', 'wiperight', 'wipeup', 'wipedown',
@@ -30,7 +31,7 @@ export async function loadTimeline(file, execute = run) {
   const raw = await readFile(file);
   const m = JSON.parse(raw);
   keys(m, ['version', 'title', 'fps', 'width', 'height', 'theme', 'assets', 'scenes', 'audio', 'captions',
-    'globalOverlays', 'delivery', 'notes'], 'manifest');
+    'globalOverlays', 'delivery', 'watermark', 'notes'], 'manifest');
   check(m.version === 2 && text(m.title, 120), 'version 2 and a title (1-120 chars) are required');
   check(RATES.includes(m.fps), `fps must be one of ${RATES.join(', ')}`);
   check(Number.isInteger(m.width) && Number.isInteger(m.height) && m.width % 2 === 0 && m.height % 2 === 0 &&
@@ -47,7 +48,10 @@ export async function loadTimeline(file, execute = run) {
   // Theme
   let font = null;
   if (m.theme !== undefined) {
-    keys(m.theme, ['background', 'surface', 'text', 'muted', 'accent', 'palette', 'font'], 'theme');
+    keys(m.theme, ['preset', 'background', 'surface', 'text', 'muted', 'accent', 'grid', 'palette', 'font', 'calm', 'onTwos'], 'theme');
+    check(opt(m.theme.onTwos, v => typeof v === 'boolean'), 'theme.onTwos must be boolean (hold each pose for two frames)');
+    check(opt(m.theme.calm, v => typeof v === 'boolean'), 'theme.calm must be boolean (restrained easing: no overshoot)');
+    check(opt(m.theme.preset, v => ['night', 'paper'].includes(v)), 'theme.preset must be night or paper');
     for (const k of ['background', 'surface', 'text', 'muted', 'accent']) check(opt(m.theme[k], v => /^#[0-9a-fA-F]{6}$/.test(v)), `theme.${k} must be #RRGGBB`);
     check(opt(m.theme.palette, v => Array.isArray(v) && v.length >= 2 && v.length <= 10 && v.every(c => /^#[0-9a-fA-F]{6}$/.test(c))), 'theme.palette needs 2-10 #RRGGBB colors');
     if (m.theme.font !== undefined) {
@@ -85,7 +89,7 @@ export async function loadTimeline(file, execute = run) {
     check(opt(value.amount, v => finite(v, 0.01, 0.5)), `${label}.amount must be 0.01-0.5`);
   };
   const motionJob = async (value, label, { overlay }) => {
-    if (overlay) keys(value, ['template', 'html', 'props', 'start', 'duration', 'placement', 'panel'], label);
+    if (overlay) keys(value, ['id', 'note', 'template', 'html', 'props', 'start', 'duration', 'placement', 'panel', 'background', 'layout'], label);
     else keys(value, ['template', 'html', 'props', 'background'], label);
     check(Boolean(value.template) !== Boolean(value.html), `${label} needs exactly one of template or html`);
     if (value.template) {
@@ -101,6 +105,10 @@ export async function loadTimeline(file, execute = run) {
     if (overlay) {
       check(opt(value.placement, v => PLACEMENTS.includes(v)), `${label}.placement must be one of ${PLACEMENTS.join(', ')}`);
       check(opt(value.panel, v => typeof v === 'boolean'), `${label}.panel must be boolean`);
+      check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent (opaque backgrounds make a full-frame cutaway)`);
+      check(opt(value.id, v => text(v, 64)) && opt(value.note, v => text(v, 300)), `${label}.id/note must be short text`);
+      check(opt(value.layout, v => ['overlay', 'split'].includes(v)), `${label}.layout must be overlay (covers the picture) or split (the picture scales down beside the panel)`);
+      check(value.layout !== 'split' || ['left', 'right'].includes(value.placement), `${label}: layout split needs placement left or right`);
     } else {
       check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent`);
     }
@@ -109,25 +117,29 @@ export async function loadTimeline(file, execute = run) {
   // Scenes
   check(Array.isArray(m.scenes) && m.scenes.length > 0 && m.scenes.length <= 2000, 'provide 1-2000 scenes');
   const timeline = [];
+  // Count in whole frames: summing millisecond-rounded seconds and converting once can disagree with the per-scene frame counts.
   let cursor = 0;
+  let cursorFrames = 0;
   for (const [index, scene] of m.scenes.entries()) {
     const label = `scene ${index}${scene.id ? ` (${scene.id})` : ''}`;
-    keys(scene, ['id', 'kind', 'purpose', 'chapter', 'asset', 'in', 'duration', 'fit', 'color', 'graphic', 'motion',
+    keys(scene, ['id', 'kind', 'purpose', 'chapter', 'asset', 'in', 'duration', 'speed', 'fit', 'color', 'graphic', 'motion',
       'audio', 'broll', 'overlays', 'transition'], label);
     check(['video', 'image', 'graphic', 'color'].includes(scene.kind), `${label}: kind must be video, image, graphic or color`);
     check(text(scene.purpose, 500), `${label} needs a purpose`);
     check(opt(scene.chapter, v => text(v, 80)), `${label}.chapter must be short text`);
     check(finite(scene.duration, 1 / m.fps, 3600), `${label}.duration must be 1 frame to 3600s`);
     aligned(scene.duration, `${label}.duration`);
-    check(opt(scene.fit, v => ['cover', 'contain'].includes(v)), `${label}.fit must be cover or contain`);
+    check(opt(scene.fit, v => ['cover', 'contain', 'blur'].includes(v)), `${label}.fit must be cover, contain or blur`);
     motion(scene.motion, `${label}.motion`);
+    check(scene.kind === 'video' || scene.speed === undefined, `${label}: only video scenes can have a speed`);
     if (scene.kind === 'video' || scene.kind === 'image') {
       const asset = assets.get(scene.asset);
       check(asset?.kind === scene.kind, `${label}: asset must reference a ${scene.kind} asset`);
       check(scene.graphic === undefined && scene.color === undefined, `${label}: ${scene.kind} scenes take no graphic/color`);
       if (scene.kind === 'video') {
         check(finite(scene.in ?? 0, 0, 1e7), `${label}.in must be nonnegative`);
-        check((scene.in ?? 0) + scene.duration <= asset.metadata.duration + 0.05, `${label} exceeds source duration (${asset.metadata.duration.toFixed(3)}s)`);
+        check(opt(scene.speed, v => finite(v, 0.5, 2)), `${label}.speed must be 0.5-2 (pitch-preserved)`);
+        check((scene.in ?? 0) + scene.duration * (scene.speed ?? 1) <= asset.metadata.duration + 0.05, `${label} exceeds source duration (${asset.metadata.duration.toFixed(3)}s)`);
       } else check(scene.in === undefined || scene.in === 0, `${label}: image scenes take no in point`);
     } else {
       check(scene.asset === undefined && scene.in === undefined, `${label}: ${scene.kind} scenes take no asset/in`);
@@ -151,7 +163,7 @@ export async function loadTimeline(file, execute = run) {
         `${bl} must fit inside the scene`);
       aligned(b.start, `${bl}.start`); aligned(b.duration, `${bl}.duration`);
       if (asset.kind === 'video') check(finite(b.in ?? 0, 0, 1e7) && (b.in ?? 0) + b.duration <= asset.metadata.duration + 0.05, `${bl} exceeds source duration`);
-      check(opt(b.fit, v => ['cover', 'contain'].includes(v)), `${bl}.fit must be cover or contain`);
+      check(opt(b.fit, v => ['cover', 'contain', 'blur'].includes(v)), `${bl}.fit must be cover, contain or blur`);
       motion(b.motion, `${bl}.motion`);
     }
     const overlays = scene.overlays || [];
@@ -173,16 +185,22 @@ export async function loadTimeline(file, execute = run) {
       aligned(scene.transition.duration, `${label}.transition.duration`);
       transition = scene.transition;
     }
-    timeline.push({ index, scene, broll, overlays, start: cursor, startFrame: frames(cursor), frames: frames(scene.duration), transition });
-    cursor += scene.duration - (transition?.duration ?? 0);
+    const sceneFrames = frames(scene.duration);
+    timeline.push({ index, scene, broll, overlays, start: cursorFrames / m.fps, startFrame: cursorFrames, frames: sceneFrames, transition });
+    cursorFrames += sceneFrames - (transition ? frames(transition.duration) : 0);
+    cursor = cursorFrames / m.fps;
   }
   const duration = cursor;
-  const totalFrames = frames(duration);
+  const totalFrames = cursorFrames;
   check(duration <= 4 * 3600, 'maximum duration is four hours');
 
   // Audio
   const audio = m.audio || {};
-  keys(audio, ['narration', 'music', 'sfx', 'ducking'], 'audio');
+  keys(audio, ['narration', 'music', 'sfx', 'ducking', 'voice'], 'audio');
+  if (audio.voice !== undefined) {
+    keys(audio.voice, ['enhance'], 'audio.voice');
+    check(['auto', 'on', 'off'].includes(audio.voice.enhance), 'audio.voice.enhance must be auto (measure, treat only what is needed), on (always EQ) or off');
+  }
   const audioAsset = (id, label) => { const a = assets.get(id); check(a?.kind === 'audio', `${label} must reference an audio asset`); return a; };
   if (audio.narration) {
     keys(audio.narration, ['asset', 'gainDb', 'start'], 'audio.narration');
@@ -215,14 +233,18 @@ export async function loadTimeline(file, execute = run) {
   // Captions
   let words = null;
   if (m.captions !== undefined) {
-    keys(m.captions, ['words', 'style', 'position', 'maxWords', 'maxChars', 'burnIn'], 'captions');
+    keys(m.captions, ['words', 'style', 'position', 'maxWords', 'maxChars', 'burnIn', 'fixes'], 'captions');
     check(typeof m.captions.words === 'string', 'captions.words must be a path to a timeline-relative words.json');
     const wordsFile = local(m.captions.words);
     check(await exists(wordsFile), `captions words file not found: ${wordsFile}`);
     const wordsRaw = await readFile(wordsFile);
     fingerprint.update(wordsRaw);
     words = validateWords(JSON.parse(wordsRaw), duration, 'captions.words');
-    check(opt(m.captions.style, v => ['karaoke', 'phrase', 'plain'].includes(v)), 'captions.style must be karaoke, phrase or plain');
+    const fixes = m.captions.fixes;
+    check(fixes === undefined || (fixes && typeof fixes === 'object' && !Array.isArray(fixes) && (fixes.drop === undefined || Array.isArray(fixes.drop)) && (fixes.replace === undefined || (fixes.replace && typeof fixes.replace === 'object'))), 'captions.fixes must be { replace: {from: to}, drop: [phrases] }');
+    words = cleanCaptionWords(words, fixes || {});
+    check(words.length > 0, 'captions have no words left after cleaning');
+    check(opt(m.captions.style, v => ['kinetic', 'karaoke', 'phrase', 'plain'].includes(v)), 'captions.style must be kinetic, karaoke, phrase or plain');
     check(opt(m.captions.position, v => ['bottom', 'center', 'top'].includes(v)), 'captions.position must be bottom, center or top');
     check(opt(m.captions.maxWords, v => Number.isInteger(v) && v >= 1 && v <= 16), 'captions.maxWords must be 1-16');
     check(opt(m.captions.maxChars, v => Number.isInteger(v) && v >= 8 && v <= 80), 'captions.maxChars must be 8-80');
@@ -230,18 +252,32 @@ export async function loadTimeline(file, execute = run) {
   }
 
   const globals = m.globalOverlays || [];
-  check(Array.isArray(globals) && globals.length <= 50, 'globalOverlays must be an array (max 50)');
+  check(Array.isArray(globals) && globals.length <= 500, 'globalOverlays must be an array (max 500)');
   for (const [i, o] of globals.entries()) {
     await motionJob(o, `globalOverlays[${i}]`, { overlay: true });
     check(finite(o.start, 0, duration) && finite(o.duration, 0.2, duration) && o.start + o.duration <= duration + 1e-6, `globalOverlays[${i}] must fit in the timeline`);
   }
 
+  if (m.watermark !== undefined) {
+    const w = m.watermark;
+    keys(w, ['asset', 'position', 'size', 'opacity', 'margin', 'start', 'end'], 'watermark');
+    check(assets.get(w.asset)?.kind === 'image', 'watermark.asset must be the id of an image asset (a logo PNG with transparency works best)');
+    check(opt(w.position, v => ['top-left', 'top-right', 'bottom-left', 'bottom-right'].includes(v)), 'watermark.position must be top-left, top-right, bottom-left or bottom-right');
+    check(opt(w.size, v => finite(v, 0.03, 0.5)), 'watermark.size must be 0.03-0.5 (fraction of the frame width)');
+    check(opt(w.opacity, v => finite(v, 0.1, 1)), 'watermark.opacity must be 0.1-1');
+    check(opt(w.margin, v => finite(v, 0, 0.2)), 'watermark.margin must be 0-0.2 (fraction of the frame width)');
+    check(opt(w.start, v => finite(v, 0, duration)) && opt(w.end, v => finite(v, 0, duration)), 'watermark.start/end must be inside the timeline');
+  }
+
   const delivery = m.delivery || {};
-  keys(delivery, ['targetLufs', 'truePeak', 'crf', 'preset', 'thumbnail', 'audioBitrate'], 'delivery');
+  keys(delivery, ['target', 'targetLufs', 'truePeak', 'crf', 'preset', 'thumbnail', 'audioBitrate', 'maxrateMbps'], 'delivery');
+  check(opt(delivery.target, v => ['youtube', 'master', 'web'].includes(v)), 'delivery.target must be youtube, master or web');
+  check(opt(delivery.maxrateMbps, v => finite(v, 1, 200)), 'delivery.maxrateMbps must be 1-200');
   check(opt(delivery.targetLufs, v => finite(v, -30, -5)) && opt(delivery.truePeak, v => finite(v, -9, 0)), 'delivery LUFS (-30..-5) / truePeak (-9..0) out of range');
   check(opt(delivery.crf, v => Number.isInteger(v) && v >= 0 && v <= 35), 'delivery.crf must be 0-35');
   check(opt(delivery.preset, v => ['ultrafast', 'superfast', 'veryfast', 'faster', 'fast', 'medium', 'slow', 'slower'].includes(v)), 'delivery.preset invalid');
   check(opt(delivery.audioBitrate, v => [128, 160, 192, 256, 320].includes(v)), 'delivery.audioBitrate must be 128/160/192/256/320');
+  const resolved = resolveDelivery(delivery);
   if (delivery.thumbnail !== undefined) {
     keys(delivery.thumbnail, ['time', 'template', 'props'], 'delivery.thumbnail');
     if (delivery.thumbnail.template) validateProps(delivery.thumbnail.template, delivery.thumbnail.props ?? {}, 'delivery.thumbnail.props');
@@ -251,8 +287,8 @@ export async function loadTimeline(file, execute = run) {
   for (const f of extraFiles) fingerprint.update(await digest(f));
   return {
     manifest: m, base, assets, timeline, duration, totalFrames, font, words,
-    delivery: { targetLufs: delivery.targetLufs ?? -14, truePeak: delivery.truePeak ?? -1, crf: delivery.crf ?? 18,
-      preset: delivery.preset ?? 'medium', audioBitrate: delivery.audioBitrate ?? 192, thumbnail: delivery.thumbnail },
+    delivery: { target: resolved.target, targetLufs: resolved.lufs, truePeak: resolved.truePeak, crf: resolved.crf, preset: resolved.preset, audioBitrate: resolved.audioKbps,
+      maxrateMbps: delivery.maxrateMbps, thumbnail: delivery.thumbnail },
     fingerprint: fingerprint.digest('hex')
   };
 }

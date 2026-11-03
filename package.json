@@ -1,11 +1,11 @@
 {
   "name": "@amailath/video-monk",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "description": "Automated video editing toolkit: auto-cut, local transcription, Chrome-rendered motion graphics and infographics, transitions, captions, music ducking, loudness mastering and verified delivery.",
   "type": "module",
   "license": "MIT",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.13"
   },
   "bin": {
     "video-monk": "bin/video-monk.js"
@@ -14,13 +14,18 @@
     "bin",
     "src",
     "templates",
+    "assets",
+    "web",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "THIRD_PARTY_NOTICES.md"
   ],
   "scripts": {
     "test": "node --test",
     "check": "node scripts/check.mjs",
-    "prepack": "npm run check && npm test"
+    "prepack": "npm run check && npm test",
+    "ui": "node bin/video-monk.js ui",
+    "start": "node bin/video-monk.js ui"
   },
   "publishConfig": {
     "access": "public",
