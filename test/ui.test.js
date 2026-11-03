@@ -264,5 +264,5 @@ test('presets, settings, remembered terms and the database summary are available
   assert.equal((await call('DELETE', `/api/presets/${saved.id}`)).json.deleted, 1);
   assert.deepEqual((await call('POST', '/api/settings', { theme: 'light', evil: 'x' })).json, { theme: 'light' }, 'only known settings are stored');
   const db = (await call('GET', '/api/db')).json;
-  assert.equal(db.schema, 2); assert.match(db.file, /video-monk\.db$/); assert.ok(db.usage.unsplashHour);
+  assert.equal(db.schema, 3); assert.match(db.file, /video-monk\.db$/); assert.ok(db.usage.unsplashHour);
 });

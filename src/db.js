@@ -17,7 +17,7 @@ async function load() {
 }
 
 export const dbPath = (home = process.env.VIDEO_MONK_HOME || path.join(os.homedir(), '.video-monk')) => path.join(home, 'video-monk.db');
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const MIGRATIONS = [
   // 1: the core
@@ -39,7 +39,24 @@ const MIGRATIONS = [
    CREATE TABLE terms (heard TEXT NOT NULL, term TEXT NOT NULL, hints TEXT NOT NULL DEFAULT '', uses INTEGER NOT NULL DEFAULT 1, last_used TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (heard, term));
    CREATE TABLE recent_media (path TEXT PRIMARY KEY, name TEXT NOT NULL, duration REAL, used_at TEXT NOT NULL, uses INTEGER NOT NULL DEFAULT 1);
    CREATE TABLE usage (id INTEGER PRIMARY KEY AUTOINCREMENT, service TEXT NOT NULL, at INTEGER NOT NULL, units REAL NOT NULL DEFAULT 1, project_id TEXT, note TEXT);
-   CREATE INDEX usage_service_at ON usage(service, at);`
+   CREATE INDEX usage_service_at ON usage(service, at);`,
+  // 3: the shorts pipeline: an event queue between agents, reviews with their findings, human gates, and the lessons learned from reviews and feedback
+  `CREATE TABLE pipeline_jobs (
+     id INTEGER PRIMARY KEY AUTOINCREMENT, short_id TEXT NOT NULL, type TEXT NOT NULL, handler TEXT, payload TEXT NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'pending',
+     attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3, available_at INTEGER NOT NULL, created_at INTEGER NOT NULL, started_at INTEGER, ended_at INTEGER,
+     error TEXT, parent_id INTEGER, wait_gate TEXT, wait_note TEXT, dedupe_key TEXT, result TEXT);
+   CREATE INDEX pipeline_jobs_ready ON pipeline_jobs(status, available_at);
+   CREATE INDEX pipeline_jobs_short ON pipeline_jobs(short_id, id);
+   CREATE UNIQUE INDEX pipeline_jobs_dedupe ON pipeline_jobs(dedupe_key) WHERE dedupe_key IS NOT NULL;
+   CREATE TABLE pipeline_gates (short_id TEXT NOT NULL, gate TEXT NOT NULL, granted_at INTEGER NOT NULL, by_user TEXT, details TEXT NOT NULL DEFAULT '{}', PRIMARY KEY (short_id, gate));
+   CREATE TABLE pipeline_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, short_id TEXT NOT NULL, stage TEXT NOT NULL, round INTEGER NOT NULL, reviewer TEXT NOT NULL, verdict TEXT NOT NULL,
+     findings TEXT NOT NULL, metrics TEXT NOT NULL DEFAULT '{}', job_id INTEGER, at INTEGER NOT NULL);
+   CREATE INDEX pipeline_reviews_short ON pipeline_reviews(short_id, id);
+   CREATE TABLE lessons (id INTEGER PRIMARY KEY AUTOINCREMENT, stage TEXT NOT NULL, code TEXT NOT NULL, rule TEXT NOT NULL, source TEXT NOT NULL, status TEXT NOT NULL, severity TEXT NOT NULL DEFAULT 'major',
+     occurrences INTEGER NOT NULL DEFAULT 1, applied INTEGER NOT NULL DEFAULT 0, held INTEGER NOT NULL DEFAULT 0, recurred INTEGER NOT NULL DEFAULT 0, first_seen INTEGER NOT NULL, last_seen INTEGER NOT NULL,
+     last_applied INTEGER, note TEXT, UNIQUE(stage, code));
+   CREATE TABLE pipeline_feedback (id INTEGER PRIMARY KEY AUTOINCREMENT, short_id TEXT NOT NULL, stage TEXT NOT NULL, kind TEXT NOT NULL, text TEXT NOT NULL DEFAULT '', details TEXT NOT NULL DEFAULT '{}', at INTEGER NOT NULL);
+   CREATE INDEX pipeline_feedback_short ON pipeline_feedback(short_id, id);`
 ];
 
 const cache = new Map();

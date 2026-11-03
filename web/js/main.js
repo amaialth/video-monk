@@ -8,12 +8,13 @@ import { renderSystem } from './views/system.js';
 import { renderApprovals } from './views/approvals.js';
 import { renderMotion } from './views/motion.js';
 import { renderShorts } from './views/shorts.js';
+import { renderLessons } from './views/lessons.js';
 
 const app = document.getElementById('app');
 let cleanup = null, session = null, pollTimer = null;
 const ctx = { get session() { return session; }, refreshBadge: () => badge(), navigate: to => { location.hash = to; } };
 
-const NAV = [['#/', 'Projects', 'grid'], ['#/new', 'New project', 'plus'], ['#/shorts', 'Shorts', 'film'], ['#/motion', 'Motion studio', 'sparkle'], ['#/library', 'Asset library', 'library'], ['#/approvals', 'Approvals', 'shield'], ['#/system', 'System', 'gear']];
+const NAV = [['#/', 'Projects', 'grid'], ['#/new', 'New project', 'plus'], ['#/shorts', 'Shorts', 'film'], ['#/lessons', 'Lessons', 'library'], ['#/motion', 'Motion studio', 'sparkle'], ['#/library', 'Asset library', 'library'], ['#/approvals', 'Approvals', 'shield'], ['#/system', 'System', 'gear']];
 
 function shell() {
   const theme = () => document.documentElement.dataset.theme;
@@ -51,6 +52,7 @@ async function route() {
     else if (parts[0] === 'new') cleanup = await renderWizard(view, ctx);
     else if (parts[0] === 'project' && parts[1]) cleanup = await renderProject(view, ctx, parts[1], parts[2]);
     else if (parts[0] === 'shorts') cleanup = await renderShorts(view, ctx, parts[1]);
+    else if (parts[0] === 'lessons') cleanup = await renderLessons(view, ctx);
     else if (parts[0] === 'motion') cleanup = await renderMotion(view, ctx, parts[1]);
     else if (parts[0] === 'library') cleanup = await renderLibrary(view, ctx);
     else if (parts[0] === 'approvals') cleanup = await renderApprovals(view, ctx);

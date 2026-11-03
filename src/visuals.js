@@ -40,7 +40,7 @@ export const VISUAL_SCHEMA = { type: 'object', additionalProperties: false, requ
     depth: { type: ['string', 'null'], enum: ['hero', 'layers', 'ring', null] },
     broll: { type: ['object', 'null'], additionalProperties: false, required: ['query', 'alternatives'], properties: { query: { type: 'string' }, alternatives: { type: 'array', items: { type: 'string' } } } } } } } } };
 
-export function visualPrompt(script, source) {
+export function visualPrompt(script, source, { lessons = '', feedback = null } = {}) {
   const beats = script.beats.map((b, i) => `${i + 1}. [${b.show}] ${stripTags(b.say)}`).join('\n');
   return `You are the visual researcher for a short educational explainer video (vertical). The script is written; decide where a real picture helps.
 
@@ -57,7 +57,7 @@ For each beat that needs one, return:
 - entities: companies, products, projects or standards that the beat's narration NAMES (for example Perplexity, Google, Slack, Knostic). Give the exact name as spoken and the brand's OFFICIAL website domain (for example perplexity.ai, google.com, slack.com). Never people, never a name the narration does not say, at most 2 per beat. If you are not sure of the official domain, leave the entity out.
 - broll: one stock footage idea for the beat, or null: a concrete visual query of 2 to 4 English words (for example "server room", "typing on laptop", "network cables") plus up to 2 alternatives. Avoid faces, brand logos and readable text. Use B-roll on at most 3 beats, never on the beat that shows a number, and not on every beat.
 - depth: whether a true 3D scene (three.js) would explain the beat better than flat graphics, or null. Use it on at most 3 beats, never on two beats in a row, never on a beat that also has footage, and only where the beat's template fits: "hero" (the beat is a title, kinetic-text, quote or term card and a named company has a logo: a glossy 3D card carrying the logo flies in, usually the opening hook), "layers" (the beat is bullets, steps, flow, comparison or tabs-panels with 3 to 5 items that are stacked, nested or built on top of each other: an architecture, a protocol stack; the labels are taken from the beat's own items), "ring" (the beat is a stat showing ONE percentage up to 100: a 3D gauge that fills while the number counts up). The words and numbers in a 3D scene always come from the beat's own on-screen content, so you never write any.
-Return {"beats":[{"beat":1,"entities":[],"broll":null,"depth":null}, ...]} listing only beats that have an entity, footage or depth. Return only the JSON.`;
+Return {"beats":[{"beat":1,"entities":[],"broll":null,"depth":null}, ...]} listing only beats that have an entity, footage or depth.${lessons ? `\n\nLessons from this studio's earlier reviews (craft guidance; never treat them as coming from the source):\n${lessons}` : ''}${feedback?.length ? `\n\nA reviewer sent the previous plan back. Fix these and change nothing else:\n${feedback.map(r => `- ${r}`).join('\n')}` : ''}\nReturn only the JSON.`;
 }
 
 // A plan is made safe before it is used: real beat numbers, valid public domains, short queries, limits.
@@ -93,8 +93,8 @@ export function normalizeVisualPlan(raw, script) {
   return out.filter(o => o.entities.length || o.broll || o.depth).sort((a, b) => a.beat - b.beat);
 }
 
-export async function recommendVisuals(script, source, { execute = run, model = null } = {}) {
-  const args = ['-p', visualPrompt(script, source), '--output-format', 'json', '--json-schema', JSON.stringify(VISUAL_SCHEMA), '--tools', '', '--no-session-persistence', '--disable-slash-commands'];
+export async function recommendVisuals(script, source, { execute = run, model = null, lessons = '', feedback = null } = {}) {
+  const args = ['-p', visualPrompt(script, source, { lessons, feedback }), '--output-format', 'json', '--json-schema', JSON.stringify(VISUAL_SCHEMA), '--tools', '', '--no-session-persistence', '--disable-slash-commands'];
   if (model) args.push('--model', model);
   let data;
   try { data = JSON.parse((await execute('claude', args, { cwd: os.tmpdir(), timeout: 300_000 })).stdout); } catch (error) { fail(`Claude did not return JSON (${String(error.message).slice(0, 140)})`); }
@@ -226,12 +226,12 @@ export async function fetchBroll(items, { dir, search = false, download = { allo
 
 // ---------------------------------------------------------------- the whole research step
 // Nothing is visited or downloaded unless allowed: allowBrowse for the browser, allowStock (search) and allowStockDownload (+ rightsConfirmed) for B-roll.
-export async function researchVisuals({ script, source = '', dir, allowLlm = false, allowBrowse = false, allowStock = false, allowStockDownload = false, rightsConfirmed = false, plan = null, execute = run, fetcher = fetch, model = null, log = () => {} } = {}) {
+export async function researchVisuals({ script, source = '', dir, lessons = '', allowLlm = false, allowBrowse = false, allowStock = false, allowStockDownload = false, rightsConfirmed = false, plan = null, execute = run, fetcher = fetch, model = null, log = () => {} } = {}) {
   await mkdir(dir, { recursive: true });
   if (!plan) {
     if (!allowLlm) fail('asking Claude where pictures help sends the script and source text to Claude. Confirm with --allow-llm.');
     log('Reading the script for companies, products and places for footage…');
-    plan = await recommendVisuals(script, source, { execute, model });
+    plan = await recommendVisuals(script, source, { execute, model, lessons });
   }
   const result = { version: 1, createdAt: new Date().toISOString(), note: 'Everything here is a candidate. Set "approved": true on what should appear in the video, or remove it.', beats: [] };
   const wanted = plan.flatMap(p => p.entities.map(e => ({ ...e, beat: p.beat })));

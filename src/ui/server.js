@@ -17,6 +17,7 @@ import { discover, timelineOf } from './artifacts.js';
 import { Previews } from './previews.js';
 import { registerMotion } from './motion.js';
 import { registerShorts } from './shorts.js';
+import { registerPipeline } from './pipeline.js';
 
 const WEB = new URL('../../web/', import.meta.url).pathname;
 const FONTS = new URL('../../assets/fonts/', import.meta.url).pathname;
@@ -193,6 +194,7 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = nul
   // ---- motion studio: template previews, standalone-video planner, library vault
   registerMotion(on, { previews, serveFile, HANDLED });
   registerShorts(on, { store, serveFile, HANDLED, err, deps: shortsDeps });
+  const pipelineApi = registerPipeline(on, { store, err, deps: shortsDeps });
 
   // ---- things remembered between projects (all in the local database)
   on('GET', '/api/db', async () => ({ ...store.db.info(), file: store.db.file, usage: usageSummary(), schemaTarget: store.db.version }));
@@ -284,7 +286,7 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = nul
   const actual = server.address().port;
   origin = `http://127.0.0.1:${actual}`;
   return {
-    server, store, runner, token, port: actual, url: `${origin}/?token=${token}`, origin,
-    async close() { for (const id of [...runner.active.keys()]) { try { runner.cancel(id); } catch { /* ignore */ } } await new Promise(r => server.close(r)); server.closeAllConnections?.(); await previews.close(); }
+    server, store, runner, pipeline: pipelineApi, token, port: actual, url: `${origin}/?token=${token}`, origin,
+    async close() { pipelineApi.stop(); for (const id of [...runner.active.keys()]) { try { runner.cancel(id); } catch { /* ignore */ } } await new Promise(r => server.close(r)); server.closeAllConnections?.(); await previews.close(); }
   };
 }

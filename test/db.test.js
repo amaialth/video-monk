@@ -16,7 +16,7 @@ async function temporary(t) {
 test('the database migrates to the current schema and refuses a newer one', async t => {
   const home = await temporary(t);
   const db = await Db.open(path.join(home, 'a.db'));
-  assert.equal(db.version, 2);
+  assert.equal(db.version, 3);
   assert.equal(db.info().projects, 0);
   db.h.exec('PRAGMA user_version = 99');
   Db.closeAll();

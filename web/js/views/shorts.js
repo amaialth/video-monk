@@ -213,8 +213,57 @@ async function detail(view, id, timers) {
     return box;
   };
 
-  const draw = () => mount(root, sourceCard(), h('div', { class: 'mt' }, scriptCard()), h('div', { class: 'mt' }, directionCard()), h('div', { class: 'mt' }, visualsCard()), h('div', { class: 'mt' }, voiceCard()), h('div', { class: 'mt' }, buildCard()), jobBox);
+  // The pipeline: agents that react to events through a queue, a reviewer for every stage, the go-aheads they wait for, and your feedback.
+  const pipelineBox = h('div', {});
+  let pl = null, pollTimer = null;
+  const STAGES = [['script', 'Script'], ['direction', 'Direction'], ['visuals', 'Pictures'], ['audio', 'Narration'], ['plan', 'Plan'], ['render', 'Finished video']];
+  const GATE_TEXT = { llm: 'Send text to Claude (scripts, reviews, planning)', browse: 'Let a browser visit company websites for logos', stock: 'Search and download stock footage (accept the provider licence)', spend: 'Spend ElevenLabs credits to record the voice', direction: 'Approve the direction (voice, delivery, look)', visuals: 'Approve the pictures', audio: 'I have listened to the narration', plan: 'Approve the plan and build' };
+  const loadPipeline = async () => { try { pl = await api.get(`/api/shorts/${id}/pipeline`); } catch { pl = null; } drawPipeline(); if (pl?.status === 'working') { clearTimeout(pollTimer); pollTimer = setTimeout(async () => { await loadPipeline(); if (pl?.status !== 'working') await reload(); }, 3000); timers.push(pollTimer); } };
+  const drawPipeline = () => {
+    if (!pl) return mount(pipelineBox, h('div', { class: 'card pad' }, h('h3', {}, 'Pipeline'), h('p', { class: 'muted small' }, 'Not available.')));
+    const started = pl.jobs.length > 0;
+    const stat = { idle: ['Not started', ''], working: ['Working…', 'info'], waiting: ['Waiting for you', 'warn'], failed: ['A step failed', 'bad'], 'needs-you': ['Needs your decision', 'warn'], complete: ['Complete', 'good'] }[pl.status] || [pl.status, ''];
+    const head = h('div', { class: 'row between' }, h('h3', {}, 'Pipeline: agents, reviewers and what they learn'), h('span', { class: `chip ${stat[1]}` }, stat[0]));
+    let allowLlm = true, allowBrowse = true, allowStock = false, rights = false, allowSpend = false, maxChars = 3000;
+    const startPanel = !started ? h('div', { class: 'mt-s' },
+      h('p', { class: 'muted small' }, 'Each agent reacts to the one before it, and an independent reviewer checks every stage (script, direction, pictures, narration, plan, finished video). A reviewer that finds a problem sends it back to the agent that made it with exactly what to fix; after three rounds it comes to you. Recurring problems become lessons the agents read next time (see Lessons). It is slow on purpose: nothing is rushed, and 3D pages take as long as they take. Choose what it may do; it asks again for anything you leave out.'),
+      h('div', { class: 'col', style: { gap: '8px' } },
+        h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', checked: true, onchange: e => { allowLlm = e.target.checked; } }), GATE_TEXT.llm),
+        h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', checked: true, onchange: e => { allowBrowse = e.target.checked; } }), GATE_TEXT.browse),
+        h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', onchange: e => { allowStock = e.target.checked; } }), GATE_TEXT.stock.split(' (')[0]),
+        h('label', { class: 'row small', style: { gap: '8px', marginLeft: '24px' } }, h('input', { type: 'checkbox', onchange: e => { rights = e.target.checked; } }), 'I accept the stock provider\'s licence for the footage that is downloaded'),
+        h('label', { class: 'row small', style: { gap: '8px' } }, h('input', { type: 'checkbox', onchange: e => { allowSpend = e.target.checked; } }), `${GATE_TEXT.spend}, at most `, h('input', { class: 'input', type: 'number', value: 3000, min: 100, max: 20000, style: { width: '90px' }, oninput: e => { maxChars = Number(e.target.value) || 3000; } }), ' characters')),
+      h('div', { class: 'row mt-s' }, h('button', { class: 'btn', disabled: !cfg.canUseClaude, onclick: async ev => { ev.target.disabled = true; try { pl = await api.post(`/api/shorts/${id}/pipeline/start`, { confirmLlm: allowLlm, confirmBrowse: allowBrowse, confirmStock: allowStock, confirmRights: rights, confirmSpend: allowSpend, maxChars }); toast('Pipeline started', 'good'); await loadPipeline(); } catch (e) { toast(e.message, 'bad'); ev.target.disabled = false; } } }, icon('play', 16), 'Start the pipeline'))) : null;
+    const waiting = pl.waiting.length ? h('div', { class: 'mt-s' }, h('div', { class: 'hint warn' }, icon('alert', 18), 'Waiting for you:'), pl.waiting.map(w => h('div', { class: 'row mt-s', style: { gap: '10px', flexWrap: 'wrap' } }, h('b', { class: 'small' }, `${w.handler} · ${GATE_TEXT[w.wait_gate] || w.wait_gate}`), w.wait_note ? h('span', { class: 'faint small' }, w.wait_note) : null,
+      h('button', { class: 'btn sm', onclick: async ev => {
+        const gate = w.wait_gate; const body = { gate };
+        if (gate === 'llm') { if (!confirm('Send your text to Claude?')) return; body.confirm = true; }
+        else if (gate === 'browse') { if (!confirm('Let a browser visit the websites of the companies named in the script?')) return; body.confirm = true; }
+        else if (gate === 'stock') { if (!confirm('Search and download stock footage, and accept the provider\'s licence for it?')) return; body.confirm = true; body.confirmRights = true; }
+        else if (gate === 'spend') { const n = prompt('Allow ElevenLabs credits to be spent. At most how many characters?', '3000'); if (!n) return; body.confirm = true; body.maxChars = Number(n); }
+        else if (gate === 'plan') { body.quality = confirm('Build the final quality? (Cancel builds a faster draft.)') ? 'final' : 'draft'; }
+        ev.target.disabled = true; try { pl = await api.post(`/api/shorts/${id}/pipeline/gate`, body); await reload(); await loadPipeline(); } catch (e) { toast(e.message, 'bad'); ev.target.disabled = false; }
+      } }, 'Go ahead')))) : null;
+    const needs = pl.needsYou ? h('div', { class: 'hint bad mt-s' }, icon('alert', 18), `${pl.needsYou.stage}: ${pl.needsYou.reason || 'needs your decision'}. ${(pl.needsYou.findings || []).slice(0, 4).map(f => f.message).join(' · ')}`) : null;
+    const stageRows = pl.reviews.length ? h('div', { class: 'mt-s' }, STAGES.map(([key, label]) => {
+      const rs = pl.reviews.filter(r => r.stage === key); if (!rs.length) return null;
+      const last = rs.at(-1), tone = last.verdict === 'approve' ? 'good' : 'warn';
+      const fb = h('textarea', { class: 'textarea', rows: 2, style: { width: '100%' }, placeholder: 'What should this agent do differently next time? (it becomes a lesson)' });
+      return h('details', { class: 'card pad mt-s', open: last.verdict !== 'approve' }, h('summary', {}, h('span', { class: 'row', style: { gap: '8px', display: 'inline-flex' } }, h('b', {}, label), h('span', { class: `chip ${tone}` }, `${last.verdict === 'approve' ? 'Approved' : 'Sent back'} · round ${last.round}`), h('span', { class: 'faint small' }, `${rs.length} review${rs.length === 1 ? '' : 's'} · ${last.reviewer}`))),
+        rs.map(r => h('div', { class: 'mt-s' }, h('div', { class: 'small muted' }, `Round ${r.round} · ${r.reviewer} · ${r.verdict === 'approve' ? 'approved' : 'sent back'}${r.metrics?.lufs != null ? ` · ${r.metrics.lufs} LUFS` : ''}`),
+          r.findings.length ? r.findings.map(f => h('div', { class: 'row small', style: { gap: '8px', alignItems: 'flex-start' } }, h('span', { class: `chip ${f.severity === 'minor' ? '' : 'warn'}` }, f.severity), h('span', { style: { flex: 1 } }, f.message, f.suggestion ? h('span', { class: 'faint' }, ` — ${f.suggestion}`) : null),
+            h('button', { class: 'btn ghost sm', title: 'The reviewer was wrong about this', onclick: async () => { try { await api.post(`/api/shorts/${id}/pipeline/feedback`, { stage: key, kind: 'dispute', code: f.code }); toast('Noted: the reviewer will weigh this less', 'good'); } catch (e) { toast(e.message, 'bad'); } } }, 'Wrong?'))) : h('div', { class: 'small faint' }, 'No problems found.'))),
+        h('div', { class: 'mt-s' }, fb, h('div', { class: 'row mt-s' }, h('button', { class: 'btn ghost sm', onclick: async () => { try { const r = await api.post(`/api/shorts/${id}/pipeline/feedback`, { stage: key, kind: 'note', text: fb.value }); toast(r.lesson ? 'Saved as a lesson' : 'Saved as feedback', 'good'); fb.value = ''; } catch (e) { toast(e.message, 'bad'); } } }, 'Send feedback'))));
+    })) : null;
+    const queueLines = started ? h('details', { class: 'mt-s' }, h('summary', { class: 'small muted' }, `The queue (${pl.jobs.length} events; ${Object.entries(pl.counts).map(([k, v]) => `${v} ${k}`).join(', ')})`),
+      h('div', { class: 'mono small mt-s', style: { maxHeight: '260px', overflow: 'auto' } }, pl.jobs.map(j => h('div', {}, `#${j.id} ${j.status.padEnd(8)} ${(j.handler || '(recorded)').padEnd(18)} ${j.type}${j.gate ? ` [waiting: ${j.gate}]` : ''}${j.attempts > 1 ? ` (attempt ${j.attempts})` : ''}${j.error ? ` ! ${String(j.error).slice(0, 120)}` : ''}`))),
+      pl.counts.dead ? h('div', { class: 'row mt-s' }, h('button', { class: 'btn ghost sm', onclick: async () => { await api.post(`/api/shorts/${id}/pipeline/retry`, {}); await loadPipeline(); } }, 'Retry the failed steps')) : null) : null;
+    mount(pipelineBox, h('div', { class: 'card pad' }, head, startPanel, waiting, needs, stageRows, queueLines, h('div', { class: 'small faint mt-s' }, h('a', { href: '#/lessons' }, 'See what the studio has learned'))));
+  };
+
+  const draw = () => mount(root, sourceCard(), h('div', { class: 'mt' }, pipelineBox), h('div', { class: 'mt' }, scriptCard()), h('div', { class: 'mt' }, directionCard()), h('div', { class: 'mt' }, visualsCard()), h('div', { class: 'mt' }, voiceCard()), h('div', { class: 'mt' }, buildCard()), jobBox);
   mount(view, h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Short ', h('em', { class: 'serif' }, 'studio')), h('p', {}, 'Script, voice, video. Nothing is sent, spent or approved until you say so.'))), root);
   draw();
+  await loadPipeline();
   if (st.job?.status === 'running') run(Promise.resolve({ jobId: st.job.id }));
 }
