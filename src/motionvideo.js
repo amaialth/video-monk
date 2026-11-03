@@ -3,7 +3,8 @@
 // piece against its type's rules, writes a version-2 manifest of graphic scenes with transitions, music and subtle sound effects, and runs the
 // facts-first check. It builds nothing and approves nothing: review the plan, then production-review and production-build as usual.
 // Formats follow the launch / explainer / chart / milestone / opener / promo patterns of charlie947/motion-graphics-skills (MIT), rewritten here.
-import { readFile, mkdir } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, copyFile } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
 import path from 'node:path';
 import { writeJson } from './core.js';
 import { TEMPLATES, validateProps } from './motion/templates.js';
@@ -11,6 +12,8 @@ import { TRANSITIONS } from './timeline.js';
 import { ASPECTS } from './cutdown.js';
 import { checkFacts, readFacts, graphicTexts, numbersIn } from './facts.js';
 import { applySfx } from './sfx.js';
+import { listLibs } from './libs.js';
+import { exists } from './core.js';
 
 // beats: [min, max]; seconds: the length the format is meant to have (outside it is a warning); hold: minimum seconds on the last beat.
 export const TYPES = {
@@ -21,6 +24,12 @@ export const TYPES = {
   opener: { beats: [1, 3], seconds: [8, 15], hold: 3, hook: 'the title lands in the last third', about: 'a short title opener: one world, one move, the title last' },
   promo: { beats: [3, 5], seconds: [12, 20], hold: 3, hook: 'the first beat is the single promise', about: 'a newsletter or episode promo: one promise, one proof, one ask' }
 };
+// Scenes that use 3D and animation libraries (three.js, GSAP, anime.js, Lottie, Motion, Babylon.js, PlayCanvas, Rive) ship as starters.
+// A starter beat is copied into the plan folder (scenes/), where it can be edited, and its libraries are checked and recorded in the plan.
+export const STARTER_DIR = new URL('../assets/motion-starters/', import.meta.url).pathname;
+export const starterNames = () => { try { return readdirSync(STARTER_DIR).filter(f => /^[\w-]+\.html$/.test(f)).map(f => f.replace(/\.html$/, '')).sort(); } catch { return []; } };
+const libsIn = html => [...new Set([...String(html).replace(/<!--[\s\S]*?-->/g, '').matchAll(/<vm-lib\s+name="([\w@/.-]+)"/g)].map(m => m[1]))];
+const assetsIn = html => [...String(html).replace(/<!--[\s\S]*?-->/g, '').matchAll(/<vm-asset\s+name="[\w.-]+"\s+src="([^"]+)"/g)].map(m => m[1]);
 const NOT_BEATS = new Set(Object.entries(TEMPLATES).filter(([, d]) => d.internal || d.fullFrame).map(([n]) => n));
 const CYCLE = ['fade', 'slideleft', 'fade', 'slideup'];
 const fail = message => { throw new Error(`Motion video: ${message}`); };
@@ -45,7 +54,13 @@ export function reviewBrief(brief) {
     const where = `beat ${i + 1}`;
     if (!(b.seconds >= 1.5 && b.seconds <= 20)) errors.push(`${where}: seconds must be from 1.5 to 20`);
     else total += b.seconds;
-    if (!b.show && !b.html) { errors.push(`${where}: show (a template name) or html (a seekable page) is required`); return; }
+    if (b.starter !== undefined) {
+      if (b.show || b.html) { errors.push(`${where}: use starter, show or html, not more than one`); return; }
+      if (!starterNames().includes(b.starter)) { errors.push(`${where}: starter must be one of ${starterNames().join(', ')}`); return; }
+      templates.push(`starter:${b.starter}`);
+      return;
+    }
+    if (!b.show && !b.html) { errors.push(`${where}: show (a template name), starter (a 3D or library scene) or html (a seekable page) is required`); return; }
     if (b.html) { templates.push('html'); return; }
     if (!TEMPLATES[b.show] || NOT_BEATS.has(b.show)) { errors.push(`${where}: "${b.show}" is not a template a beat can use (see video-monk templates)`); return; }
     templates.push(b.show);
@@ -69,6 +84,17 @@ function needsFacts(manifest, beats) {
   return graphicTexts({ ...manifest, scenes: real, globalOverlays: [] }).some(t => numbersIn(t.text).length);
 }
 
+// Which libraries a brief's 3D / library scenes need, and whether each is installed (nothing is downloaded here).
+export async function libsNeeded(brief, briefDir = '.') {
+  const installed = await listLibs();
+  const ids = new Set();
+  for (const b of brief?.beats || []) {
+    const file = b?.starter && starterNames().includes(b.starter) ? path.join(STARTER_DIR, `${b.starter}.html`) : b?.html ? path.resolve(briefDir, b.html) : null;
+    if (file) { try { for (const id of libsIn(await readFile(file, 'utf8'))) ids.add(id); } catch { /* reported when planning */ } }
+  }
+  return [...ids].sort().map(id => ({ id, installed: installed.some(l => l.id === id), version: installed.filter(l => l.id === id).map(l => l.version).at(-1) || null }));
+}
+
 export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 'subtle', log = () => {}, execute } = {}) {
   const brief = await readBrief(briefFile);
   const review = reviewBrief(brief);
@@ -79,9 +105,35 @@ export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 's
   const briefDir = path.dirname(path.resolve(briefFile));
   const beats = brief.beats;
   let at = 0;
+  // 3D / library scenes: copy each starter into the plan folder, check its libraries are installed and its files are present
+  const installed = await listLibs();
+  const libsUsed = new Map();
+  const sceneFiles = new Map();
+  const problems = [];
+  for (const [i, b] of beats.entries()) {
+    let html = null, from = null;
+    if (b.starter !== undefined) {
+      const n = [...sceneFiles.values()].filter(f => f.starter === b.starter).length;
+      const target = path.join(dir, 'scenes', `${b.starter}${n ? `-${n + 1}` : ''}.html`);
+      sceneFiles.set(i, { file: target, starter: b.starter, source: path.join(STARTER_DIR, `${b.starter}.html`) });
+      from = sceneFiles.get(i).source;
+    } else if (b.html) from = path.resolve(briefDir, b.html);
+    if (!from) continue;
+    html = await readFile(from, 'utf8');
+    for (const id of libsIn(html)) {
+      const lib = installed.filter(l => l.id === id).sort((a, c) => String(c.addedAt).localeCompare(String(a.addedAt)))[0];
+      if (!lib) problems.push(`beat ${i + 1} needs ${id}: run  video-monk libs --add ${id} --allow-download  (a one-time download), then plan again`);
+      else libsUsed.set(id, lib.version);
+    }
+    const home = sceneFiles.has(i) ? path.dirname(sceneFiles.get(i).file) : path.dirname(from);
+    const given = b.assets && typeof b.assets === 'object' ? b.assets : {};
+    for (const [name, file] of Object.entries(given)) if (!/^[\w.-]+$/.test(name) || typeof file !== 'string' || !(await exists(path.resolve(briefDir, file)))) problems.push(`beat ${i + 1}: assets.${name} must name an existing file`);
+    for (const src of assetsIn(html)) if (!given[src] && !(await exists(path.resolve(home, src)))) problems.push(`beat ${i + 1} needs the file ${src}: add  "assets": { "${src}": "/path/to/your/file" }  to the beat`);
+  }
+  if (problems.length) fail(`the 3D / library scenes are not ready:\n${problems.map(e => `  - ${e}`).join('\n')}`);
   const scenes = beats.map((b, i) => {
     const scene = { id: `beat-${i + 1}`, kind: 'graphic', duration: b.seconds, purpose: b.say || `${brief.type} beat ${i + 1}`, chapter: b.label,
-      graphic: b.html ? { html: path.resolve(briefDir, b.html) } : { template: b.show, props: b.props || {} } };
+      graphic: sceneFiles.has(i) ? { html: sceneFiles.get(i).file } : b.html ? { html: path.resolve(briefDir, b.html) } : { template: b.show, props: b.props || {} } };
     if (!scene.chapter) delete scene.chapter;
     if (i < beats.length - 1) {
       const type = brief.transitions === 'cut' ? null : TRANSITIONS.includes(b.transition) ? b.transition : CYCLE[i % CYCLE.length];
@@ -91,7 +143,7 @@ export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 's
     return scene;
   });
   let manifest = { version: 2, title: brief.title, fps: brief.fps || 30, width, height, assets: [], scenes,
-    delivery: { targetLufs: -14, truePeak: -1 }, notes: `Standalone ${brief.type} made by motion-video from ${path.basename(briefFile)}. ${type.about}.` };
+    delivery: { targetLufs: -14, truePeak: -1 }, notes: `Standalone ${brief.type} made by motion-video from ${path.basename(briefFile)}. ${type.about}.${libsUsed.size ? ` Libraries: ${[...libsUsed].map(([k, v]) => `${k}@${v}`).join(', ')}.` : ''}` };
   if (brief.theme) manifest.theme = brief.theme;
   if (brief.music) {
     manifest.assets.push({ id: 'music', path: brief.music.file, kind: 'audio', approved: true, rights: brief.music.rights, attribution: brief.music.attribution });
@@ -108,11 +160,22 @@ export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 's
     fail('numbers appear on screen but no fact list was given. Pass --facts facts.json (every fact with a source), or, for sample data, use chart-morph with "illustrative": true (it prints an "Illustrative" label on every frame).');
   }
   await mkdir(dir, { recursive: true });
+  if (sceneFiles.size) { await mkdir(path.join(dir, 'scenes'), { recursive: true }); for (const f of sceneFiles.values()) await copyFile(f.source, f.file); for (const [i, f] of sceneFiles) for (const [name, file] of Object.entries(beats[i].assets || {})) await copyFile(path.resolve(briefDir, file), path.join(path.dirname(f.file), name)); }
   if (sfx !== 'off') {
     const placed = await applySfx(manifest, { mode: sfx, dir: path.join(dir, 'sfx'), relTo: dir, execute, log });
     manifest = placed.manifest; warnings.push(...placed.warnings);
   }
   const output = path.join(dir, 'production.json');
   await writeJson(output, manifest);
-  return { output, scenes: scenes.length, seconds: review.total, width, height, warnings, facts: factsReport, sfx: manifest.audio?.sfx?.length || 0 };
+  const libs = [...libsUsed].map(([id, version]) => ({ id, version }));
+  const custom = beats.some((b, i) => sceneFiles.has(i) || b.html);
+  const plan = [`# ${brief.title}`, '', `${brief.type}, ${review.total} s, ${width}x${height}. ${type.about}.`, '', '## Beats', '',
+    ...beats.map((b, i) => `${i + 1}. ${b.seconds} s  ${b.starter ? `3D/library scene "${b.starter}" (scenes/${path.basename(sceneFiles.get(i).file)})` : b.html ? `custom page ${b.html}` : b.show}${b.say ? `: ${b.say}` : ''}`), '',
+    '## Libraries', '', libs.length ? libs.map(l => `- ${l.id} ${l.version} (downloaded on request, kept on this computer with its own licence)`).join('\n') : 'None: built-in templates only.', '',
+    '## Facts', '', factsReport ? `facts-check passed (${factsReport.checked} numbers on screen, each from a sourced fact).` : 'No numbers on screen, so no fact list was needed.',
+    ...(custom ? ['', 'Text inside a 3D / library scene or custom page is NOT covered by facts-check: read it yourself, and edit the page in scenes/ if it needs your own words.'] : []), '',
+    '## Next', '', '1. Read this plan and edit anything (scenes/*.html, production.json).', '2. `video-monk production-review --manifest production.json --output review.json --approve-plan` (your approval).',
+    '3. `video-monk production-build --manifest production.json --review review.json --output build --allow-render --quality draft`, read the contact sheet, then build final.', ''].join('\n');
+  await writeFile(path.join(dir, 'PLAN.md'), plan);
+  return { output, scenes: scenes.length, seconds: review.total, width, height, warnings, facts: factsReport, sfx: manifest.audio?.sfx?.length || 0, libs, plan: path.join(dir, 'PLAN.md') };
 }

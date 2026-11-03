@@ -95,3 +95,23 @@ test('a template preview is a real PNG, cached and validated', { skip: ffmpegOk 
   assert.match(r.type, /png/);
   assert.ok(r.bytes > 2000);
 });
+
+test('the studio plans 3D scene beats, reports missing libraries when checking, and lists starter files', async t => {
+  const home = await temporary(t);
+  const { call } = await app(t, home);
+  const b = { type: 'opener', title: 'Scene', beats: [{ say: 'Turn.', starter: 'gsap-timeline', seconds: 5 }, { show: 'title', props: { title: 'Done' }, seconds: 4 }] };
+  const check = await call('POST', '/api/motion/brief/check', { brief: b });
+  assert.deepEqual(check.json.errors, []);
+  assert.deepEqual(check.json.libs, [{ id: 'gsap', installed: false, version: null }]);
+  const refused = await call('POST', '/api/motion/video', { brief: b, output: path.join(home, 'p1'), sfx: 'off' });
+  assert.equal(refused.status, 400);
+  assert.match(refused.json.error, /libs --add gsap/);
+  const d = path.join(home, 'libs', 'gsap@1.0.0'); await mkdir(d, { recursive: true });
+  await writeFile(path.join(d, 'lib.json'), JSON.stringify({ id: 'gsap', version: '1.0.0', addedAt: '2026-11-01T00:00:00Z' }));
+  const ok = await call('POST', '/api/motion/video', { brief: b, output: path.join(home, 'p2'), sfx: 'off' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.deepEqual(ok.json.libs, [{ id: 'gsap', version: '1.0.0' }]);
+  assert.match(await readFile(path.join(home, 'p2', 'PLAN.md'), 'utf8'), /gsap-timeline/);
+  const list = await call('GET', '/api/motion');
+  assert.deepEqual(list.json.starters.find(s => s.name === 'three-gltf').assets, ['model.glb']);
+});

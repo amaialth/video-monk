@@ -84,3 +84,65 @@ test('music keeps its licence, aspect sets the size and subtle sound effects are
   assert.ok(m.audio.music[0].gainDb <= -12);
   assert.ok(m.audio.sfx.length >= 1 && m.audio.sfx.length <= 3);
 });
+
+// ---- 3D / library scenes as beats
+import { libsNeeded, starterNames } from '../src/motionvideo.js';
+import { mkdir as mk } from 'node:fs/promises';
+
+async function withLib(t, ids) {
+  const home = await temporary(t);
+  const before = process.env.VIDEO_MONK_HOME;
+  process.env.VIDEO_MONK_HOME = home;
+  t.after(() => { if (before === undefined) delete process.env.VIDEO_MONK_HOME; else process.env.VIDEO_MONK_HOME = before; });
+  for (const id of ids) { const d = path.join(home, 'libs', `${id}@1.0.0`); await mk(d, { recursive: true }); await writeFile(path.join(d, 'lib.json'), JSON.stringify({ id, version: '1.0.0', addedAt: '2026-11-01T00:00:00Z' })); }
+  return home;
+}
+const sceneBrief = (over = {}) => ({ type: 'opener', title: 'Scene', beats: [{ say: 'A turn.', starter: 'gsap-timeline', seconds: 5 }, { say: 'Name.', show: 'title', props: { title: 'Done' }, seconds: 4 }], ...over });
+
+test('starter beats are validated: known name, one kind of beat each', () => {
+  assert.ok(starterNames().includes('three-showcase') && starterNames().length >= 9);
+  assert.deepEqual(reviewBrief(sceneBrief()).errors, []);
+  const unknown = sceneBrief(); unknown.beats[0].starter = 'nope';
+  assert.match(reviewBrief(unknown).errors.join(), /starter must be one of/);
+  const both = sceneBrief(); both.beats[0].show = 'title';
+  assert.match(reviewBrief(both).errors.join(), /not more than one/);
+});
+
+test('a plan with a 3D scene refuses, without leaving a folder, until its library is installed', async t => {
+  const dir = await temporary(t);
+  await withLib(t, []);
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(sceneBrief()));
+  await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'out'), { sfx: 'off' }), /libs --add gsap --allow-download/);
+  await assert.rejects(readFile(path.join(dir, 'out', 'production.json')), /ENOENT/);
+  assert.deepEqual(await libsNeeded(sceneBrief()), [{ id: 'gsap', installed: false, version: null }]);
+});
+
+test('with the library installed the scene is copied into the plan, listed in PLAN.md and used as a graphic scene', async t => {
+  const dir = await temporary(t);
+  await withLib(t, ['gsap']);
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(sceneBrief()));
+  const r = await motionVideo(path.join(dir, 'b.json'), path.join(dir, 'out'), { sfx: 'off' });
+  assert.deepEqual(r.libs, [{ id: 'gsap', version: '1.0.0' }]);
+  const m = JSON.parse(await readFile(r.output, 'utf8'));
+  assert.equal(m.scenes[0].graphic.html, path.join(dir, 'out', 'scenes', 'gsap-timeline.html'));
+  assert.match(await readFile(m.scenes[0].graphic.html, 'utf8'), /<vm-lib name="gsap">/);
+  assert.match(m.notes, /gsap@1\.0\.0/);
+  const plan = await readFile(r.plan, 'utf8');
+  assert.match(plan, /gsap 1\.0\.0/);
+  assert.match(plan, /NOT covered by facts-check/);
+  assert.deepEqual((await libsNeeded(sceneBrief())), [{ id: 'gsap', installed: true, version: '1.0.0' }]);
+});
+
+test('a scene that needs your own file asks for it and copies it next to the scene', async t => {
+  const dir = await temporary(t);
+  await withLib(t, ['three']);
+  const b = sceneBrief(); b.beats[0] = { say: 'The model.', starter: 'three-gltf', seconds: 5 };
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(b));
+  await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o1'), { sfx: 'off' }), /needs the file model\.glb/);
+  await writeFile(path.join(dir, 'model.glb'), 'glTF');
+  b.beats[0].assets = { 'model.glb': 'model.glb' };
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(b));
+  const r = await motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o2'), { sfx: 'off' });
+  assert.equal(await readFile(path.join(dir, 'o2', 'scenes', 'model.glb'), 'utf8'), 'glTF');
+  assert.equal(r.libs[0].id, 'three');
+});

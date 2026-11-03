@@ -85,7 +85,7 @@ function videoTab(body, data) {
           h('label', { class: 'field' }, h('span', {}, 'Title'), h('input', { class: 'input', value: state.title, placeholder: 'Shown in the manifest and credits', oninput: e => { state.title = e.target.value; } })),
           h('label', { class: 'field' }, h('span', {}, 'Shape'), h('select', { class: 'select', onchange: e => { state.aspect = e.target.value; } }, [['16:9', 'Landscape 1920x1080'], ['9:16', 'Reel 1080x1920'], ['1:1', 'Square 1080x1080'], ['4:5', 'Feed 1080x1350']].map(([v, l]) => h('option', { value: v, selected: v === state.aspect }, l)))),
           h('label', { class: 'field' }, h('span', {}, 'Sound effects'), h('select', { class: 'select', onchange: e => { state.sfx = e.target.value; } }, ['subtle', 'off', 'full'].map(v => h('option', { value: v, selected: v === state.sfx }, v))))),
-        h('div', { class: 'hint mt-s' }, icon('info', 16), `${spec.about[0].toUpperCase()}${spec.about.slice(1)}. ${spec.beats[0]}-${spec.beats[1]} beats, ${spec.seconds[0]}-${spec.seconds[1]} s, last beat held at least ${spec.hold} s. ${spec.hook}.`)),
+        h('div', { class: 'hint mt-s' }, icon('info', 16), `${spec.about[0].toUpperCase()}${spec.about.slice(1)}. ${spec.beats[0]}-${spec.beats[1]} beats, ${spec.seconds[0]}-${spec.seconds[1]} s, last beat held at least ${spec.hold} s. ${spec.hook[0].toUpperCase()}${spec.hook.slice(1)}.`)),
       h('div', { class: 'card pad' }, h('div', { class: 'row between' }, h('h3', {}, 'Beats'), h('button', { class: 'btn sm', onclick: () => { state.beats.push({ say: '', show: 'bullets', props: exampleOf('bullets'), seconds: 4 }); draw(); } }, icon('plus', 14), 'Add beat')),
         state.beats.map((b, i) => beatCard(b, i))),
       h('div', { class: 'card pad' }, h('h3', {}, 'Facts and music'),
@@ -105,12 +105,22 @@ function videoTab(body, data) {
       h('div', { class: 'grid g2 mt-s' },
         h('label', { class: 'field' }, h('span', {}, 'What is said or meant'), h('input', { class: 'input', value: b.say || '', oninput: e => { b.say = e.target.value; } })),
         h('div', { class: 'grid g2' },
-          h('label', { class: 'field' }, h('span', {}, 'Template'), h('select', { class: 'select', onchange: e => { b.show = e.target.value; b.props = exampleOf(b.show); draw(); } }, usable.map(t => h('option', { value: t.name, selected: t.name === b.show }, t.name)))),
+          h('label', { class: 'field' }, h('span', {}, 'Template or 3D scene'), h('select', { class: 'select', onchange: e => { const v = e.target.value; if (v.startsWith('starter:')) { b.starter = v.slice(8); delete b.show; b.props = undefined; b.assets = {}; } else { b.show = v; delete b.starter; delete b.assets; b.props = exampleOf(v); } draw(); } },
+            h('optgroup', { label: 'Templates and effects' }, usable.map(t => h('option', { value: t.name, selected: t.name === b.show }, t.name))),
+            h('optgroup', { label: '3D and library scenes' }, data.starters.map(st => h('option', { value: `starter:${st.name}`, selected: st.name === b.starter }, st.name))))),
           h('label', { class: 'field' }, h('span', {}, 'Seconds'), h('input', { class: 'input', type: 'number', min: 1.5, max: 20, step: 0.5, value: b.seconds, oninput: e => { b.seconds = Number(e.target.value); } })))),
-      h('label', { class: 'field mt-s' }, h('span', {}, 'Props (JSON)'), propsBox));
+      b.starter ? starterBody(b) : h('label', { class: 'field mt-s' }, h('span', {}, 'Props (JSON)'), propsBox));
+  };
+  const starterBody = b => {
+    const info = data.starters.find(x => x.name === b.starter);
+    const status = id => data.libs.find(l => l.id === id)?.installed.length > 0;
+    return h('div', { class: 'mt-s' },
+      h('div', { class: 'muted small' }, `${(info?.description || 'A 3D or library scene').replace(/\.$/, '')}. It is copied into the plan folder (scenes/) so you can edit it.`),
+      h('div', { class: 'row wrap mt-s' }, (info?.libs || []).map(id => h('span', { class: `chip ${status(id) ? 'good' : 'warn'}` }, status(id) ? `${id} installed` : `${id}: install it on the Libraries tab first`)), info?.untested ? h('span', { class: 'chip warn' }, 'untested') : null),
+      (info?.assets || []).map(name => h('label', { class: 'field mt-s' }, h('span', {}, `Your file for ${name} (full path)`), h('input', { class: 'input', value: (b.assets || {})[name] || '', placeholder: `/Users/you/${name}`, oninput: e => { b.assets = { ...(b.assets || {}), [name]: e.target.value }; } }))));
   };
   const brief = () => {
-    const out = { type: state.type, title: state.title || 'Untitled', aspect: state.aspect, beats: state.beats.map(b => ({ say: b.say || undefined, show: b.show, props: b.props, seconds: b.seconds })) };
+    const out = { type: state.type, title: state.title || 'Untitled', aspect: state.aspect, beats: state.beats.map(b => (b.starter ? { say: b.say || undefined, starter: b.starter, seconds: b.seconds, assets: b.assets && Object.keys(b.assets).length ? b.assets : undefined } : { say: b.say || undefined, show: b.show, props: b.props, seconds: b.seconds })) };
     if (state.music.file) out.music = { ...state.music, gainDb: Number(state.music.gainDb) };
     return out;
   };
@@ -118,7 +128,8 @@ function videoTab(body, data) {
     try {
       const r = await api.checkBrief(brief());
       mount(result, h('div', { class: `card pad ${r.errors.length ? '' : ''}` }, h('h3', {}, r.errors.length ? 'The brief needs changes' : `The brief passes (${r.total} s)`),
-        r.errors.map(e => h('div', { class: 'row small', style: { color: 'var(--bad, #e5484d)', gap: '8px' } }, icon('alert', 14), e)), r.warnings.map(w => h('div', { class: 'row small muted', style: { gap: '8px' } }, icon('info', 14), w))));
+        r.errors.map(e => h('div', { class: 'row small', style: { color: 'var(--bad, #e5484d)', gap: '8px' } }, icon('alert', 14), e)), r.warnings.map(w => h('div', { class: 'row small muted', style: { gap: '8px' } }, icon('info', 14), w)),
+        (r.libs || []).map(l => h('div', { class: 'row small', style: { gap: '8px', color: l.installed ? '' : 'var(--bad, #e5484d)' } }, icon(l.installed ? 'check' : 'alert', 14), l.installed ? `Library ${l.id} ${l.version} is installed` : `Library ${l.id} is not installed: open the Libraries tab and download it (one time)`))));
     } catch (error) { toast(error.message, 'bad'); }
   }
   async function plan() {
@@ -126,7 +137,8 @@ function videoTab(body, data) {
       const r = await api.planVideo({ brief: brief(), output: state.output.trim(), facts: state.facts.trim() || undefined, sfx: state.sfx });
       mount(result, h('div', { class: 'card pad' }, h('h3', {}, 'Plan created'),
         h('p', { class: 'small' }, `${r.scenes} graphic scenes, ${r.seconds} s, ${r.width}x${r.height}${r.sfx ? `, ${r.sfx} sound cues` : ''}${r.facts ? `, facts-check OK (${r.facts.checked} numbers)` : ''}.`),
-        h('div', { class: 'mono small', style: { wordBreak: 'break-all' } }, r.output), (r.warnings || []).map(w => h('div', { class: 'small muted' }, `warning: ${w}`)),
+        h('div', { class: 'mono small', style: { wordBreak: 'break-all' } }, r.output), h('div', { class: 'small mt-s' }, r.libs?.length ? `Libraries used: ${r.libs.map(l => `${l.id} ${l.version}`).join(', ')}.` : 'Built-in templates only; no libraries needed.'),
+        h('div', { class: 'small muted' }, 'The plan is written to PLAN.md in that folder (beats, libraries, facts, next steps).'), (r.warnings || []).map(w => h('div', { class: 'small muted' }, `warning: ${w}`)),
         h('p', { class: 'muted small mt-s' }, 'Nothing is built or approved yet. Read the plan, then run these (the first one records your approval):'),
         r.next.map(c => h('div', { class: 'row mt-s' }, h('code', { class: 'mono small', style: { flex: 1, wordBreak: 'break-all' } }, c), h('button', { class: 'btn ghost sm', onclick: async () => { try { await navigator.clipboard.writeText(c); toast('Copied', 'good'); } catch { toast('Copy failed', 'bad'); } } }, icon('copy', 14))))));
       toast('Plan created', 'good');

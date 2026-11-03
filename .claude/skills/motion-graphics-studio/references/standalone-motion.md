@@ -32,9 +32,10 @@ Always first: `MOTION.md` ([brand](./brand-motion.md)), the real content, and fo
 
 - `type`: `launch`, `explainer`, `chart`, `milestone`, `opener` or `promo` (`--types` lists each format's beat count and length). Beat count and the **3 s hold on the last beat** are enforced; a total length outside the format, or the same template twice in a row, is a warning.
 - Each beat: `say` (what is said or meant; becomes the scene's purpose), `show` (any built-in template, including the effect templates) **or** `html` (your own seekable page, with `<vm-lib>`), `props`, `seconds`, optional `label` (chapter) and `transition`. Transitions vary by default; `"transitions": "cut"` for hard cuts.
+- **3D and animation libraries as beats:** `{ "say": "A slow turn.", "starter": "three-showcase", "seconds": 5 }` uses one of the starters in `assets/motion-starters/` (three.js, GSAP, anime.js, Lottie, Motion, Babylon.js, PlayCanvas, Rive). The command copies it into the plan folder (`scenes/`) so you can edit it, checks that its library is installed (otherwise it stops and prints `video-monk libs --add <name> --allow-download`; nothing is downloaded for you), and lists the libraries in `PLAN.md` and the manifest notes. A scene that needs your own file takes it in the beat: `"assets": { "model.glb": "/path/to/model.glb" }`. Text inside a scene page is not covered by `facts-check`, so read it yourself. `--check` also reports missing libraries.
 - **Facts first:** numbers on screen need `--facts facts.json` (every fact with a source) and are checked; without it the command stops. Sample data is only allowed through `chart-morph` with `"illustrative": true`, which prints an "Illustrative" label on every frame.
 - `music` needs its licence and attribution. `--sfx subtle` (default) adds quiet synthesised accents, never more than one per graphic.
-- `--check` reviews a brief without writing anything. Then: `production-review --approve-plan`, `production-build --quality draft`, read the contact sheet, final build.
+- `--check` reviews a brief without writing anything. The plan folder gets `production.json`, `brief.json`, `PLAN.md` (beats, libraries, facts, next steps) and `scenes/` when a beat is a 3D scene. Then: `production-review --approve-plan`, `production-build --quality draft`, read the contact sheet, final build.
 
 ## Build it by hand
 

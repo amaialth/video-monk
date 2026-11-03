@@ -51,7 +51,7 @@ video-monk graphic --html my-scene.html --output frame.png --at 2.5 --seconds 6 
 video-monk graphic --html my-scene.html --output scene.mp4 --seconds 6
 ```
 
-Use it as a graphic scene (`"graphic": { "html": "my-scene.html" }`) or as a beat in `motion-video`.
+Use it as a graphic scene (`"graphic": { "html": "my-scene.html" }`), or put it straight into a standalone video plan: a `motion-video` beat `{ "starter": "three-showcase", "seconds": 5 }` copies the starter into the plan folder, checks the library is installed and records it in `PLAN.md`. The web app's Motion studio does the same from a menu.
 
 ## Craft notes for 3D
 

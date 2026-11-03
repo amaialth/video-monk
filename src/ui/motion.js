@@ -6,7 +6,7 @@ import { exists } from '../core.js';
 import { TEMPLATES, templateCatalog, validateProps } from '../motion/templates.js';
 import { EFFECTS } from '../motion/effects.js';
 import { EXAMPLES } from '../motion/examples.js';
-import { TYPES, reviewBrief, motionVideo } from '../motionvideo.js';
+import { TYPES, reviewBrief, motionVideo, libsNeeded } from '../motionvideo.js';
 import { LIBS, NOT_SUPPORTED, addLib, listLibs, removeLib } from '../libs.js';
 
 const STARTERS = new URL('../../assets/motion-starters/', import.meta.url).pathname;
@@ -18,7 +18,7 @@ async function starters() {
     const text = await readFile(path.join(STARTERS, file), 'utf8');
     const note = /<!--\s*Starter:\s*([^\n]*?)(?:\.\s|\n|-->)/.exec(text)?.[1] || '';
     out.push({ name: file.replace(/\.html$/, ''), description: note.trim(), libs: [...text.matchAll(/<vm-lib\s+name="([\w@/.-]+)"/g)].map(m => m[1]).filter((v, i, a) => a.indexOf(v) === i),
-      untested: /NOT TESTED/.test(text) });
+      untested: /NOT TESTED/.test(text), assets: [...text.replace(/<!--[\s\S]*?-->/g, '').matchAll(/<vm-asset\s+name="[\w.-]+"\s+src="([^"]+)"/g)].map(m => m[1]) });
   }
   return out;
 }
@@ -72,14 +72,14 @@ export function registerMotion(on, { previews, serveFile, HANDLED }) {
 
   on('POST', '/api/motion/brief/check', async ({ body }) => {
     if (!body.brief || typeof body.brief !== 'object') throw err('Send the brief as an object');
-    return reviewBrief(body.brief);
+    return { ...reviewBrief(body.brief), libs: await libsNeeded(body.brief) };
   });
 
   // Write the plan (production.json + brief) into a new folder. Builds nothing, approves nothing.
   on('POST', '/api/motion/video', async ({ body }) => {
     const brief = body.brief;
     if (!brief || typeof brief !== 'object') throw err('Send the brief as an object');
-    if ((brief.beats || []).some(b => b && b.html !== undefined)) throw err('Custom HTML beats are set up from the command line; the studio plans beats from built-in templates');
+    if ((brief.beats || []).some(b => b && b.html !== undefined)) throw err('Custom HTML beats are set up from the command line; the studio plans beats from built-in templates and the shipped 3D starters');
     const output = String(body.output || '');
     if (!path.isAbsolute(output)) throw err('Choose a folder by its full path');
     const dir = path.resolve(output);

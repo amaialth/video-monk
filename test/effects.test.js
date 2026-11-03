@@ -46,3 +46,11 @@ test('every template example validates, so the studio can always preview it', ()
   for (const [name, props] of Object.entries(EXAMPLES)) assert.doesNotThrow(() => validateProps(name, props), name);
   for (const name of Object.keys(EFFECTS)) assert.ok(EXAMPLES[name], `an example for ${name}`);
 });
+
+test('every public template has an example that validates (so the studio never opens on an empty form)', () => {
+  for (const [name, def] of Object.entries(TEMPLATES)) {
+    if (def.internal) continue;
+    assert.ok(EXAMPLES[name], `an example for ${name}`);
+    assert.doesNotThrow(() => validateProps(name, EXAMPLES[name]), name);
+  }
+});

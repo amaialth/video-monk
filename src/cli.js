@@ -23,7 +23,7 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
-import { motionVideo, reviewBrief, readBrief, TYPES as MOTION_TYPES } from './motionvideo.js';
+import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
 import { writeBrand } from './brand.js';
@@ -65,7 +65,8 @@ AUTOMATED EDITING
              Settle the format BEFORE editing: long-form 16:9, a vertical 9:16 short, both, or a square/4:5 feed post;
              footage type, pace, graphics, captions, destination. Interactive in a terminal; --questions prints them as JSON.
   motion-video --brief <brief.json> --output <new folder> [--facts facts.json] [--sfx off|subtle|full]   (or --check to review a brief, --types to list the formats)
-             a standalone piece made only of graphic scenes (launch, explainer, chart, milestone, opener, promo) from beats (say, show, props, seconds):
+             a standalone piece made only of graphic scenes (launch, explainer, chart, milestone, opener, promo) from beats (say, show | starter | html, props, seconds, assets):
+             a beat can be a 3D / library scene: "starter": "three-showcase" (see assets/motion-starters); its libraries are checked and listed in PLAN.md.
              checks beat count, length, a 3 s hold on the last beat and facts-first numbers, then writes production.json with transitions, music and subtle SFX.
              Builds nothing: review the plan, then production-review --approve-plan and production-build.
   cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
@@ -582,8 +583,10 @@ export async function main(args) {
     case 'motion-video': {
       if (opts.types) { for (const [name, t] of Object.entries(MOTION_TYPES)) console.log(`${name.padEnd(10)} ${t.beats.join('-')} beats, ${t.seconds.join('-')} s, last beat held ${t.hold} s: ${t.about}`); break; }
       if (opts.check) {
-        const review = reviewBrief(await readBrief(required(opts, 'brief')));
+        const briefData = await readBrief(required(opts, 'brief'));
+        const review = reviewBrief(briefData);
         review.errors.forEach(e => console.log(`  ERROR    ${e}`)); review.warnings.forEach(w => console.log(`  warning  ${w}`));
+        for (const l of await libsNeeded(briefData, path.dirname(path.resolve(opts.brief)))) console.log(l.installed ? `  library  ${l.id} ${l.version} (installed)` : `  library  ${l.id} is NOT installed: video-monk libs --add ${l.id} --allow-download`);
         console.log(review.errors.length ? 'The brief needs changes.' : `The brief passes (${review.total} s).`);
         if (review.errors.length) process.exitCode = 1;
         break;
