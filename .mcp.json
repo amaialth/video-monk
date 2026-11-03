@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "mirelo": {
+      "type": "http",
+      "url": "https://mcp.mirelo.ai/mcp",
+      "headers": { "Authorization": "Bearer ${MIRELO_API_KEY}" }
+    }
+  }
+}

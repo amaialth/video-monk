@@ -43,6 +43,24 @@ Setup: put `MIRELO_API_KEY=sk-...` in the environment or in a `.env` file in the
 
 Terms to check: the Free plan is for **non-commercial** use, and a paid plan is needed to ship commercially. A fully automatic pipeline needs no "Powered by Mirelo" badge. Generated files are deleted from Mirelo after 7 days, so the toolkit copies them into the library at once. Facts here are from Mirelo's published API reference (November 2026); re-read https://mirelo.ai/api-terms before relying on them for a commercial release.
 
+## Mirelo MCP server (for Claude Code agents)
+
+The same account and key also work through Mirelo's MCP server, `https://mcp.mirelo.ai/mcp`. The repository's `.mcp.json` registers it as `mirelo`
+and reads the token from the `MIRELO_API_KEY` environment variable (the file holds no secret). Claude Code does not read `.env` by itself, so start it from a
+shell that has the variable: `set -a; . ./.env; set +a; claude`. Approve the project server when prompted, then check it with `/mcp`.
+
+Tools (verified against the server): `get_account` (credits), `preflight` (exact credit quote, free), `text_to_sfx`, `video_to_sfx` (foley and ambience that follow a video clip),
+`extend_audio`, `inpaint_audio`, `create_upload` / `create_asset` / `inspect_asset` (media in), `get_job` / `wait_job`, plus `audio_to_midi`. **It does not make music.**
+
+Rules for agents using it:
+1. `get_account` first, then `preflight` every generation and tell the user the credit cost; cost is per second per variant (about 10 credits per second on sfx-2.0 until 2026-12-12, 15 after). Ask for approval before anything over about 100 credits, and always before `video_to_sfx` on long footage (it bills per second of video).
+2. Ask for one variant unless the user wants choices.
+3. Download the result at once (Mirelo deletes files after 7 days) and register it: `video-monk assets --add <file> --kind audio --name "..." --rights "Generated with Mirelo; paid plan for commercial use" --approved`, then add it as an `audio` asset with an `audio.sfx` cue, or `audio.music` for a quiet ambience bed.
+4. Check the library first (`video-monk assets --search "whoosh"`): the built-in sounds and earlier generations are free to reuse.
+5. You cannot hear the result. Build the audition page and ask the user to listen.
+
+The CLI (`--engine mirelo --allow-mirelo`) covers text-to-SFX with budgets and caching; the MCP adds video-to-SFX, extend and inpaint, which the CLI does not.
+
 ## Listening
 
 An agent cannot hear audio. What can be checked without ears: length, peak and loudness, silence, clipping, and a spectrogram image (attack, decay, and what frequencies it uses). That catches broken sounds, not a wrong *feel*.

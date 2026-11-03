@@ -129,3 +129,5 @@ or model accuracy. The native FFmpeg production tests are a separate validation.
 ## Optional: Mirelo sound effects
 
 `MIRELO_API_KEY` in the environment or a `.env` file (git ignores `.env`; copy `.env.example`). Used only with `--allow-mirelo`. Check with `video-monk sfx --credits`. See [sound effects](./sound-effects.md).
+
+For Claude Code agents the Mirelo MCP server is registered in `.mcp.json` (token from the environment). Start Claude Code with the variable set: `set -a; . ./.env; set +a; claude`, then check `/mcp`.
