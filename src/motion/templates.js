@@ -3,6 +3,8 @@
 // update(t), a pure function of time in seconds. Text is always inserted with textContent.
 
 import { EFFECTS } from './effects.js';
+import { EFFECTS2 } from './effects2.js';
+import { EFFECTS3 } from './effects3.js';
 
 const str = (max, required = false) => ({ type: 'string', max, required });
 const num = (required = false, min = -1e12, max = 1e12) => ({ type: 'number', required, min, max });
@@ -66,32 +68,47 @@ export const TEMPLATES = {
   },
 
   'lower-third': {
-    description: 'Name/role strap that slides in near the bottom of the frame (full-frame overlay).',
+    description: 'Name/role strap that slides in near the bottom of the frame (full-frame overlay). Styles: default, clean-bar (white card, accent tab), bold-block (solid accent block), accent-underline (cardless, drawn rule), soft-pill (rounded pill with a dot), side-rule (cardless, vertical bar).',
     fullFrame: true,
-    schema: { name: str(48, true), role: str(80), position: { type: 'enum', values: ['left', 'right'] } },
+    schema: { name: str(48, true), role: str(80), position: { type: 'enum', values: ['left', 'right'] },
+      style: { type: 'enum', values: ['default', 'clean-bar', 'bold-block', 'accent-underline', 'soft-pill', 'side-rule'] } },
     render(root, props, ctx, VM) {
       const right = props.position === 'right';
+      const st = props.style || 'default';
       const box = VM.el('div', { style: { position: 'absolute', bottom: (ctx.h * (ctx.portrait ? 0.28 : 0.12)) + 'px',
-        [right ? 'right' : 'left']: (ctx.u * 6) + 'px', display: 'flex', alignItems: 'stretch', gap: (ctx.u * 1.2) + 'px' } }, root);
-      const bar = VM.el('div', { style: { width: (ctx.u * 0.9) + 'px', background: ctx.theme.accent, borderRadius: '99px', transformOrigin: 'bottom' } }, box);
-      const panel = VM.el('div', { style: { background: VM.hexToRgba(ctx.theme.background, 0.88), padding: (ctx.u * 1.6) + 'px ' + (ctx.u * 2.8) + 'px',
-        borderRadius: (ctx.u * 1.2) + 'px', overflow: 'hidden' } }, box);
-      const name = VM.el('div', { style: { fontWeight: '800', fontSize: (ctx.u * 4.2) + 'px', whiteSpace: 'nowrap' } }, panel, props.name);
-      const role = props.role ? VM.el('div', { style: { color: ctx.theme.muted, fontSize: (ctx.u * 2.8) + 'px', marginTop: (ctx.u * 0.5) + 'px', whiteSpace: 'nowrap' } }, panel, props.role) : null;
+        [right ? 'right' : 'left']: (ctx.u * 6) + 'px', display: 'flex', alignItems: 'stretch', gap: (ctx.u * (st === 'clean-bar' ? 0 : 1.2)) + 'px' } }, root);
+      const barOn = st === 'default' || st === 'clean-bar' || st === 'side-rule';
+      const bar = barOn ? VM.el('div', { style: { width: (ctx.u * (st === 'side-rule' ? 0.7 : st === 'clean-bar' ? 1.1 : 0.9)) + 'px', background: ctx.theme.accent, borderRadius: st === 'clean-bar' ? (ctx.u * 0.9) + 'px 0 0 ' + (ctx.u * 0.9) + 'px' : '99px', transformOrigin: 'bottom' } }, box) : null;
+      const dark = '#111418', light = '#ffffff';
+      const panelStyle = { overflow: 'hidden', padding: (ctx.u * 1.6) + 'px ' + (ctx.u * 2.8) + 'px', borderRadius: (ctx.u * 1.2) + 'px', background: VM.hexToRgba(ctx.theme.background, 0.88) };
+      let nameColor = ctx.theme.text, roleColor = ctx.theme.muted, shadow = 'none';
+      if (st === 'clean-bar') Object.assign(panelStyle, { background: light, borderRadius: '0 ' + (ctx.u * 0.9) + 'px ' + (ctx.u * 0.9) + 'px 0', boxShadow: '0 ' + ctx.u * 0.6 + 'px ' + ctx.u * 2.4 + 'px rgba(0,0,0,0.35)' }), nameColor = dark, roleColor = '#5b6470';
+      if (st === 'bold-block') Object.assign(panelStyle, { background: ctx.theme.accent, borderRadius: (ctx.u * 0.4) + 'px', padding: (ctx.u * 1.4) + 'px ' + (ctx.u * 3) + 'px' }), nameColor = ctx.theme.background, roleColor = ctx.theme.background;
+      if (st === 'soft-pill') Object.assign(panelStyle, { background: light, borderRadius: '99px', padding: (ctx.u * 1.5) + 'px ' + (ctx.u * 3.6) + 'px ' + (ctx.u * 1.5) + 'px ' + (ctx.u * 3) + 'px', boxShadow: '0 ' + ctx.u * 0.6 + 'px ' + ctx.u * 2.4 + 'px rgba(0,0,0,0.3)' }), nameColor = dark, roleColor = '#5b6470';
+      if (st === 'accent-underline' || st === 'side-rule') { Object.assign(panelStyle, { background: 'transparent', padding: (ctx.u * 0.4) + 'px ' + (ctx.u * 1) + 'px', overflow: 'visible' }); shadow = '0 ' + ctx.u * 0.15 + 'px ' + ctx.u * 0.9 + 'px rgba(0,0,0,0.85)'; }
+      const panel = VM.el('div', { style: panelStyle }, box);
+      const head = st === 'soft-pill' ? VM.el('div', { style: { display: 'flex', alignItems: 'center', gap: (ctx.u * 1.2) + 'px' } }, panel) : panel;
+      if (st === 'soft-pill') VM.el('span', { style: { width: (ctx.u * 1.4) + 'px', height: (ctx.u * 1.4) + 'px', borderRadius: '99px', background: ctx.theme.accent, boxShadow: '0 0 0 ' + (ctx.u * 0.5) + 'px ' + VM.hexToRgba(ctx.theme.accent, 0.25) } }, head);
+      const upper = st === 'bold-block';
+      const name = VM.el('div', { style: { fontWeight: '800', fontSize: (ctx.u * 4.2) + 'px', whiteSpace: 'nowrap', color: nameColor, textShadow: shadow, textTransform: upper ? 'uppercase' : 'none', letterSpacing: upper ? '0.02em' : '-0.01em' } }, head, props.name);
+      const role = props.role ? VM.el('div', { style: { color: roleColor, fontSize: (ctx.u * (upper ? 2.4 : 2.8)) + 'px', marginTop: (ctx.u * 0.5) + 'px', whiteSpace: 'nowrap', textShadow: shadow, textTransform: upper ? 'uppercase' : 'none', letterSpacing: upper ? '0.12em' : '0', fontWeight: upper ? '700' : '400' } }, panel, props.role) : null;
+      const rule = st === 'accent-underline' ? VM.el('div', { style: { height: (ctx.u * 0.6) + 'px', background: ctx.theme.accent, borderRadius: '99px', marginTop: (ctx.u * 0.7) + 'px', width: '100%', transformOrigin: 'left' } }, panel) : null;
       return t => {
         const k = VM.life(t, ctx, 0.15, 0.5);
-        VM.set(bar, { transform: 'scaleY(' + VM.r(VM.life(t, ctx, 0, 0.35)) + ')' });
-        VM.set(panel, { opacity: VM.r(k), clipPath: 'inset(0 ' + VM.r((1 - k) * 100) + '% 0 0)' });
-        VM.set(name, { transform: 'translateX(' + VM.r((1 - k) * -ctx.u * 3) + 'px)' });
+        if (bar) VM.set(bar, { transform: 'scaleY(' + VM.r(VM.life(t, ctx, 0, 0.35)) + ')' });
+        if (st === 'accent-underline' || st === 'side-rule') VM.set(panel, { opacity: VM.r(k) });
+        else VM.set(panel, { opacity: VM.r(k), clipPath: 'inset(0 ' + VM.r((1 - k) * 100) + '% 0 0)' });
+        VM.set(name, { transform: st === 'bold-block' ? 'translateY(' + VM.r((1 - k) * ctx.u * 2.4) + 'px)' : 'translateX(' + VM.r((1 - k) * -ctx.u * 3) + 'px)' });
+        if (rule) VM.set(rule, { transform: 'scaleX(' + VM.r(VM.life(t, ctx, 0.2, 0.55)) + ')' });
         if (role) VM.set(role, { opacity: VM.r(VM.life(t, ctx, 0.35, 0.4)) });
       };
     }
   },
 
   'kinetic-text': {
-    description: 'Large pull-text revealed word by word (mask rise / blur-in / pop). *Stressed* words switch to italic serif in the accent colour. Optional cues land each word on its spoken time.',
+    description: 'Large pull-text revealed word by word (mask rise / blur-in / pop / scramble decode / tracking-in). *Stressed* words switch to italic serif in the accent colour. Optional cues land each word on its spoken time.',
     schema: { text: str(160, true), emphasis: { type: 'array', items: str(40), maxItems: 12 },
-      reveal: { type: 'enum', values: ['mask', 'blur', 'pop'] }, mode: { type: 'enum', values: ['build', 'sequence'] },
+      reveal: { type: 'enum', values: ['mask', 'blur', 'pop', 'scramble', 'tracking'] }, mode: { type: 'enum', values: ['build', 'sequence'] },
       position: { type: 'enum', values: ['center', 'top', 'bottom'] }, align: { type: 'enum', values: ['center', 'left'] },
       cues: { type: 'array', maxItems: 40, items: num(true, 0, 3600) } },
     render(root, props, ctx, VM) {
@@ -105,12 +122,25 @@ export const TEMPLATES = {
       const words = VM.words(line, markup, { stressColor: ctx.theme.accent, mask: reveal === 'mask' });
       VM.fit(line, ctx.w - ctx.u * 8, ctx.strip ? ctx.h * 0.46 : ctx.u * 12, ctx.strip ? ctx.h * 0.2 : ctx.u * 3.4, ctx.h - ctx.u * (ctx.strip ? 2 : 8));
       const cues = props.cues && props.cues.length === words.length ? props.cues : null;
+      const finals = words.map(w => w.inner.textContent);           // for the scramble reveal: what each word resolves to
+      const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZ0123456789#%&*+=<>?';
       const span = Math.max(0.3, ctx.duration - 0.6);
       const step = Math.min(0.07, span * 0.7 / words.length);
       return t => {
         const out = ctx.exit ? 1 - VM.ease.in(VM.p(t, ctx.duration - 0.3, 0.3)) : 1;
         words.forEach((w, i) => {
           const start = cues ? cues[i] : i * Math.max(step, 0.07);
+          if (reveal === 'scramble' || reveal === 'tracking') {
+            const dur = reveal === 'scramble' ? 0.7 : 0.8, q = VM.ease.out(VM.p(t, start, dur)), f = finals[i];
+            if (reveal === 'scramble') {
+              const tq = Math.floor(t * 24);   // glyphs change 24 times a second, so held frames repeat exactly
+              let o = '';
+              for (let c = 0; c < f.length; c++) { if (f[c] === ' ' || q >= (c + 1) / (f.length + 1) || q >= 1) o += f[c]; else if (q <= 0) o += ' '; else o += GLYPHS[((c * 7 + i * 13 + tq * 5 + c * tq) >>> 0) % GLYPHS.length]; }
+              if (w.inner.textContent !== o) w.inner.textContent = o;
+              VM.set(w.inner, { opacity: VM.r(VM.clamp(q * 6) * out), fontVariantNumeric: 'tabular-nums' });
+            } else VM.set(w.inner, { opacity: VM.r(VM.clamp(q * 1.6) * out), letterSpacing: VM.r((1 - q) * 0.45, 3) + 'em', transform: 'translateY(' + VM.r((1 - q) * 0.12) + 'em)' });
+            return;
+          }
           const e = VM.ease.expo(VM.p(t, start, reveal === 'pop' ? 0.35 : 0.55));
           const k = reveal === 'pop' ? VM.ease.back(VM.p(t, start, 0.35)) : e;
           const style = { opacity: VM.r(VM.clamp(reveal === 'mask' ? 1 : k * 1.4) * out) };
@@ -738,10 +768,11 @@ export const TEMPLATES = {
       const wrap = VM.el('div', { style: { position: 'absolute', left: (ctx.w * 0.06) + 'px', right: (ctx.w * 0.06) + 'px', display: 'flex', justifyContent: 'center',
         [pos === 'top' ? 'top' : 'bottom']: (pos === 'center' ? ctx.h * 0.42 : ctx.h * (ctx.portrait ? 0.27 : 0.075)) + 'px' } }, root); // vertical: keep clear of the bottom ~26% that Reels, Shorts and TikTok cover with their own buttons
       const shadow = ctx.theme.text.toLowerCase() === '#0b0b0b' ? '0 0.05em 0.14em rgba(255,255,255,0.85)' : '0 0.06em 0.18em rgba(0,0,0,0.9), 0 0 0.06em rgba(0,0,0,0.9)';
-      const box = VM.el('div', { style: { textAlign: 'center', fontWeight: '800', fontSize: (ctx.u * (ctx.portrait ? 6 : 4.6)) + 'px', lineHeight: '1.22',
-        letterSpacing: '-0.012em', padding: '0.15em 0.4em', borderRadius: '0.3em', color: style === 'phrase' ? '#fff' : ctx.theme.text,
-        background: style === 'phrase' ? 'rgba(0,0,0,0.62)' : 'transparent',
-        textShadow: style === 'phrase' ? 'none' : shadow, maxWidth: '100%' } }, wrap);
+      const darkBox = style === 'phrase' || style === 'pill';
+      const box = VM.el('div', { style: { textAlign: 'center', fontWeight: '800', fontSize: (ctx.u * (ctx.portrait ? 6 : 4.6) * (style === 'slam' ? 1.9 : 1)) + 'px', lineHeight: '1.22',
+        letterSpacing: '-0.012em', padding: style === 'pill' ? '0.2em 0.7em' : '0.15em 0.4em', borderRadius: style === 'pill' ? '99px' : '0.3em', color: darkBox ? '#fff' : ctx.theme.text,
+        background: darkBox ? 'rgba(0,0,0,0.62)' : 'transparent',
+        textShadow: darkBox ? 'none' : shadow, maxWidth: '100%' } }, wrap);
       const pages = props.pages;
       let current = -2;
       let spans = [];
@@ -777,11 +808,44 @@ export const TEMPLATES = {
             s.style.filter = stressed && enter < 1 ? 'blur(' + VM.r((1 - enter) * 3) + 'px)' : 'none';
             s.style.color = stressed ? ctx.theme.accent : active ? ctx.theme.accent : ctx.theme.text;
           });
-        } else if (style === 'karaoke') {
+        } else if (style === 'karaoke' || style === 'pill') {
           for (const { w, s } of spans) {
             const active = t >= w.start && t < w.end;
             s.style.background = active ? ctx.theme.accent : 'transparent';
-            s.style.color = active ? ctx.theme.background : (t >= w.end ? ctx.theme.text : VM.hexToRgba(ctx.theme.text, 0.92));
+            s.style.color = active ? ctx.theme.background : (style === 'pill' ? '#fff' : (t >= w.end ? ctx.theme.text : VM.hexToRgba(ctx.theme.text, 0.92)));
+          }
+        } else if (style === 'highlight') {
+          // words already said stay bright, words to come are dim, and an accent block sweeps in behind the word being said
+          for (const { w, s } of spans) {
+            const active = t >= w.start && t < w.end, said = t >= w.end, sweep = VM.ease.out(VM.p(t, w.start, 0.1));
+            s.style.backgroundImage = active ? 'linear-gradient(' + ctx.theme.accent + ',' + ctx.theme.accent + ')' : 'none';
+            s.style.backgroundRepeat = 'no-repeat'; s.style.backgroundSize = active ? VM.r(sweep * 100) + '% 100%' : '0% 100%';
+            s.style.color = active ? ctx.theme.background : said ? ctx.theme.text : VM.hexToRgba(ctx.theme.text, 0.5);
+            s.style.transform = active ? 'scale(' + VM.r(1 + 0.06 * sweep) + ')' : 'none';
+            s.style.textShadow = active ? 'none' : '';
+          }
+        } else if (style === 'slam') {
+          // one word at a time, big, each landing with a small rotation that alternates
+          spans.forEach(({ w, s }, i) => {
+            const active = t >= w.start && (t < w.end || (i === spans.length - 1 && t < pages[idx].end));
+            const k = VM.ease.back(VM.p(t, w.start, 0.12));
+            s.style.display = active ? 'inline-block' : 'none';
+            s.style.transform = 'scale(' + VM.r(0.7 + 0.3 * k) + ') rotate(' + (i % 2 ? 1.5 : -1.5) + 'deg)';
+            s.style.color = i % 3 === 2 ? ctx.theme.accent : ctx.theme.text;
+          });
+        } else if (style === 'wipe') {
+          // each word is wiped in from the left while it is spoken
+          for (const { w, s } of spans) {
+            const k = VM.ease.out(VM.p(t, w.start, Math.max(0.12, Math.min(0.35, w.end - w.start))));
+            s.style.clipPath = 'inset(0 ' + VM.r((1 - k) * 100) + '% 0 0)';
+            s.style.color = t >= w.start && t < w.end ? ctx.theme.accent : ctx.theme.text;
+          }
+        } else if (style === 'weight') {
+          // the active word swells in weight (the sans face is a variable font)
+          for (const { w, s } of spans) {
+            const active = t >= w.start && t < w.end, k = active ? VM.ease.out(VM.p(t, w.start, 0.12)) : 0;
+            s.style.fontWeight = String(Math.round(400 + 500 * (active ? k : t >= w.end ? 0.7 : 0)));
+            s.style.color = active ? ctx.theme.accent : ctx.theme.text;
           }
         }
       };
@@ -789,7 +853,7 @@ export const TEMPLATES = {
   }
 };
 
-Object.assign(TEMPLATES, EFFECTS);
+Object.assign(TEMPLATES, EFFECTS, EFFECTS2, EFFECTS3);
 
 // Validate template props against the mini schema. Returns a cleaned copy (unknown fields rejected).
 export function validateProps(template, props, location = 'props') {

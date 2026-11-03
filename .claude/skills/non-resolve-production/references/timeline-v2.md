@@ -30,6 +30,7 @@ graphic) or `color` (`color: "#RRGGBB"`). Every scene needs `purpose` and
 - `id`, `chapter` (YouTube chapter label at this scene's start; chapters.txt)
 - `fit`: `cover` (default, crops to fill; reframes landscape to vertical) or `contain`
 - `motion`: `{type: zoom-in|zoom-out|pan-left|pan-right|pan-up|pan-down|punch-in|none, amount?: 0.01-0.5}`
+  Auto-zoom on a spot: `{type: "focus", points: [{at: seconds from the scene start, x: 0-1, y: 0-1, amount?: 0.1-1 (1 = 2x, default 0.5), hold?: 0-10 s (1.5), ramp?: 0.15-2 s (0.5)}]}`. Each point eases in over `ramp`, is fully zoomed at `at`, holds, and eases out; x and y are fractions of the picture as the viewer sees it. `video-monk focus --clicks clicks.json` places the points from click times in the source recording.
 - `audio`: keep the source clip's sound: `{gainDb?, fadeIn?, fadeOut?}` (video scenes)
 - `broll`: list of `{asset, in?, start, duration, fit?, motion?}` cutaways (scene-relative)
 - `overlays`: list of `{template | html, props, start, duration, placement?, panel?}`

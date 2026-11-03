@@ -42,6 +42,24 @@ export async function reviewTimeline(file, output, approve = false, execute = ru
   return report;
 }
 
+// Auto-zoom: z, x and y expressions for zoompan from focus points. Each point eases in over `ramp` s, holds, eases out; where points overlap the
+// stronger zoom wins and the centre blends. t is the output frame number over fps, so any frame can be computed on its own.
+export function focusExpressions(points, fps) {
+  const t = `(on/${fps})`;
+  const num = v => String(Math.round(v * 10000) / 10000);
+  const bumps = points.map(p => {
+    const a = p.at, r = p.ramp ?? 0.5, h = p.hold ?? 1.5;
+    const into = `(0.5-0.5*cos(PI*(${t}-${num(a - r)})/${num(r)}))`, out = `(0.5+0.5*cos(PI*(${t}-${num(a + h)})/${num(r)}))`;
+    return `if(lt(${t},${num(a - r)}),0,if(lt(${t},${num(a)}),${into},if(lt(${t},${num(a + h)}),1,if(lt(${t},${num(a + h + r)}),${out},0))))`;
+  });
+  const amt = points.map(p => p.amount ?? 0.5);
+  let zoom = `${amt[0]}*${bumps[0]}`;
+  for (let i = 1; i < points.length; i++) zoom = `max(${zoom},${amt[i]}*${bumps[i]})`;
+  const total = bumps.length === 1 ? bumps[0] : bumps.join('+');
+  const weigh = axis => `0.5+(${points.map((p, i) => `${bumps[i]}*(${num(p[axis])}-0.5)`).join('+')})/max(1,${total})`;
+  return `z='1+${zoom}':x='min(max(iw*(${weigh('x')})-iw/zoom/2,0),iw-iw/zoom)':y='min(max(ih*(${weigh('y')})-ih/zoom/2,0),ih-ih/zoom)'`;
+}
+
 // Fit a visual stream to the frame, with optional camera motion. `frames` = output frame count of that layer.
 let blurCount = 0;
 function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames, speed = 1) {
@@ -62,6 +80,7 @@ function fitChain({ width: W, height: H, fps }, fit = 'cover', motion, frames, s
     const w = Math.ceil(W * (1 + a) / 2) * 2, h = Math.ceil(H * (1 + a) / 2) * 2;
     return `${retime}fps=${fps},${fitTo(w, h)},crop=${W}:${H},setsar=1`;
   }
+  if (type === 'focus') return `${retime}fps=${fps},${fitTo(W * 2, H * 2)},zoompan=${focusExpressions(motion.points, fps)}:d=1:s=${W}x${H}:fps=${fps},setsar=1`;
   // Smooth (cosine-eased) zoom/pan via zoompan on a 2x canvas for sub-pixel precision.
   const a = motion.amount ?? (type.startsWith('zoom') ? 0.1 : 0.15);
   const n = Math.max(1, frames - 1);

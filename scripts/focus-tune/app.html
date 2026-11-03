@@ -1,0 +1,62 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}html,body{margin:0;width:1280px;height:720px;overflow:hidden;background:#f4f5f7;font:15px -apple-system,Helvetica,Arial,sans-serif;color:#1f2430}
+#top{position:absolute;left:0;top:0;width:1280px;height:56px;background:#fff;border-bottom:1px solid #dfe3ea}
+#top b{position:absolute;left:24px;top:18px;font-size:18px}#clock{position:absolute;left:1010px;top:19px;color:#5b6470;font-variant-numeric:tabular-nums;width:70px}
+#export{position:absolute;left:1110px;top:11px;width:130px;height:34px;border-radius:8px;background:#2f6fed;color:#fff;font-weight:600;text-align:center;line-height:34px}
+#side{position:absolute;left:0;top:57px;width:220px;height:663px;background:#fff;border-right:1px solid #dfe3ea}
+#side div{margin:14px 22px;color:#4a5260}
+#search{position:absolute;left:260px;top:84px;width:420px;height:40px;border:1px solid #c8ced8;border-radius:8px;background:#fff;padding:9px 12px}
+.card{position:absolute;top:150px;width:300px;height:110px;background:#fff;border:1px solid #dfe3ea;border-radius:12px;padding:18px}
+.card small{color:#6b7482}.card b{display:block;font-size:34px;margin-top:8px;font-variant-numeric:tabular-nums}
+#tbl{position:absolute;left:260px;top:290px;width:960px;height:400px;overflow:hidden}
+.row{position:absolute;left:0;width:960px;height:44px;border-bottom:1px solid #e6e9ef;padding:12px 14px;background:#fff}
+#modal{position:absolute;left:380px;top:200px;width:520px;height:320px;background:#fff;border:1px solid #cfd5df;border-radius:14px;box-shadow:0 20px 60px rgba(0,0,0,.28);padding:28px}
+#shade{position:absolute;left:0;top:0;width:1280px;height:720px;background:#000}
+#toast{position:absolute;left:940px;top:640px;width:300px;height:56px;background:#1f2430;color:#fff;border-radius:10px;padding:18px 20px}
+#cur{position:absolute;left:0;top:0;width:18px;height:26px}
+</style></head><body>
+<div id="top"><b>Acme Reports</b><span id="clock"></span><div id="export">Export</div></div>
+<div id="side"><div>Overview</div><div>Reports</div><div>Customers</div><div>Billing</div><div>Settings</div></div>
+<div id="search"><span id="typed"></span><span id="caret" style="display:inline-block;width:2px;height:18px;background:#1f2430;vertical-align:-3px"></span></div>
+<div class="card" style="left:260px"><small>Revenue</small><b>$48,210</b></div>
+<div class="card" style="left:580px"><small>Active users</small><b id="stat">1,204</b></div>
+<div class="card" style="left:900px"><small>Conversion</small><b>3.8%</b></div>
+<div id="tbl"></div>
+<div id="shade"></div><div id="modal"><h2 style="margin:0 0 12px">Export report</h2><p style="color:#5b6470;line-height:1.5">Choose a format. The report will be generated and sent to your email when it is ready.</p></div>
+<div id="toast">Report queued</div>
+<div id="sync" style="position:absolute;left:0;top:0;width:1280px;height:720px;background:#ff00c8;display:none"></div>
+<div id="panel" style="display:none;position:absolute;left:0;top:0;width:1280px;height:720px;background:#10131a;color:#fff;text-align:center;padding-top:190px"><h1 style="margin:0 0 18px;font-size:34px">Video Monk: zoom-detection session</h1><p style="max-width:760px;margin:0 auto 10px;font-size:19px;line-height:1.5;color:#c9d1e0">1. Start your OBS recording (display or window capture of this browser window, full screen works best).<br>2. Press Start. The page flashes magenta, then plays a 24 second scripted session.<br>3. Move your mouse around the page naturally. Do not click or type in it.<br>4. When it says Done, stop the recording.</p><button id="go" style="margin-top:22px;font-size:22px;padding:14px 34px;border-radius:10px;border:0;background:#4cc9f0;color:#0b1020;font-weight:700;cursor:pointer">Start</button></div><div id="done" style="display:none;position:absolute;left:0;top:0;width:1280px;height:720px;background:#10131a;color:#fff;text-align:center;padding-top:300px;font-size:34px">Done. Stop your recording.</div>
+<svg id="cur" viewBox="0 0 18 26"><path d="M1 1 L1 20 L6 15.5 L9.5 23.5 L12.5 22 L9 14.5 L16 14.5 Z" fill="#111" stroke="#fff" stroke-width="1.4"/></svg>
+<script>
+const names=['Q1 summary','Q2 summary','Regional sales','Churn analysis','Pipeline review','Hiring plan','Budget draft','Roadmap','Support volume','Retention','Cohorts','Forecast'];
+const tbl=document.getElementById('tbl');const rows=names.map((n,i)=>{const r=document.createElement('div');r.className='row';r.textContent=n+'  ·  updated '+(i+2)+' days ago';tbl.appendChild(r);return r});
+const ease=x=>x<.5?4*x*x*x:1-Math.pow(-2*x+2,3)/2,p=(t,a,d)=>Math.min(1,Math.max(0,(t-a)/d));
+// cursor waypoints (time, x, y): glides between the places the story visits, pausing at them
+const W=[[0,300,500],[1.2,640,360],[2.6,1175,28],[3.4,1175,28],[4.4,700,400],[6.0,420,104],[10.4,420,104],[11.2,1000,420],[13.5,640,200],[14.6,640,200],[16.5,520,470],[19,520,470],[20,900,560],[23,300,600]];
+const full='quarterly report';
+window.__seek=t=>{
+ document.getElementById('sync').style.display=(t>=0.5&&t<0.9)?'block':'none';   // a distinct whole-screen flash at page time 0.5 s: it lets a real recording be lined up with this script
+ // clock ticks every second (a distractor), caret blinks while the search box is focused
+ document.getElementById('clock').textContent='12:00:'+String(Math.floor(t)%60).padStart(2,'0');
+ document.getElementById('caret').style.opacity=(t>6&&t<10.8&&Math.floor(t*2)%2===0)?1:0;
+ document.getElementById('export').style.background=(t>=3.0&&t<5.2)?'#1c4fb3':'#2f6fed';
+ const m=t>=3.1&&t<5.5?ease(p(t,3.1,.25)):(t>=5.5&&t<5.8?1-ease(p(t,5.5,.3)):0);
+ document.getElementById('modal').style.opacity=m;document.getElementById('modal').style.display=m>0?'block':'none';
+ document.getElementById('shade').style.opacity=m*.35;document.getElementById('shade').style.display=m>0?'block':'none';
+ const n=t<8?0:Math.min(full.length,Math.floor((t-8)*10));document.getElementById('typed').textContent=full.slice(0,n);
+ document.getElementById('toast').style.display=(t>=12&&t<14.5)?'block':'none';
+ document.getElementById('stat').textContent=t>=15?'1,317':'1,204';
+ const scroll=t<20?0:ease(p(t,20,.9))*130;rows.forEach((r,i)=>{r.style.top=(i*44-scroll)+'px';r.style.background=(i===2&&t>=18&&t<20.5)?'#e8f0ff':'#fff'});
+ let k=0;while(k<W.length-2&&t>=W[k+1][0])k++;const a=W[k],b=W[k+1],u=ease(p(t,a[0],b[0]-a[0]));
+ const cur=document.getElementById('cur');cur.style.left=(a[1]+(b[1]-a[1])*u)+'px';cur.style.top=(a[2]+(b[2]-a[2])*u)+'px';
+};
+window.__seek(0);window.__vmReady=true;
+// live mode (?live): scales to the window, hides the drawn cursor (your real one is recorded), and plays the script in real time after Start
+if(/[?&]live/.test(location.search)){
+ const fit=()=>{const k=Math.min(innerWidth/1280,innerHeight/720);document.body.style.cssText+=`;transform-origin:0 0;transform:scale(${k});width:1280px;height:720px;margin-left:${(innerWidth-1280*k)/2}px;margin-top:${(innerHeight-720*k)/2}px`;document.documentElement.style.background='#000'};
+ fit();addEventListener('resize',fit);document.getElementById('cur').style.display='none';
+ document.getElementById('panel').style.display='block';
+ document.getElementById('go').onclick=()=>{document.getElementById('panel').style.display='none';const t0=performance.now();
+  const tick=()=>{const t=(performance.now()-t0)/1000;if(t>24){document.getElementById('done').style.display='block';return}window.__seek(t);requestAnimationFrame(tick)};tick()};
+}
+</script></body></html>

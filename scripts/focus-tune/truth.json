@@ -1,0 +1,7 @@
+{ "events": [
+  { "name": "modal opens", "at": 3.1, "x": 0.5, "y": 0.5 },
+  { "name": "typing", "at": 8.0, "x": 0.27, "y": 0.15 },
+  { "name": "toast", "at": 12.0, "x": 0.88, "y": 0.92 },
+  { "name": "number updates", "at": 15.0, "x": 0.5, "y": 0.29 },
+  { "name": "row highlights", "at": 18.0, "x": 0.55, "y": 0.5 } ],
+  "neutral": [ { "name": "done screen", "at": 24.0 }, { "name": "modal closes", "at": 5.5 }, { "name": "scroll", "at": 20.0 }, { "name": "toast hides", "at": 14.5 } ] }

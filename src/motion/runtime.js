@@ -165,6 +165,12 @@ export function renderPage({ templateSource, props, ctx, fonts = {}, background 
     transparent: 'transparent',
     plain: t.background,
     gradient: `radial-gradient(120% 90% at 20% 10%, ${t.surface} 0%, ${t.background} 60%)`,
+    mesh: `radial-gradient(60% 55% at 18% 20%, ${t.palette[0]}55 0%, transparent 70%), radial-gradient(55% 50% at 85% 25%, ${t.palette[1]}44 0%, transparent 70%), ` +
+      `radial-gradient(60% 55% at 70% 90%, ${t.palette[4] || t.palette[2]}44 0%, transparent 70%), radial-gradient(50% 50% at 15% 85%, ${t.palette[3] || t.palette[2]}33 0%, transparent 70%), ${t.background}`,
+    aurora: `linear-gradient(115deg, transparent 20%, ${t.palette[3] || t.accent}33 38%, ${t.palette[0]}44 50%, ${t.palette[4] || t.palette[1]}33 62%, transparent 80%), ` +
+      `radial-gradient(90% 60% at 50% 0%, ${t.palette[0]}22 0%, transparent 70%), ${t.background}`,
+    dots: `radial-gradient(${t.grid.replace(/[\d.]+\)$/, '0.14)')} ${Math.max(1.5, ctx.unit * 0.22)}px, transparent ${Math.max(1.5, ctx.unit * 0.22) + 0.5}px) 0 0 / ${ctx.unit * 4}px ${ctx.unit * 4}px, ` +
+      `radial-gradient(120% 90% at 20% 10%, ${t.surface} 0%, ${t.background} 65%)`,
     grid: `linear-gradient(${t.grid} 1px, transparent 1px) 0 0 / ${ctx.unit * 6}px ${ctx.unit * 6}px, ` +
       `linear-gradient(90deg, ${t.grid} 1px, transparent 1px) 0 0 / ${ctx.unit * 6}px ${ctx.unit * 6}px, ` +
       `radial-gradient(120% 90% at 20% 10%, ${t.surface} 0%, ${t.background} 65%)`

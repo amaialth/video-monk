@@ -23,6 +23,7 @@ Everything the toolkit renders is already code: templates are pure functions of 
 | Make it feel physical and calm (springs, depth, type, restraint) | [Apple-style motion audit](./references/apple-motion-audit.md) |
 | A component from a gallery (21st.dev and similar) | [donor components](./references/donor-components.md): the copy is yours to make and license-check; nothing is bundled |
 | Beats that feel like separate slides (seams, direction of travel) | [scene seams](./references/scene-seams.md): one current, matched exits and entries, `"current"` in the brief |
+| What else exists (a caption style, a transition, a 3D effect we do not have yet) | [HyperFrames catalog](./references/hyperframes-catalog.md): all 448 catalog items inventoried; `video-monk motion-catalog --import <block> --allow-download` plays a standalone block offline (scene beat or overlay); also the Motion studio's Catalog tab |
 | "It feels cheap" | [polish](./references/polish.md): ranked audit, one fix at a time |
 
 ## Always
@@ -39,6 +40,7 @@ Everything the toolkit renders is already code: templates are pure functions of 
 - `theme.onTwos` (manifest theme, or in `brand.json`): hold every pose for two frames, the stepped hand-made look. `theme.calm`: no overshoot. `--style bytemonk`: calm, diagram-first.
 - `video-monk facts-check --manifest M --facts facts.json`: every number on screen is in the approved, sourced list.
 - `video-monk cutdown --aspect 9:16` and `--fit blur`: reels from any horizontal piece. Vertical captions and lower thirds already sit above the bottom ~26% that the apps cover.
+- `video-monk focus --detect rec.mp4 --output clicks.json`, then `video-monk focus --manifest M --clicks clicks.json --output M2`: auto-zoom on a screen recording. The first step proposes moments from screen activity (not recorded clicks; review them), the second adds the zoom to each video scene.
 - `video-monk motion-video --brief B --output DIR [--facts F]`: a standalone piece from beats; checks beat count, last-beat hold, facts and writes the manifest.
 - `video-monk libs --add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download`: opt-in, integrity-checked, never bundled. `<vm-lib>` and `<vm-asset>` in a custom graphic.
 - `video-monk graphic --template T --props P --output x.png|.mp4|.mov`: one graphic for review or reuse (the asset library caches every render).

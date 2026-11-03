@@ -14,7 +14,8 @@ export const RATES = [24, 25, 30, 50, 60];
 export const TRANSITIONS = ['fade', 'fadeblack', 'fadewhite', 'dissolve', 'wipeleft', 'wiperight', 'wipeup', 'wipedown',
   'slideleft', 'slideright', 'slideup', 'slidedown', 'smoothleft', 'smoothright', 'smoothup', 'smoothdown',
   'circleopen', 'circleclose', 'radial', 'pixelize', 'zoomin', 'distance', 'hblur', 'squeezeh', 'squeezev'];
-export const MOTIONS = ['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'punch-in'];
+export const MOTIONS = ['none', 'zoom-in', 'zoom-out', 'pan-left', 'pan-right', 'pan-up', 'pan-down', 'punch-in', 'focus'];
+export const FOCUS_POINTS_MAX = 40;
 
 const fail = message => { throw new Error(`Timeline: ${message}`); };
 const check = (condition, message) => { if (!condition) fail(message); };
@@ -84,8 +85,20 @@ export async function loadTimeline(file, execute = run) {
 
   const motion = (value, label) => {
     if (value === undefined) return;
-    keys(value, ['type', 'amount'], label);
+    keys(value, ['type', 'amount', 'points'], label);
     check(MOTIONS.includes(value.type), `${label}.type must be one of ${MOTIONS.join(', ')}`);
+    if (value.type === 'focus') {
+      // Auto-zoom to a spot (a click, a field, a number) and back: each point eases in, holds, eases out. Times are seconds from the start of the scene.
+      check(value.amount === undefined, `${label}: focus takes points, not amount`);
+      check(Array.isArray(value.points) && value.points.length >= 1 && value.points.length <= FOCUS_POINTS_MAX, `${label}.points needs 1-${FOCUS_POINTS_MAX} focus points`);
+      value.points.forEach((p, i) => {
+        keys(p, ['at', 'x', 'y', 'amount', 'hold', 'ramp'], `${label}.points[${i}]`);
+        check(finite(p.at, 0, 86400) && finite(p.x, 0, 1) && finite(p.y, 0, 1), `${label}.points[${i}] needs at (seconds), x and y (0-1 of the frame)`);
+        check(opt(p.amount, v => finite(v, 0.1, 1)) && opt(p.hold, v => finite(v, 0, 10)) && opt(p.ramp, v => finite(v, 0.15, 2)), `${label}.points[${i}]: amount 0.1-1 (1 = 2x zoom), hold 0-10 s, ramp 0.15-2 s`);
+      });
+      return;
+    }
+    check(value.points === undefined, `${label}: points only belong to a focus motion`);
     check(opt(value.amount, v => finite(v, 0.01, 0.5)), `${label}.amount must be 0.01-0.5`);
   };
   const motionJob = async (value, label, { overlay }) => {
@@ -105,12 +118,12 @@ export async function loadTimeline(file, execute = run) {
     if (overlay) {
       check(opt(value.placement, v => PLACEMENTS.includes(v)), `${label}.placement must be one of ${PLACEMENTS.join(', ')}`);
       check(opt(value.panel, v => typeof v === 'boolean'), `${label}.panel must be boolean`);
-      check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent (opaque backgrounds make a full-frame cutaway)`);
+      check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent', 'mesh', 'aurora', 'dots'].includes(v)), `${label}.background must be grid, gradient, plain, transparent, mesh, aurora or dots (opaque backgrounds make a full-frame cutaway)`);
       check(opt(value.id, v => text(v, 64)) && opt(value.note, v => text(v, 300)), `${label}.id/note must be short text`);
       check(opt(value.layout, v => ['overlay', 'split'].includes(v)), `${label}.layout must be overlay (covers the picture) or split (the picture scales down beside the panel)`);
       check(value.layout !== 'split' || ['left', 'right'].includes(value.placement), `${label}: layout split needs placement left or right`);
     } else {
-      check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent'].includes(v)), `${label}.background must be grid, gradient, plain or transparent`);
+      check(opt(value.background, v => ['grid', 'gradient', 'plain', 'transparent', 'mesh', 'aurora', 'dots'].includes(v)), `${label}.background must be grid, gradient, plain, transparent, mesh, aurora or dots`);
     }
   };
 
@@ -244,7 +257,7 @@ export async function loadTimeline(file, execute = run) {
     check(fixes === undefined || (fixes && typeof fixes === 'object' && !Array.isArray(fixes) && (fixes.drop === undefined || Array.isArray(fixes.drop)) && (fixes.replace === undefined || (fixes.replace && typeof fixes.replace === 'object'))), 'captions.fixes must be { replace: {from: to}, drop: [phrases] }');
     words = cleanCaptionWords(words, fixes || {});
     check(words.length > 0, 'captions have no words left after cleaning');
-    check(opt(m.captions.style, v => ['kinetic', 'karaoke', 'phrase', 'plain'].includes(v)), 'captions.style must be kinetic, karaoke, phrase or plain');
+    check(opt(m.captions.style, v => ['kinetic', 'karaoke', 'phrase', 'plain', 'highlight', 'pill', 'slam', 'wipe', 'weight'].includes(v)), 'captions.style must be kinetic, karaoke, phrase, plain, highlight, pill, slam, wipe or weight');
     check(opt(m.captions.position, v => ['bottom', 'center', 'top'].includes(v)), 'captions.position must be bottom, center or top');
     check(opt(m.captions.maxWords, v => Number.isInteger(v) && v >= 1 && v <= 16), 'captions.maxWords must be 1-16');
     check(opt(m.captions.maxChars, v => Number.isInteger(v) && v >= 8 && v <= 80), 'captions.maxChars must be 8-80');

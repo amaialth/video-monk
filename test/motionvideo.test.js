@@ -162,3 +162,49 @@ test('seams keep one direction of travel (the current): all slide the same way, 
   const pp = { ...b, current: undefined, beats: b.beats.map((x, i) => ({ ...x, transition: ['slideleft', 'slideright', 'slideleft', undefined][i] })) };
   assert.ok(reviewBrief(pp).warnings.some(w => /opposite transitions/.test(w)));
 });
+
+// ---- imported catalog blocks as beats
+async function fakeImport(home, name = 'lt-test', over = {}) {
+  const d = path.join(home, 'catalog', name);
+  await mk(d, { recursive: true });
+  await writeFile(path.join(d, 'index.html'), '<head><script>window.__vmVariables = {"name":"Ada"};</script></head><body>block</body>');
+  await writeFile(path.join(d, 'item.json'), JSON.stringify({ name, title: 'Lower Third', license: 'Apache-2.0', author: 'Someone', width: 1920, height: 1080, duration: 4.8, variables: [{ id: 'name' }], vars: {}, needs: { gsap: true, plugins: [] }, ...over }));
+}
+const catBrief = (beat = {}) => ({ type: 'opener', title: 'Catalog', beats: [{ say: 'Name.', catalog: 'lt-test', seconds: 5, ...beat }, { say: 'Close.', show: 'title', props: { title: 'Done' }, seconds: 4 }] });
+
+test('a catalog beat needs the block imported and gsap installed, and the check says so', async t => {
+  const dir = await temporary(t);
+  const home = await withLib(t, []);
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(catBrief()));
+  await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' }), /lt-test is not imported: run  video-monk motion-catalog --import lt-test --allow-download/);
+  await fakeImport(home);
+  await assert.rejects(motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' }), /needs gsap: run  video-monk libs --add gsap/);
+  assert.deepEqual(await libsNeeded(catBrief()), [{ id: 'gsap', installed: false, version: null }]);
+  const mixed = catBrief(); mixed.beats[0].show = 'title';
+  assert.match(reviewBrief(mixed).errors.join(), /not more than one/);
+  assert.match(reviewBrief(catBrief({ vars: { a: [1] } })).errors.join(), /vars must be/);
+});
+
+test('with the block imported and gsap installed the block is copied into the plan with its licence, variables are overridden and warnings are given', async t => {
+  const dir = await temporary(t);
+  const home = await withLib(t, ['gsap']);
+  await fakeImport(home);
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(catBrief({ vars: { name: 'Grace' }, seconds: 9 })));
+  const r = await motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' });
+  const m = JSON.parse(await readFile(r.output, 'utf8'));
+  assert.equal(m.scenes[0].graphic.html, path.join(dir, 'o', 'scenes', 'lt-test', 'index.html'));
+  const html = await readFile(m.scenes[0].graphic.html, 'utf8');
+  assert.match(html, /window\.__vmVariables = \{"name":"Grace"\};/);
+  await assert.rejects(readFile(path.join(dir, 'o', 'scenes', 'lt-test', 'item.json')), /ENOENT/);
+  assert.ok(r.warnings.some(w => /holds its last frame/.test(w)));
+  assert.deepEqual(r.libs, [{ id: 'gsap', version: '1.0.0' }]);
+  const plan = await readFile(r.plan, 'utf8');
+  assert.match(plan, /catalog block "lt-test"/);
+  assert.match(plan, /## Catalog items/);
+  assert.match(plan, /Apache License 2\.0/);
+  await writeFile(path.join(dir, 'b2.json'), JSON.stringify(catBrief({ vars: { nope: 'x' } })));
+  await assert.rejects(motionVideo(path.join(dir, 'b2.json'), path.join(dir, 'o2'), { sfx: 'off' }), /no variable "nope"/);
+  await writeFile(path.join(dir, 'b3.json'), JSON.stringify(catBrief({ })));
+  await fakeImport(home, 'lt-test', { width: 1080, height: 1920 });
+  assert.ok((await motionVideo(path.join(dir, 'b3.json'), path.join(dir, 'o3'), { sfx: 'off' })).warnings.some(w => /laid out for its own size/.test(w)));
+});

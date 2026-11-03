@@ -23,6 +23,8 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
+import { catalogData, catalogEntry, importBlock, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
+import { focusManifest, detectActivity } from './focus.js';
 import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
@@ -35,6 +37,11 @@ const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  motion-catalog [--list [--group G] [--status adapt|have|defer|skip] [--top] [--search text]] [--info <name>] [--imported]
+             [--import <block> --allow-download [--vars '{"name":"Ada"}'] [--transparent true|false]] [--remove <block>]
+             The captured HyperFrames catalog (448 items, Apache-2.0). --import downloads one standalone block once (fixed commit, github.com only), swaps its GSAP
+             for the library vault, inlines its fonts and adds a seek bridge so it plays offline; it refuses blocks that cannot (video, nested compositions, other libraries).
+             Use it with a motion-video beat: { "catalog": "<block>", "vars": {...}, "seconds": 5 }. It is third-party code: read it first.
   libs       [--list] [--supported] [--add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download [--version 1.2.3] [--with A,B]] [--remove <id>]
              3D and animation libraries for custom motion graphics. Downloaded once from the npm registry (integrity-checked) into ~/.video-monk/libs and
              used offline through <vm-lib name="three"></vm-lib> in a custom graphic. Nothing is bundled; each keeps its licence
@@ -69,6 +76,11 @@ AUTOMATED EDITING
              a beat can be a 3D / library scene: "starter": "three-showcase" (see assets/motion-starters); its libraries are checked and listed in PLAN.md.
              checks beat count, length, a 3 s hold on the last beat and facts-first numbers, then writes production.json with transitions, music and subtle SFX.
              Builds nothing: review the plan, then production-review --approve-plan and production-build.
+  focus      --manifest <production.json> --clicks <clicks.json> --output <new manifest in the same folder> [--amount 0.5] [--hold 1.4] [--ramp 0.5] [--asset id] [--replace]
+             focus --detect <recording> --output <new clicks.json> [--max 12] [--min-gap 2] [--sensitivity 1] [--from s --seconds s]: propose the moments from screen activity
+             (something new starting to change: a toast, a modal, typed text, a highlight); proposals, not recorded clicks: review them. Sensitivity 0.8-1.3 is the reliable range; above 1.5 adds false alarms.
+             Auto-zoom on a screen recording: clicks.json is { "clicks": [{ "at": 12.4, "x": 0.31, "y": 0.62 }] } (seconds in the source; x, y as fractions of the picture).
+             Each video scene gets a "focus" motion: the picture eases in on the spot, holds, eases out. Nothing is rendered.
   cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
              [--fit blur|cover|contain] [--max-seconds 55 | --from <s> --to <s>] [--highlight] [--width 1080]
              Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
@@ -215,6 +227,7 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
+  'motion-catalog': { list: 'boolean', info: 'string', import: 'string', imported: 'boolean', remove: 'string', 'allow-download': 'boolean', vars: 'string', transparent: 'string', group: 'string', status: 'string', top: 'boolean', search: 'string' },
   libs: { list: 'boolean', add: 'string', remove: 'string', 'allow-download': 'boolean', version: 'string', with: 'string', supported: 'boolean' },
   brand: { output: 'string', name: 'string', background: 'string', surface: 'string', text: 'string', muted: 'string', accent: 'string', preset: 'string', font: 'string', logo: 'string', feel: 'string', never: 'string', 'on-twos': 'boolean', calm: 'boolean', rights: 'string', attribution: 'string' },
   'facts-check': { manifest: 'string', facts: 'string' },
@@ -223,6 +236,7 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
+  focus: { detect: 'string', max: 'string', 'min-gap': 'string', sensitivity: 'string', from: 'string', seconds: 'string', manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
   auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
@@ -494,6 +508,25 @@ export async function main(args) {
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
       break;
     }
+    case 'motion-catalog': {
+      if (opts.import) {
+        const vars = opts.vars ? JSON.parse(opts.vars) : {};
+        const r = await importBlock(opts.import, { allowDownload: opts['allow-download'], vars, transparent: opts.transparent === undefined ? undefined : opts.transparent === 'true' });
+        console.log(`Imported ${r.name} (${r.license}${r.author ? `, ${r.author}` : ''}) into ${r.dir}\n  ${r.width || '?'}x${r.height || '?'}, ${r.duration || '?'} s; needs the gsap library${r.needs.plugins.length ? ` with ${r.needs.plugins.join(', ')}` : ''} (video-monk libs --add gsap --allow-download)${r.warnings.map(w => `\n  warning: ${w}`).join('')}\n  ${r.transparent ? 'transparent page: use it as an overlay { "html": "…/index.html", "start": 1, "duration": 4 } or a scene' : 'opaque page: use it as a scene'}\n  variables: ${r.variables.map(v => v.id).join(', ') || 'none'}\n  use: motion-video beat { "catalog": "${r.name}", "seconds": ${Math.ceil(r.duration || 5)} }, or video-monk graphic --html ${r.file} --output x.png --at 2`);
+        break;
+      }
+      if (opts.remove) { console.log(`Removed ${await removeImported(opts.remove)} imported item(s) named ${opts.remove}`); break; }
+      if (opts.imported) { const l = await listImported(); console.log(l.length ? l.map(i => `${i.name.padEnd(28)} ${i.width || '?'}x${i.height || '?'} ${i.duration || '?'}s  ${i.license}`).join('\n') : 'Nothing imported yet.'); break; }
+      if (opts.info) {
+        const e = await catalogEntry(opts.info);
+        console.log(`${e.title} (${e.name})\n  ${e.type}, ${e.group}, status: ${e.status}${e.top ? ', build next' : ''}\n  ${e.note || ''}\n  needs: ${(e.needs || []).join(', ') || 'nothing special'}\n  ${e.description || ''}\n  ${e.url}\n  licence: ${e.license} (commit ${CATALOG_COMMIT.slice(0, 7)})`);
+        break;
+      }
+      const q = (opts.search || '').toLowerCase();
+      const hits = (await catalogData()).items.filter(i => (!opts.group || i.group.toLowerCase() === opts.group.toLowerCase()) && (!opts.status || i.status === opts.status) && (!opts.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')}`.toLowerCase().includes(q)));
+      console.log(hits.map(i => `${i.name.padEnd(34)} ${i.type.padEnd(9)} ${i.status.padEnd(6)} ${i.group}${i.top ? '  *' : ''}`).join('\n') + `\n\n${hits.length} item(s). * = build next. Import a block with: video-monk motion-catalog --import <name> --allow-download`);
+      break;
+    }
     case 'libs': {
       if (opts.add) {
         const r = await addLib(opts.add, { allowDownload: opts['allow-download'], version: opts.version, with: opts.with ? opts.with.split(',').map(x => x.trim()).filter(Boolean) : [] });
@@ -593,6 +626,18 @@ export async function main(args) {
       }
       const result = await motionVideo(required(opts, 'brief'), required(opts, 'output'), { facts: opts.facts, sfx: opts.sfx || 'subtle', log: message => console.error(message) });
       console.log(`Motion video plan: ${result.scenes} graphic scenes, ${result.seconds}s, ${result.width}x${result.height}${result.sfx ? `, ${result.sfx} sound cues` : ''}${result.facts ? `, facts-check OK (${result.facts.checked} numbers)` : ''}.\nManifest: ${result.output}${result.warnings.length ? `\n${result.warnings.map(w => `  warning: ${w}`).join('\n')}` : ''}\nNext: production-review --manifest ${result.output} --approve-plan, then production-build --quality draft and read the contact sheet.`);
+      break;
+    }
+    case 'focus': {
+      if (opts.detect) {
+        const n = key => (opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })()));
+        const r = await detectActivity(opts.detect, required(opts, 'output'), { max: n('max'), minGap: n('min-gap'), sensitivity: n('sensitivity'), from: n('from'), seconds: n('seconds') });
+        console.log(`Found ${r.clicks} candidate moment(s) in ${Math.round(r.seconds)} s of the recording.\nFile: ${r.output}\nThese come from screen activity, not recorded clicks: open the file, delete what does not matter, then:\n  video-monk focus --manifest <production.json> --clicks ${r.output} --output <new manifest in the same folder>`);
+        break;
+      }
+      const num = key => (opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })()));
+      const r = await focusManifest(required(opts, 'manifest'), required(opts, 'clicks'), required(opts, 'output'), { amount: num('amount'), hold: num('hold'), ramp: num('ramp'), asset: opts.asset, replace: opts.replace });
+      console.log(`Focus: ${r.points} zoom point(s) in ${r.scenes} scene(s)${r.dropped ? `, ${r.dropped} dropped (too close to the one before)` : ''}.${r.skipped.map(x => `\n  skipped: ${x}`).join('')}\nManifest: ${r.output}\nNext: production-review --approve-plan, then production-build.`);
       break;
     }
     case 'cutdown': {
