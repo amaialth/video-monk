@@ -19,7 +19,7 @@ const VOICE_ID = /^[A-Za-z0-9_-]{6,64}$/, MODEL_ID = /^[a-z0-9_.-]{3,64}$/, FORM
 export async function elevenConfig(env = process.env, cwd = process.cwd()) {
   const get = name => envKey(name, env, cwd);
   const [key, voice, model, format] = await Promise.all([get(ELEVEN_ENV.key), get(ELEVEN_ENV.voice), get(ELEVEN_ENV.model), get(ELEVEN_ENV.format)]);
-  return { hasKey: Boolean(key), voiceId: voice || null, modelId: model || DEFAULT_MODEL, outputFormat: format || DEFAULT_FORMAT };
+  return { hasKey: Boolean(key), voiceId: voice || null, modelId: model || DEFAULT_MODEL, modelFromEnv: Boolean(model), outputFormat: format || DEFAULT_FORMAT };
 }
 const apiKeyOrFail = async (env, cwd) => { const key = await envKey(ELEVEN_ENV.key, env, cwd); if (!key) fail(`${ELEVEN_ENV.key} is not set. Put it in your environment or in a .env file (the name only is read; the value is never printed).`); return key; };
 

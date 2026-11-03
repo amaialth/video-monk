@@ -59,8 +59,7 @@ async function list(view) {
 // ---------------------------------------------------------------- one short
 async function detail(view, id, timers) {
   const [cfg, state] = await Promise.all([api.get('/api/shorts/config'), api.get(`/api/shorts/${id}`)]);
-  let st = state, voices = null, models = null, settings = { stability: 0.5, similarity_boost: 0.75, style: 0, speed: 1 };
-  let voiceId = st.voice?.id || cfg.elevenlabs.voiceId || '', voiceName = st.voice?.name || '', modelId = st.voice?.modelId || cfg.elevenlabs.modelId;
+  let st = state, voices = null, models = null;
   let scriptDraft = st.script ? structuredClone(st.script) : null;
   const root = h('div', {}), jobBox = h('div', {});
 
@@ -85,7 +84,7 @@ async function detail(view, id, timers) {
     const body = h('div', { class: 'card pad' }, h('h3', {}, '1. Script'));
     if (!scriptDraft) {
       mount(body, h('h3', {}, '1. Script'), h('p', { class: 'muted small' }, 'Claude writes a script from your text: a hook, one idea per beat, and a takeaway. Every number on screen has to come from your text. This sends your text to Claude (the claude command-line tool on this computer).'),
-        h('div', { class: 'row' }, h('button', { class: 'btn', disabled: !cfg.canUseClaude, onclick: ev => { if (!confirm('Send your text to Claude to write the script?')) return; ev.target.disabled = true; run(api.post(`/api/shorts/${id}/script`, { confirmLlm: true })); } }, icon('sparkle', 16), 'Write the script'),
+        h('div', { class: 'row' }, h('button', { class: 'btn', disabled: !cfg.canUseClaude, onclick: ev => { if (!confirm('Send your text to Claude to write the script? Claude then also chooses the voice and look for you to approve, which sends it the names of your ElevenLabs voices.')) return; ev.target.disabled = true; run(api.post(`/api/shorts/${id}/script`, { confirmLlm: true })); } }, icon('sparkle', 16), 'Write the script'),
           !cfg.canUseClaude ? h('span', { class: 'muted small' }, 'Claude Code is not installed.') : null));
       return body;
     }
@@ -110,43 +109,71 @@ async function detail(view, id, timers) {
     return body;
   };
 
-  const voiceCard = () => {
-    const box = h('div', { class: 'card pad' }, h('h3', {}, '2. Voice and recording'));
-    if (!scriptDraft) { mount(box, h('h3', {}, '2. Voice and recording'), h('p', { class: 'muted small' }, 'Write the script first.')); return box; }
-    const voiceSel = h('select', { class: 'select', onchange: e => { voiceId = e.target.value; voiceName = e.target.selectedOptions[0]?.dataset.name || ''; } });
-    const fillVoices = () => mount(voiceSel, h('option', { value: '' }, voices ? 'Choose a voice' : 'Load your voices first'), (voices || []).map(v => h('option', { value: v.id, 'data-name': v.name, selected: v.id === voiceId }, `${v.name}${v.category ? ` (${v.category})` : ''}${Object.values(v.labels || {}).length ? `: ${Object.values(v.labels).slice(0, 3).join(', ')}` : ''}`)));
+  // 2. the direction: Claude chooses the voice, delivery and look from the script; every choice can be changed, and the person approves it before anything is recorded.
+  const MODELS = ['eleven_v4', 'eleven_v3', 'eleven_multilingual_v2', 'eleven_flash_v2_5'];
+  const directionCard = () => {
+    const box = h('div', { class: 'card pad' });
+    if (!scriptDraft) { mount(box, h('h3', {}, '2. Direction'), h('p', { class: 'muted small' }, 'Write the script first. Then Claude chooses the voice, delivery and look, and you approve them.')); return box; }
+    const d = structuredClone(st.direction || { voiceId: cfg.elevenlabs.voiceId || '', voiceName: '', modelId: cfg.elevenlabs.shortsModel, voiceSettings: { stability: 0.4, similarity_boost: 0.75 }, captions: st.options.captions, theme: st.options.theme, sfx: st.options.sfx, calm: Boolean(st.options.calm), onTwos: Boolean(st.options.onTwos), current: st.options.current, reasons: {}, by: 'default', approved: false });
+    d.voiceSettings = d.voiceSettings || {};
+    const who = { claude: ['Chosen by Claude', 'info'], 'claude+you': ['Chosen by Claude, edited by you', 'info'], you: ['Set by you', ''], default: ['Defaults (no recommendation made)', 'warn'] }[d.by] || ['', ''];
+    const status = h('span', { class: `chip ${d.approved ? 'good' : 'warn'}` }, d.approved ? 'Approved' : 'Needs your approval');
+    const note = key => (d.reasons?.[key] ? h('small', { class: 'faint' }, `Why: ${d.reasons[key]}`) : null);
+    const dirty = () => { status.textContent = 'Changed: approve again'; status.className = 'chip warn'; d.approved = false; };
+    const voiceSel = h('select', { class: 'select', onchange: e => { d.voiceId = e.target.value; d.voiceName = e.target.selectedOptions[0]?.dataset.name || ''; dirty(); } });
+    const fillVoices = () => mount(voiceSel, h('option', { value: d.voiceId || '' }, d.voiceId ? (d.voiceName || d.voiceId) : 'Load your voices'), (voices || []).filter(v => v.id !== d.voiceId).map(v => h('option', { value: v.id, 'data-name': v.name }, `${v.name}${v.category ? ` (${v.category})` : ''}${Object.values(v.labels || {}).length ? `: ${Object.values(v.labels).slice(0, 3).join(', ')}` : ''}`)));
     fillVoices();
-    const modelSel = h('select', { class: 'select', onchange: e => { modelId = e.target.value; } }, h('option', { value: modelId }, modelId));
-    const slider = (label, key, min, max, step) => h('label', { class: 'field' }, h('span', {}, label), h('div', { class: 'row', style: { gap: '10px' } }, h('input', { type: 'range', min, max, step, value: settings[key], style: { flex: 1 }, oninput: e => { settings[key] = Number(e.target.value); e.target.nextSibling.textContent = settings[key]; } }), h('b', {}, settings[key])));
+    const modelSel = h('select', { class: 'select', onchange: e => { d.modelId = e.target.value; dirty(); } }, [...new Set([d.modelId, ...MODELS, ...(models || []).map(m => m.id)])].filter(Boolean).map(m => h('option', { value: m, selected: m === d.modelId }, m)));
+    const slider = (label, key, hint) => h('label', { class: 'field' }, h('span', {}, label), h('div', { class: 'row', style: { gap: '10px' } }, h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: d.voiceSettings[key] ?? (key === 'stability' ? 0.4 : 0.75), style: { flex: 1 }, oninput: e => { d.voiceSettings[key] = Number(e.target.value); e.target.nextSibling.textContent = d.voiceSettings[key]; dirty(); } }), h('b', {}, d.voiceSettings[key] ?? (key === 'stability' ? 0.4 : 0.75))), hint ? h('small', {}, hint) : null);
     const loadVoices = async ev => {
       ev.target.disabled = true;
-      try { voices = await api.get('/api/shorts/voices'); try { models = await api.get('/api/shorts/models'); mount(modelSel, models.map(m => h('option', { value: m.id, selected: m.id === modelId }, `${m.name} (${m.id})`))); } catch { /* models are optional */ } fillVoices(); toast(`${voices.length} voice(s)`, 'good'); }
-      catch (e) { toast(e.message, 'bad'); }
+      try { voices = await api.get('/api/shorts/voices'); try { models = await api.get('/api/shorts/models'); } catch { /* optional */ } fillVoices(); toast(`${voices.length} voice(s)`, 'good'); } catch (e) { toast(e.message, 'bad'); }
       ev.target.disabled = false;
     };
-    const rec = h('button', { class: 'btn', disabled: !cfg.elevenlabs.hasKey, onclick: ev => {
-      if (!voiceId) return toast('Choose a voice first', 'bad');
-      if (!confirm(`Record the voice with ElevenLabs?\n\nThis uses about ${st.estimate.characters} characters of your ElevenLabs credits (recordings you have already made are reused and cost nothing).`)) return;
-      ev.target.disabled = true; run(api.post(`/api/shorts/${id}/audio`, { voiceId, voiceName, modelId, voiceSettings: settings, confirmSpend: true }));
+    const o = cfg.options;
+    const pick = (key, values) => select(values, d[key], v => { d[key] = v; dirty(); });
+    const save = async approve => {
+      if (!d.voiceId) return toast('Choose a voice first', 'bad');
+      try { const r = await api.put(`/api/shorts/${id}/direction`, { direction: d, approve }); toast(approve ? 'Direction approved' : 'Direction saved', 'good'); await reload(); return r; } catch (e) { toast(e.message, 'bad'); }
+    };
+    mount(box, h('div', { class: 'row between' }, h('h3', {}, '2. Direction'), h('div', { class: 'row', style: { gap: '8px' } }, h('span', { class: `chip ${who[1]}` }, who[0]), status)),
+      h('p', { class: 'muted small' }, 'Claude chose the voice, how it delivers the lines and how the video looks, from your script, tone and audience. Change anything you like, then approve. Nothing is recorded until you do.'),
+      h('div', { class: 'grid g2 mt-s' }, field('Voice', h('div', { class: 'row', style: { gap: '8px' } }, voiceSel, h('button', { class: 'btn ghost sm', disabled: !cfg.elevenlabs.hasKey, onclick: loadVoices }, 'Load voices')), d.reasons?.voice ? `Why: ${d.reasons.voice}` : null),
+        field('Model', modelSel, 'v4 is the most expressive; v3 also reads audio tags. Others read the script without them.')),
+      h('div', { class: 'grid g2 mt-s' }, slider('Stability', 'stability', d.reasons?.delivery ? `Why: ${d.reasons.delivery}` : 'Lower is livelier and more varied.'), slider('Similarity', 'similarity_boost', 'Higher keeps closer to the voice.')),
+      h('div', { class: 'grid g3 mt-s' }, field('Captions', pick('captions', o.captions), d.reasons?.captions ? `Why: ${d.reasons.captions}` : null), field('Visual theme', pick('theme', o.themes), d.reasons?.look ? `Why: ${d.reasons.look}` : null), field('Sound effects', pick('sfx', o.sfx)),
+        field('Direction of travel', pick('current', o.currents), d.reasons?.motion ? `Why: ${d.reasons.motion}` : null),
+        field('Calm motion', h('input', { type: 'checkbox', checked: d.calm, onchange: e => { d.calm = e.target.checked; dirty(); } })), field('Stepped motion', h('input', { type: 'checkbox', checked: d.onTwos, onchange: e => { d.onTwos = e.target.checked; dirty(); } }))),
+      h('div', { class: 'row mt-s', style: { gap: '10px' } }, h('button', { class: 'btn', onclick: ev => { ev.target.disabled = true; save(true).finally(() => { ev.target.disabled = false; }); } }, icon('check', 16), 'Approve direction'),
+        h('button', { class: 'btn ghost', onclick: ev => { ev.target.disabled = true; save(false).finally(() => { ev.target.disabled = false; }); } }, 'Save without approving'),
+        h('button', { class: 'btn ghost', disabled: !cfg.canUseClaude, onclick: () => { if (!confirm('Ask Claude to choose again? This sends the script and the names of your voices to Claude, and replaces the choices above.')) return; run(api.post(`/api/shorts/${id}/direction`, { confirmLlm: true, modelId: d.modelId })); } }, icon('sparkle', 14), 'Ask Claude again')));
+    return box;
+  };
+
+  const voiceCard = () => {
+    const box = h('div', { class: 'card pad' });
+    const d = st.direction;
+    if (!scriptDraft || !d) { mount(box, h('h3', {}, '3. Record the voice'), h('p', { class: 'muted small' }, 'Approve the direction first.')); return box; }
+    const rec = h('button', { class: 'btn', disabled: !cfg.elevenlabs.hasKey || !d.approved, onclick: ev => {
+      if (!confirm(`Record the voice with ElevenLabs?\n\nVoice: ${d.voiceName || d.voiceId}, model ${d.modelId}.\nThis uses about ${st.estimate.characters} characters of your ElevenLabs credits (recordings you have already made are reused and cost nothing).`)) return;
+      ev.target.disabled = true; run(api.post(`/api/shorts/${id}/audio`, { confirmSpend: true }));
     } }, icon('music', 16), 'Record the voice and plan the video');
     const players = st.beatAudio ? h('div', { class: 'col mt-s', style: { gap: '8px' } }, h('div', { class: 'small muted' }, 'Listen to each beat before you build:'), st.script.beats.map((b, i) => h('div', { class: 'row', style: { gap: '10px', alignItems: 'center' } }, h('span', { class: 'faint tiny', style: { width: '58px' } }, `Beat ${i + 1}`), h('audio', { controls: true, preload: 'none', style: { height: '32px' }, src: `/api/shorts/${id}/file?p=${encodeURIComponent(st.beatAudio[i])}` }), h('span', { class: 'small muted', style: { flex: 1 } }, b.say.slice(0, 80))))) : null;
-    mount(box, h('h3', {}, '2. Voice and recording'),
-      h('p', { class: 'muted small' }, cfg.elevenlabs.hasKey ? 'Pick one of your ElevenLabs voices. Recording uses your ElevenLabs credits, and each beat is recorded once and kept, so editing one beat only re-records that beat and its neighbours.' : 'ELEVENLABS_API_KEY is not set, so voices cannot be loaded or recorded.'),
-      h('div', { class: 'grid g2' }, field('Voice', h('div', { class: 'row', style: { gap: '8px' } }, voiceSel, h('button', { class: 'btn ghost sm', disabled: !cfg.elevenlabs.hasKey, onclick: loadVoices }, 'Load voices'))), field('Model', modelSel, 'Flash models cost fewer credits per character.')),
-      h('details', { class: 'mt-s' }, h('summary', { class: 'small muted' }, 'Voice settings'), h('div', { class: 'grid g2 mt-s' }, slider('Stability', 'stability', 0, 1, 0.05), slider('Similarity', 'similarity_boost', 0, 1, 0.05), slider('Style', 'style', 0, 1, 0.05), slider('Speed', 'speed', 0.7, 1.2, 0.05))),
-      h('div', { class: 'row mt-s' }, rec, h('span', { class: 'small muted' }, `${st.estimate.characters} characters, about ${st.estimate.seconds} s of speech`)), players);
+    mount(box, h('h3', {}, '3. Record the voice'),
+      h('p', { class: 'muted small' }, cfg.elevenlabs.hasKey ? 'Recording uses your ElevenLabs credits. Each beat is recorded once and kept, so editing one beat only re-records that beat.' : 'ELEVENLABS_API_KEY is not set, so recording is not available.'),
+      h('div', { class: 'row mt-s' }, rec, h('span', { class: 'small muted' }, `${d.voiceName || d.voiceId} · ${d.modelId} · ${st.estimate.characters} characters, about ${st.estimate.seconds} s of speech${d.approved ? '' : ' · approve the direction first'}`)), players);
     return box;
   };
 
   const buildCard = () => {
-    const box = h('div', { class: 'card pad' }, h('h3', {}, '3. Build the video'));
-    if (!st.files.plan) { mount(box, h('h3', {}, '3. Build the video'), h('p', { class: 'muted small' }, 'Record the voice first: the plan is made from the recording so every scene lasts as long as its narration.')); return box; }
+    const box = h('div', { class: 'card pad' }, h('h3', {}, '4. Build the video'));
+    if (!st.files.plan) { mount(box, h('h3', {}, '4. Build the video'), h('p', { class: 'muted small' }, 'Record the voice first: the plan is made from the recording so every scene lasts as long as its narration.')); return box; }
     let quality = 'draft', ok = false;
     const btn = h('button', { class: 'btn', disabled: true, onclick: ev => { ev.target.disabled = true; run(api.post(`/api/shorts/${id}/build`, { approve: true, quality })); } }, icon('film', 16), 'Build the video');
     const video = st.files.video ? h('div', { class: 'mt' }, h('video', { controls: true, style: { maxHeight: '560px', borderRadius: '12px', background: '#000' }, src: `/api/shorts/${id}/file?p=build/final.mp4&t=${Date.now()}` }),
       h('div', { class: 'row mt-s' }, h('a', { class: 'btn ghost sm', href: `/api/shorts/${id}/file?p=build/final.mp4`, download: `${st.title}.mp4` }, icon('download', 14), 'Download the video'), st.files.contactSheet ? h('a', { class: 'btn ghost sm', href: `/api/shorts/${id}/file?p=build/contact-sheet.png`, target: '_blank', rel: 'noopener' }, 'Contact sheet') : null,
         h('a', { class: 'btn ghost sm', href: `/api/shorts/${id}/file?p=build/REVIEW.txt`, target: '_blank', rel: 'noopener' }, 'Review notes')), h('div', { class: 'muted small mt-s' }, 'Watch it end to end before you publish. The narration is ElevenLabs text to speech: commercial use needs a paid ElevenLabs plan.')) : null;
-    mount(box, h('h3', {}, '3. Build the video'),
+    mount(box, h('h3', {}, '4. Build the video'),
       h('p', { class: 'muted small' }, 'A vertical 1080x1920 video: one scene per beat, timed to the narration, with word-timed captions, music-ready ducking and quiet sound effects. Your approval is recorded in the Approvals history.'),
       h('div', { class: 'row', style: { gap: '14px' } }, field('Quality', select(['draft', 'final'], quality, v => { quality = v; }), 'Draft is faster; final is the full quality encode.')),
       h('label', { class: 'row small mt-s', style: { gap: '8px' } }, h('input', { type: 'checkbox', onchange: e => { ok = e.target.checked; btn.disabled = !ok; } }), 'I have read the script, listened to the voice and checked the plan.'),
@@ -154,7 +181,7 @@ async function detail(view, id, timers) {
     return box;
   };
 
-  const draw = () => mount(root, sourceCard(), h('div', { class: 'mt' }, scriptCard()), h('div', { class: 'mt' }, voiceCard()), h('div', { class: 'mt' }, buildCard()), jobBox);
+  const draw = () => mount(root, sourceCard(), h('div', { class: 'mt' }, scriptCard()), h('div', { class: 'mt' }, directionCard()), h('div', { class: 'mt' }, voiceCard()), h('div', { class: 'mt' }, buildCard()), jobBox);
   mount(view, h('div', { class: 'page-head' }, h('div', {}, h('h1', {}, 'Short ', h('em', { class: 'serif' }, 'studio')), h('p', {}, 'Script, voice, video. Nothing is sent, spent or approved until you say so.'))), root);
   draw();
   if (st.job?.status === 'running') run(Promise.resolve({ jobId: st.job.id }));

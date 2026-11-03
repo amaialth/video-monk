@@ -31,7 +31,7 @@ const tts = (text = 'Hello there') => {
 
 test('the configuration reports what is set without ever returning the key', async () => {
   const c = await elevenConfig(env, '/nonexistent');
-  assert.deepEqual(c, { hasKey: true, voiceId: 'voiceABC123', modelId: 'eleven_flash_v2_5', outputFormat: 'mp3_44100_128' });
+  assert.deepEqual(c, { hasKey: true, voiceId: 'voiceABC123', modelId: 'eleven_flash_v2_5', modelFromEnv: true, outputFormat: 'mp3_44100_128' });
   assert.ok(!JSON.stringify(c).includes(SECRET));
   const none = await elevenConfig({}, '/nonexistent');
   assert.equal(none.hasKey, false);

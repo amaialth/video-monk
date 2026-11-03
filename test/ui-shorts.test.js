@@ -83,11 +83,13 @@ test('a short goes step by step: nothing is sent to Claude or spent at ElevenLab
   assert.equal(sj.status, 200, JSON.stringify(sj.json));
   const sdone = await wait(sj.json.jobId);
   assert.equal(sdone.status, 'done', sdone.error);
-  assert.equal(sent.claude, 1);
+  assert.equal(sent.claude, 2, 'one call for the script and one to choose the direction');
   const state = (await call('GET', `/api/shorts/${id}`)).json;
   assert.equal(state.stage, 'script');
   assert.equal(state.script.beats.length, 7);
   assert.deepEqual(state.check.errors, []);
+  assert.equal(state.direction.approved, false, 'the direction Claude chose still needs the person\'s approval');
+  assert.ok(['claude', 'default'].includes(state.direction.by));
   assert.ok(state.estimate.characters > 300);
   // edits are checked against the source
   const bad = JSON.parse(JSON.stringify(state.script)); bad.beats[4].props.value = 4242;
@@ -98,11 +100,20 @@ test('a short goes step by step: nothing is sent to Claude or spent at ElevenLab
   assert.equal((await call('PUT', `/api/shorts/${id}/script`, { script: edited })).status, 200);
   // recording needs a voice and an explicit confirmation of the spend
   assert.equal((await call('POST', `/api/shorts/${id}/build`, { approve: true })).status, 400);
-  const unconfirmed = await call('POST', `/api/shorts/${id}/audio`, { voiceId: 'voiceABC123' });
+  const early = await call('POST', `/api/shorts/${id}/audio`, { confirmSpend: true });
+  assert.equal(early.status, 409);
+  assert.match(early.json.error, /approve the direction/);
+  assert.equal((await call('PUT', `/api/shorts/${id}/direction`, { direction: { voiceId: 'x' }, approve: true })).status, 400, 'a made-up voice id is refused');
+  const approved = await call('PUT', `/api/shorts/${id}/direction`, { direction: { ...state.direction, voiceId: 'voiceABC123', voiceName: 'Ana', captions: 'pill', voiceSettings: { stability: 0.3, similarity_boost: 0.8 } }, approve: true });
+  assert.equal(approved.status, 200, JSON.stringify(approved.json));
+  assert.equal(approved.json.direction.approved, true);
+  assert.equal(approved.json.direction.by === 'you' || approved.json.direction.by === 'claude+you', true);
+  assert.equal(approved.json.direction.voiceSettings.stability, 0.3);
+  const unconfirmed = await call('POST', `/api/shorts/${id}/audio`, {});
   assert.equal(unconfirmed.status, 409);
   assert.match(unconfirmed.json.error, /Confirm to spend them/);
   assert.equal(sent.eleven.length, 0, 'nothing is recorded without confirmation');
-  const aj = await call('POST', `/api/shorts/${id}/audio`, { voiceId: 'voiceABC123', voiceName: 'Ana', confirmSpend: true });
+  const aj = await call('POST', `/api/shorts/${id}/audio`, { confirmSpend: true });
   const adone = await wait(aj.json.jobId);
   assert.equal(adone.status, 'done', adone.error);
   assert.equal(sent.eleven.length, 7);
@@ -120,7 +131,7 @@ test('a short goes step by step: nothing is sent to Claude or spent at ElevenLab
   assert.equal((await call('GET', `/api/shorts/${id}/file?p=${encodeURIComponent('../../../video-monk.db')}`)).status, 404);
   assert.equal((await call('GET', `/api/shorts/${id}/file?p=short.json`)).status, 404);
   // re-recording after an edit reuses what is cached
-  const again = await wait((await call('POST', `/api/shorts/${id}/audio`, { voiceId: 'voiceABC123', confirmSpend: true })).json.jobId);
+  const again = await wait((await call('POST', `/api/shorts/${id}/audio`, { confirmSpend: true })).json.jobId);
   assert.equal(again.status, 'done', again.error);
   assert.equal(sent.eleven.length, 7, 'recordings are not paid for twice');
   // the build needs approval, and the approval is recorded

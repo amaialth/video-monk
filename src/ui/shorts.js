@@ -8,7 +8,7 @@ import { exists, run } from '../core.js';
 import { uiHome } from './store.js';
 import { environment } from './env.js';
 import { elevenConfig, listVoices, listModels, DEFAULT_MODEL } from '../elevenlabs.js';
-import { shortOptions, validateScript, writeScript, generateNarration, planShort, estimate, LENGTHS, TONES, AUDIENCES, CAPTION_STYLES, SHORT_TEMPLATES } from '../shorts.js';
+import { shortOptions, validateScript, writeScript, generateNarration, planShort, estimate, recommendDirection, defaultDirection, normalizeDirection, shortsModel, isExpressive, AUDIO_TAG, DIRECTION_KEYS, LENGTHS, TONES, AUDIENCES, CAPTION_STYLES, SHORT_TEMPLATES } from '../shorts.js';
 import { reviewProduction, buildProduction } from '../production.js';
 
 const ID = /^s-[a-f0-9]{8}$/;
@@ -24,6 +24,8 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
   const saveState = async (id, state) => writeFile(path.join(dirOf(id), 'short.json'), `${JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2)}\n`);
   const readScript = async id => { try { return JSON.parse(await readFile(path.join(dirOf(id), 'script.json'), 'utf8')); } catch { return null; } };
   const sourceOf = (state, script) => state.source || script?.beats?.map(b => b.say).join(' ') || '';
+  // The options a script is checked against: audio tags are allowed when the chosen model reads them (v4 by default).
+  const checkOptions = state => { const m = String(state.direction?.modelId || state.modelId || shortsModel({})); return shortOptions({ ...state.options, audioTags: /^eleven_v4/.test(m) ? 'v4' : /^eleven_v3/.test(m) }); };
   const busy = id => [...jobs.values()].some(j => j.shortId === id && j.status === 'running');
 
   // A job runs in the background; the page polls it. Errors are readable messages, never stack traces or secrets.
@@ -38,7 +40,7 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
 
   on('GET', '/api/shorts/config', async () => {
     const [eleven, env2] = await Promise.all([elevenConfig(env, cwd), environment().catch(() => ({ canUseClaude: false }))]);
-    return { elevenlabs: eleven, canUseClaude: Boolean(deps.claude ?? env2.canUseClaude),
+    return { elevenlabs: { ...eleven, shortsModel: shortsModel(eleven) }, canUseClaude: Boolean(deps.claude ?? env2.canUseClaude),
       templates: SHORT_TEMPLATES, options: { lengths: LENGTHS, tones: TONES, audiences: AUDIENCES, captions: CAPTION_STYLES, themes: ['night', 'paper'], sfx: ['off', 'subtle', 'full'], currents: ['left', 'right', 'up', 'down'] }, defaults: shortOptions({}) };
   });
   let voiceCache = null;
@@ -73,7 +75,7 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
   on('GET', '/api/shorts/:sid', async ({ params }) => {
     const state = await readState(params.sid), dir = dirOf(params.sid), script = await readScript(params.sid);
     const job = [...jobs.values()].filter(j => j.shortId === params.sid).sort((a, b) => b.startedAt - a.startedAt)[0] || null;
-    return { ...state, script, estimate: script ? estimate(script) : null, check: script ? validateScript(script, sourceOf(state, script), shortOptions(state.options)) : null,
+    return { ...state, script, estimate: script ? estimate(script) : null, check: script ? validateScript(script, sourceOf(state, script), checkOptions(state)) : null,
       files: { plan: await exists(path.join(dir, 'production.json')), narration: await exists(path.join(dir, 'narration.wav')), video: await exists(path.join(dir, 'build', 'final.mp4')), contactSheet: await exists(path.join(dir, 'build', 'contact-sheet.png')) },
       job: job && { id: job.id, kind: job.kind, status: job.status } };
   });
@@ -84,12 +86,20 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
     const state = await readState(params.sid);
     if (body.confirmLlm !== true) throw err('Writing the script sends your text to Claude. Confirm first.');
     if (body.options) { try { state.options = shortOptions({ ...state.options, ...body.options }); } catch (error) { throw err(String(error.message).replace(/^Shorts: /, '')); } await saveState(params.sid, state); }
+    const cfg = await elevenConfig(env, cwd);
+    const modelId = String(body.modelId || state.modelId || shortsModel(cfg));
     const job = startJob(params.sid, 'script', async log => {
       log('Writing the script with Claude…');
-      const written = await writeScript(state.source, state.options, { kind: state.kind, execute, onTry: n => n > 1 && log('Fixing what the first draft got wrong…') });
+      const options = { ...state.options, audioTags: /^eleven_v4/.test(modelId) ? 'v4' : /^eleven_v3/.test(modelId) };
+      const written = await writeScript(state.source, options, { kind: state.kind, execute, onTry: n => n > 1 && log('Fixing what the first draft got wrong…') });
       await writeFile(path.join(dirOf(params.sid), 'script.json'), `${JSON.stringify(written.script, null, 2)}\n`);
-      await saveState(params.sid, { ...state, title: written.script.title, stage: 'script' });
-      return { beats: written.script.beats.length, seconds: written.seconds, warnings: written.warnings };
+      // Claude then chooses the voice, delivery and look for this script. The person reviews and approves it before anything is recorded.
+      log('Choosing the voice, delivery and look…');
+      let voices = [];
+      if (cfg.hasKey) { try { voices = await listVoices({ env, cwd, fetcher, max: 60 }); } catch { /* the direction falls back to defaults */ } }
+      const direction = await recommendDirection(written.script, state.options, { voices, modelId, fallbackVoiceId: cfg.voiceId, execute });
+      await saveState(params.sid, { ...state, title: written.script.title, stage: 'script', modelId, direction: { ...direction, approved: false } });
+      return { beats: written.script.beats.length, seconds: written.seconds, warnings: written.warnings, direction: direction.by };
     });
     return { jobId: job.id };
   });
@@ -97,33 +107,74 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
   on('PUT', '/api/shorts/:sid/script', async ({ params, body }) => {
     const state = await readState(params.sid);
     if (busy(params.sid)) throw err('Wait for the current step to finish', 409);
-    const check = validateScript(body.script, sourceOf(state, body.script), shortOptions(state.options));
+    const check = validateScript(body.script, sourceOf(state, body.script), checkOptions(state));
     if (check.errors.length) throw err(`The script needs changes: ${check.errors.slice(0, 6).join('; ')}`);
     await writeFile(path.join(dirOf(params.sid), 'script.json'), `${JSON.stringify(body.script, null, 2)}\n`);
     await saveState(params.sid, { ...state, title: body.script.title, stage: 'script' });
     return { check, estimate: estimate(body.script) };
   });
 
-  // 2. the voice and the recording (spends ElevenLabs credits: needs confirmSpend)
+  // 2. the direction: what Claude chose, what the person changed, and the person's approval (needed before anything is recorded)
+  on('POST', '/api/shorts/:sid/direction', async ({ params, body }) => {
+    const state = await readState(params.sid), script = await readScript(params.sid);
+    if (!script) throw err('Write the script first');
+    if (body.confirmLlm !== true) throw err('Asking Claude to choose the voice and look sends the script and your voice names to Claude. Confirm first.');
+    const cfg = await elevenConfig(env, cwd);
+    const modelId = String(body.modelId || state.modelId || state.direction?.modelId || shortsModel(cfg));
+    const job = startJob(params.sid, 'direction', async log => {
+      log('Choosing the voice, delivery and look…');
+      let voices = [];
+      if (cfg.hasKey) { try { voices = await listVoices({ env, cwd, fetcher, max: 60 }); } catch { /* defaults */ } }
+      const direction = await recommendDirection(script, state.options, { voices, modelId, fallbackVoiceId: cfg.voiceId, execute });
+      await saveState(params.sid, { ...state, modelId, direction: { ...direction, approved: false } });
+      return { by: direction.by };
+    });
+    return { jobId: job.id };
+  });
+  on('PUT', '/api/shorts/:sid/direction', async ({ params, body }) => {
+    const state = await readState(params.sid), script = await readScript(params.sid);
+    if (!script) throw err('Write the script first');
+    if (busy(params.sid)) throw err('Wait for the current step to finish', 409);
+    const given = body.direction || {};
+    const modelId = String(given.modelId || state.direction?.modelId || state.modelId || DEFAULT_MODEL);
+    if (!/^[a-z0-9_.-]{3,64}$/.test(modelId)) throw err('The model id looks wrong');
+    if (script.beats.some(b => AUDIO_TAG.test(b.say)) && !isExpressive(modelId)) { AUDIO_TAG.lastIndex = 0; throw err('The script has audio tags, which only Eleven v3 and v4 understand. Choose one of those models, or edit the script and remove the tags.'); }
+    AUDIO_TAG.lastIndex = 0;
+    const voiceId = String(given.voiceId || '');
+    if (!/^[A-Za-z0-9_-]{6,64}$/.test(voiceId)) throw err('Choose a voice');
+    const cleaned = normalizeDirection({ ...given, voiceId }, { voices: [{ id: voiceId, name: String(given.voiceName || '').slice(0, 60) }], options: state.options, modelId, by: given.by === 'claude' ? 'claude+you' : 'you' });
+    const settings = given.voiceSettings && typeof given.voiceSettings === 'object' ? given.voiceSettings : cleaned.voiceSettings;
+    const direction = { ...cleaned, voiceSettings: normalizeDirection({ voiceId, stability: settings.stability, similarity: settings.similarity_boost }, { voices: [{ id: voiceId }], options: state.options, modelId }).voiceSettings, approved: false };
+    if (body.approve === true) {
+      direction.approved = true; direction.approvedAt = new Date().toISOString();
+      store.recordApproval(`short-${params.sid}`, { gate: 'short-direction', decision: 'approved', by: 'local user', at: direction.approvedAt, summary: `Short "${state.title}": voice ${direction.voiceName || direction.voiceId}, model ${modelId}, captions ${direction.captions}, theme ${direction.theme}`, fingerprint: null, details: { voiceId, modelId, by: direction.by } });
+    }
+    const options = shortOptions({ ...state.options, ...Object.fromEntries(DIRECTION_KEYS.map(k => [k, direction[k]])) });
+    await saveState(params.sid, { ...state, modelId, options, direction });
+    return { direction };
+  });
+
+  // 3. the recording (spends ElevenLabs credits: needs confirmSpend, and the approved direction)
   on('POST', '/api/shorts/:sid/audio', async ({ params, body }) => {
     const state = await readState(params.sid), script = await readScript(params.sid);
     if (!script) throw err('Write the script first');
     const cfg = await elevenConfig(env, cwd);
     if (!cfg.hasKey) throw err('ELEVENLABS_API_KEY is not set. Put it in your environment or a .env file and restart the studio.');
-    const voiceId = String(body.voiceId || cfg.voiceId || '');
+    if (state.direction?.approved !== true) throw err('Review and approve the direction (voice, delivery and look) first', 409);
+    const voiceId = String(state.direction.voiceId || '');
     if (!voiceId) throw err('Choose a voice');
     const est = estimate(script);
     if (body.confirmSpend !== true) throw err(`Recording uses about ${est.characters} ElevenLabs characters. Confirm to spend them.`, 409);
-    const modelId = String(body.modelId || cfg.modelId || DEFAULT_MODEL);
-    const voiceSettings = body.voiceSettings && typeof body.voiceSettings === 'object' ? body.voiceSettings : undefined;
+    const modelId = String(state.direction.modelId || state.modelId || shortsModel(cfg));
+    const voiceSettings = state.direction.voiceSettings || undefined;
     const job = startJob(params.sid, 'audio', async log => {
       const dir = dirOf(params.sid);
       for (const f of PLAN_FILES) await rm(path.join(dir, f), { recursive: true, force: true });       // a new plan replaces the old one; recordings stay cached
       log(`Recording ${script.beats.length} beats (${est.characters} characters)…`);
       const audio = await generateNarration(script, { dir, voiceId, modelId, voiceSettings, languageCode: state.options.language === 'en' ? undefined : state.options.language, allowSpend: true, maxChars: Math.min(Number(body.maxChars) || 8000, 20000), db: store.db, projectId: `short-${params.sid}`, env, cwd, fetcher, execute, onBeat: (n, cached) => log(`Beat ${n}: ${cached ? 'already recorded' : 'recorded'}`) });
       log('Planning the video…');
-      const planned = await planShort(script, audio, dir, state.options, { source: sourceOf(state, script), provider: { voiceId, voiceName: body.voiceName ? String(body.voiceName).slice(0, 60) : null, modelId } });
-      await saveState(params.sid, { ...state, stage: 'planned', voice: { id: voiceId, name: body.voiceName || null, modelId, settings: voiceSettings || null }, beatAudio: audio.files, narrationSeconds: audio.totalSeconds, recorded: audio.recorded, cached: audio.cached });
+      const planned = await planShort(script, audio, dir, state.options, { source: sourceOf(state, script), provider: { voiceId, voiceName: state.direction.voiceName || null, modelId } });
+      await saveState(params.sid, { ...state, stage: 'planned', voice: { id: voiceId, name: state.direction.voiceName || null, modelId, settings: voiceSettings || null }, beatAudio: audio.files, narrationSeconds: audio.totalSeconds, recorded: audio.recorded, cached: audio.cached });
       return { seconds: Math.round(audio.totalSeconds), recorded: audio.recorded, cached: audio.cached, warnings: planned.warnings || [] };
     });
     return { jobId: job.id };
