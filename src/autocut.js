@@ -275,7 +275,7 @@ export async function materializeEdit(context, ranges, output, execute = run) {
   // Brand kit: theme tokens and a logo bug from a --brand JSON ({ theme, logo: { path, position, size, opacity }, rights, attribution }).
   if (options.brand) {
     const b = options.brand;
-    if (b.theme) manifest.theme = { ...b.theme };
+    if (b.theme) manifest.theme = { ...b.theme, ...(b.theme.font ? { font: rel(path.resolve(b.dir, b.theme.font)) } : {}) };
     if (b.logo?.path) {
       manifest.assets.push({ id: 'brand-logo', path: rel(path.resolve(b.dir, b.logo.path)), kind: 'image', approved: options.rightsConfirmed === true,
         rights: b.rights || 'Brand asset supplied by the creator (confirm before approval)', attribution: b.attribution || 'Creator' });

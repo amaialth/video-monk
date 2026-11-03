@@ -202,7 +202,10 @@ const __template = (${templateSource});
     if (__ctx.theme.calm) VM.ease.back = VM.ease.expo; // restrained style: no overshoot
     const update = __template(stage, __props, ctx, VM);
     const frame = document.getElementById('frame');
-    window.__seek = t => {
+    // Motion on twos: hold every pose for two frames, the stepped, hand-made look of animation drawn on twos.
+    const twos = __ctx.theme.onTwos === true;
+    window.__seek = t0 => {
+      const t = twos ? Math.floor(t0 * __ctx.fps / 2 + 1e-6) * 2 / __ctx.fps : t0;
       update(t);
       if (__ctx.panel) {
         const k = VM.life(t, ctx, 0, 0.45);

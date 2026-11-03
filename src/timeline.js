@@ -48,7 +48,8 @@ export async function loadTimeline(file, execute = run) {
   // Theme
   let font = null;
   if (m.theme !== undefined) {
-    keys(m.theme, ['preset', 'background', 'surface', 'text', 'muted', 'accent', 'grid', 'palette', 'font', 'calm'], 'theme');
+    keys(m.theme, ['preset', 'background', 'surface', 'text', 'muted', 'accent', 'grid', 'palette', 'font', 'calm', 'onTwos'], 'theme');
+    check(opt(m.theme.onTwos, v => typeof v === 'boolean'), 'theme.onTwos must be boolean (hold each pose for two frames)');
     check(opt(m.theme.calm, v => typeof v === 'boolean'), 'theme.calm must be boolean (restrained easing: no overshoot)');
     check(opt(m.theme.preset, v => ['night', 'paper'].includes(v)), 'theme.preset must be night or paper');
     for (const k of ['background', 'surface', 'text', 'muted', 'accent']) check(opt(m.theme[k], v => /^#[0-9a-fA-F]{6}$/.test(v)), `theme.${k} must be #RRGGBB`);

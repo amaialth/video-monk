@@ -32,7 +32,7 @@ It listens only on 127.0.0.1, behind a one-time token in the printed address; no
 
 ## What's new
 
-- **0.5: production-grade, in the format you need, now with a web studio.** (Storyboards now follow a story arc and a shared visual theme, with beat labels and an optional closing call to action: `--cta`.) Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
+- **0.5: production-grade, in the format you need, now with a web studio.** (A motion-graphics skill adds brand intake (`video-monk brand`), `theme.onTwos`, a facts-first check (`facts-check`) and a catalog of premium effects. Storyboards now follow a story arc and a shared visual theme, with beat labels and an optional closing call to action: `--cta`.) Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
   from the long edit (`cutdown`, blurred-background fit), tuned delivery (capped CRF, BT.709, accurate colours), voice treatment, caption and
   graphic readability audits, a logo bug and a drafted `YOUTUBE.md`, a script verifier that fixes mis-heard terms in context (REST, not wrist),
   and sound effects (`--sfx subtle`): built-in synthesis, or Mirelo with your own key (`--sfx-engine mirelo --allow-mirelo`).

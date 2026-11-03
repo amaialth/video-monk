@@ -69,7 +69,7 @@ export const TEMPLATES = {
     schema: { name: str(48, true), role: str(80), position: { type: 'enum', values: ['left', 'right'] } },
     render(root, props, ctx, VM) {
       const right = props.position === 'right';
-      const box = VM.el('div', { style: { position: 'absolute', bottom: (ctx.h * (ctx.portrait ? 0.24 : 0.12)) + 'px',
+      const box = VM.el('div', { style: { position: 'absolute', bottom: (ctx.h * (ctx.portrait ? 0.28 : 0.12)) + 'px',
         [right ? 'right' : 'left']: (ctx.u * 6) + 'px', display: 'flex', alignItems: 'stretch', gap: (ctx.u * 1.2) + 'px' } }, root);
       const bar = VM.el('div', { style: { width: (ctx.u * 0.9) + 'px', background: ctx.theme.accent, borderRadius: '99px', transformOrigin: 'bottom' } }, box);
       const panel = VM.el('div', { style: { background: VM.hexToRgba(ctx.theme.background, 0.88), padding: (ctx.u * 1.6) + 'px ' + (ctx.u * 2.8) + 'px',
@@ -734,7 +734,7 @@ export const TEMPLATES = {
       const pos = props.position || 'bottom';
       const style = props.style || 'kinetic';
       const wrap = VM.el('div', { style: { position: 'absolute', left: (ctx.w * 0.06) + 'px', right: (ctx.w * 0.06) + 'px', display: 'flex', justifyContent: 'center',
-        [pos === 'top' ? 'top' : 'bottom']: (pos === 'center' ? ctx.h * 0.42 : ctx.h * (ctx.portrait ? 0.2 : 0.075)) + 'px' } }, root);
+        [pos === 'top' ? 'top' : 'bottom']: (pos === 'center' ? ctx.h * 0.42 : ctx.h * (ctx.portrait ? 0.27 : 0.075)) + 'px' } }, root); // vertical: keep clear of the bottom ~26% that Reels, Shorts and TikTok cover with their own buttons
       const shadow = ctx.theme.text.toLowerCase() === '#0b0b0b' ? '0 0.05em 0.14em rgba(255,255,255,0.85)' : '0 0.06em 0.18em rgba(0,0,0,0.9), 0 0 0.06em rgba(0,0,0,0.9)';
       const box = VM.el('div', { style: { textAlign: 'center', fontWeight: '800', fontSize: (ctx.u * (ctx.portrait ? 6 : 4.6)) + 'px', lineHeight: '1.22',
         letterSpacing: '-0.012em', padding: '0.15em 0.4em', borderRadius: '0.3em', color: style === 'phrase' ? '#fff' : ctx.theme.text,

@@ -25,12 +25,20 @@ import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive 
 import { cutdownManifest, ASPECTS } from './cutdown.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
+import { writeBrand } from './brand.js';
+import { checkFacts, readFacts } from './facts.js';
 import { parseGlossary, findMisheard, applyScriptFixes, fixesMarkdown } from './script.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  brand      --output <new folder> --name <text> [--background #hex --surface #hex --text #hex --muted #hex --accent #hex]
+             [--preset night|paper] [--font <ttf/otf/woff2>] [--logo <file>] [--feel "calm, premium"] [--never "no glow; no bounce"] [--on-twos] [--calm]
+             Write brand.json (use with --brand) and MOTION.md, the file agents read before animating. Unknown fields say ASK ME, never a guess
+  facts-check --manifest <production.json> --facts <facts.json>
+             For graphics with no transcript behind them: every number on screen must be in your approved fact list and every fact needs a source.
+             facts.json: { "facts": [{ "text": "250,000 followers in March 2026", "source": "https://..." }], "allow": ["01"] }. Exit 1 on a problem
   db         [--info] [--prune]
              The local SQLite database (projects, progress, approvals, remembered terms, usage): where it is and what it holds;
              --prune removes expired cache entries and usage older than 90 days. $VIDEO_MONK_HOME moves it
@@ -197,6 +205,8 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
+  brand: { output: 'string', name: 'string', background: 'string', surface: 'string', text: 'string', muted: 'string', accent: 'string', preset: 'string', font: 'string', logo: 'string', feel: 'string', never: 'string', 'on-twos': 'boolean', calm: 'boolean', rights: 'string', attribution: 'string' },
+  'facts-check': { manifest: 'string', facts: 'string' },
   db: { info: 'boolean', prune: 'boolean' },
   'script-check': { words: 'string', glossary: 'string', output: 'string' },
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
@@ -470,6 +480,22 @@ export async function main(args) {
       try { await (await import('./timeline.js')).loadTimeline(output); } catch (error) { await (await import('node:fs/promises')).rm(output, { force: true }); throw new Error(`The manifest with sound effects is invalid (${error.message}); nothing was written`); }
       console.log(`${placed.events.length} sound effect(s) placed (${mode}, ${engine}${session ? `, ${placed.credits} credits spent` : ''}): ${output}`);
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
+      break;
+    }
+    case 'brand': {
+      const result = await writeBrand(required(opts, 'output'), { name: opts.name, background: opts.background, surface: opts.surface, text: opts.text, muted: opts.muted, accent: opts.accent, preset: opts.preset,
+        font: opts.font, logo: opts.logo, feel: opts.feel, never: opts.never, onTwos: opts['on-twos'], calm: opts.calm, rights: opts.rights, attribution: opts.attribution });
+      console.log(`Brand kit for ${result.brand.name}: ${result.dir}\n  brand.json  use with --brand ${path.join(result.dir, 'brand.json')}\n  MOTION.md   read it first; fill every ASK ME with the user before building anything on-brand`);
+      break;
+    }
+    case 'facts-check': {
+      const manifest = await readJson(path.resolve(required(opts, 'manifest')));
+      const result = checkFacts(manifest, await readFacts(required(opts, 'facts')));
+      console.log(`${result.facts} fact(s), ${result.checked} number(s) on screen checked.`);
+      for (const u of result.unsourced) console.log(`  NO SOURCE  fact ${u.index + 1}: "${u.text}"`);
+      for (const u of result.unlisted) console.log(`  NOT IN THE FACT LIST  ${u.where}: ${u.number}  ("${u.text}")`);
+      console.log(result.ok ? 'OK: every number comes from an approved, sourced fact.' : 'Fix these before building: add the fact with a source, or change the graphic.');
+      if (!result.ok) process.exitCode = 1;
       break;
     }
     case 'db': {
