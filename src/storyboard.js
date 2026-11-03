@@ -8,6 +8,7 @@ import { planWithClaude } from './explain-llm.js';
 import { Library, textPreview } from './library.js';
 import { resolveStyle } from './style.js';
 import { createHash } from 'node:crypto';
+import { applySfx } from './sfx.js';
 
 const fail = message => { throw new Error(`Storyboard: ${message}`); };
 
@@ -58,7 +59,14 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
   } else {
     storyboard = planStoryboard(loaded.words, { duration: loaded.duration, density, graphics, theme, presenter: options.presenter, role: options.role, style });
   }
-  const applied = applyStoryboard(base, storyboard, style);
+  let applied = applyStoryboard(base, storyboard, style);
+  let sfxEvents = [];
+  const sfxMode = options.sfx || 'off';
+  if (!['off', 'subtle', 'full'].includes(sfxMode)) fail('sfx must be off, subtle or full');
+  if (sfxMode !== 'off') {
+    const placed = await applySfx(applied, { mode: sfxMode, dir: path.join(path.dirname(output), 'sfx'), relTo: path.dirname(output), library, execute, project: base.title });
+    applied = placed.manifest; sfxEvents = placed.events;
+  }
   await writeJson(output, applied);
   try {
     await loadTimeline(output, execute);
@@ -74,5 +82,5 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
       description: `${storyboard.items.length} graphics: ${Object.keys(storyboard.stats.byTemplate || {}).join(', ')}`,
       meta: { engine: storyboard.engine, text: storyboard.items.slice(0, 12).map(i => textPreview(i.props, 60)).join(' | '), items: storyboard.items.length, density }, createdBy: 'storyboard', project: base.title });
   }
-  return { storyboard, manifest: output, storyboardFile: `${stem}.storyboard.json`, table: `${stem}.STORYBOARD.md`, cacheNote };
+  return { storyboard, manifest: output, storyboardFile: `${stem}.storyboard.json`, table: `${stem}.STORYBOARD.md`, cacheNote, sfx: sfxEvents };
 }

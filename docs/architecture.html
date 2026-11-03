@@ -126,6 +126,8 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
       <li><b>Caption hygiene and review.</b> Fragments, fillers and stutters removed, <code>captions.fixes</code> for names, a caption audit (overlap, reading speed, length, flicker, lone words).</li>
       <li><b>Graphic readability audit.</b> Text off the frame, clipped, too small or low contrast is found in the render browser and reported as review findings; frozen picture is flagged.</li>
       <li><b>Brand and publishing.</b> A logo bug (<code>watermark</code>, <code>--brand brand.json</code>) and a drafted <code>YOUTUBE.md</code> (title options, description, chapters YouTube will accept, credits, tags, checklist).</li>
+      <li><b>Script verifier.</b> Mis-heard terms (REST heard as wrist or rist, "red is" for Redis) are found by sound and spelling and corrected <em>in context</em>, with a before/after log. <code>script-check</code>, <code>script-fix</code>, and a <code>video-monk-script-verifier</code> agent.</li>
+      <li><b>Sound effects.</b> Original sounds synthesised with FFmpeg and placed quietly on graphics (<code>--sfx subtle|full</code>, <code>video-monk sfx</code>); no samples, keys or attribution.</li>
       <li><b>Pace <code>relaxed</code></b> for interviews and vlogs.</li>
     </ul>
   </div>
@@ -712,6 +714,8 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
   <div class="tablewrap"><table>
     <tr><th>Command</th><th>What it does</th></tr>
     <tr><td><code>brief</code></td><td>Settle the format first: long-form, vertical short, both or feed; footage type, framing, short length. <code>--questions</code> prints the questions for an agent to ask.</td></tr>
+    <tr><td><code>script-check</code>, <code>script-fix</code></td><td>Find mis-heard glossary terms (sound-alikes, split words) and apply confirmed corrections with timing kept and a log.</td></tr>
+    <tr><td><code>sfx</code></td><td>List or synthesise sound effects, or place them on a manifest's graphics (<code>--manifest</code>, <code>--mode subtle|full</code>, <code>--plan</code>).</td></tr>
     <tr><td><code>cutdown</code></td><td>Reformat a finished edit (and optionally a time window) to 9:16, 1:1, 4:5 or 16:9 with <code>--fit blur|cover|contain</code>; <code>--max-seconds</code>, <code>--from/--to</code>, <code>--highlight</code>.</td></tr>
     <tr><td><code>auto</code></td><td>Inspect, transcribe, cut, review and render a recording in one go.</td></tr>
     <tr><td><code>inspect</code></td><td>Measure loudness, true peak, pauses, speech ratio and pacing; print suggestions.</td></tr>

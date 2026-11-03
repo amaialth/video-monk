@@ -16,8 +16,12 @@ const SCHEMA = {
 };
 
 const CRITERIA = {
-  transcript: `Look for likely mis-transcribed technical terms, product names and numbers (compare each suspicious word with the surrounding context).
-Fix ops: {"op":"replaceWord","index":<word index>,"to":"<corrected word>"} or {"op":"dropWord","index":<index>}. owner is "transcript".`,
+  transcript: `Act as a script verifier. Read the words for meaning and find what a speech recogniser got wrong: sound-alike mishearings of technical terms,
+product names and acronyms (for example "wrist" or "rist" where the topic is REST APIs, "red is" for Redis, "Jason" for JSON, "coffee" for Kafka), split or merged
+words, wrong numbers, and obvious grammar slips the speaker did not make. Decide from the surrounding context and the video's topic, never from sound alone:
+a real word that fits the sentence stays. Do not rewrite how the speaker talks. Give the reason in the message.
+Fix ops: {"op":"replaceWord","index":<word index>,"to":"<corrected word>"}, {"op":"replaceSpan","index":<first word index>,"count":<words>,"to":"<one corrected word or phrase>"}
+or {"op":"dropWord","index":<index>}. owner is "transcript".`,
   storyboard: `Judge each graphic: does it teach the line it covers? Is it grounded in the transcript (no invented facts or numbers)? Is the label wrong,
 redundant, too long to read in its duration, or misleading? Do the graphics together follow the house style and structure (concrete question first,
 mechanism built progressively, comparisons consistent, recap, next step)? Fix ops: {"op":"dropItem","id":"<item id>"} or

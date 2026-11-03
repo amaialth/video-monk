@@ -40,6 +40,10 @@ export const QUESTIONS = [
     opt('heavy', 'Heavy', 'Up to about 10 per minute; very visual explainers'),
     opt('light', 'Light', 'Up to about 3 per minute; mostly face time'),
     opt('off', 'None', 'Cut and captions only')] },
+  { id: 'sfx', header: 'Sound effects', multiSelect: false, question: 'Add sound effects?', options: [
+    opt('subtle', 'Subtle accents (recommended for explainers)', 'A quiet whoosh or swipe as a graphic appears, a pop on a number or term, a chime for a new section; at most 5 a minute'),
+    opt('full', 'More', 'Also pops on callouts and a swipe as cutaways leave; up to 10 a minute'),
+    opt('off', 'None', 'Voice, music and captions only')] },
   { id: 'captions', header: 'Captions', multiSelect: false, question: 'Burn captions into the video?', options: [
     opt('kinetic', 'Yes, animated with stressed words', 'Word-timed, key words in italic serif and the accent colour'),
     opt('plain', 'Yes, plain', 'Simple word-timed captions'),
@@ -66,6 +70,7 @@ export function resolveBrief(answers = {}) {
     // What the main edit is rendered as:
     primaryFormat: a.deliverable === 'short' ? 'vertical' : a.deliverable === 'feed' ? 'square' : 'landscape',
     fit: ['short', 'feed'].includes(a.deliverable) ? vertical : undefined,
+    sfx: a.sfx || (['screen', 'explainer'].includes(a.content) ? 'subtle' : 'off'),
     graphicsMode: a.content === 'screen' ? 'panel' : a.content === 'explainer' ? 'mixed' : undefined
   };
   if (a.deliverable === 'both') out.shortFit = vertical;
@@ -83,7 +88,7 @@ export function resolveBrief(answers = {}) {
 export function briefToAutoOptions(brief) {
   return {
     format: brief.primaryFormat, pace: brief.pace, graphics: brief.graphics, graphicsMode: brief.graphicsMode, fit: brief.fit,
-    captions: brief.captions, target: brief.target, deliverables: brief.deliverable, shortFit: brief.shortFit,
+    captions: brief.captions, sfx: brief.sfx, target: brief.target, deliverables: brief.deliverable, shortFit: brief.shortFit,
     ...(brief.shortSelection ? { shortMax: brief.shortSelection.maxSeconds, shortFrom: brief.shortSelection.from, shortTo: brief.shortSelection.to, shortPick: brief.shortSelection.pick } : {})
   };
 }

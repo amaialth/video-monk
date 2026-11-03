@@ -31,6 +31,8 @@ informed by the public video-editor-skills, claude-code-video-toolkit and awesom
 - **`YOUTUBE.md`** in every render: title options, description draft, chapters only when YouTube would accept them, credits, tags and an upload checklist.
 - New references for agents: `content-formats.md`, `delivery-qa.md`.
 
+- **Script verifier**: `script-check` and `script-fix`, a `video-monk-script-verifier` agent and a `script-verification.md` reference. Sound-alike mishearings (REST heard as wrist or rist, "red is" for Redis) are matched with a sound key, split or merged terms are found, and glossary hints (`REST | api; http`) tie a term to its context so a real "wrist" stays. Fixes keep timing, carry a reason, and are logged for approval. The transcript reviewer uses the same matching (`replaceSpan` fixes) and the Claude reviewer is told to judge in context.
+- **Sound effects** (`src/sfx.js`, `video-monk sfx`, `auto --sfx off|subtle|full`): nine original sounds synthesised with FFmpeg (whoosh, swipe, pop, chime, ding, click, tick, impact, riser), placed on graphics as quiet `audio.sfx` cues, indexed in the asset library and reused. The brief asks about them. Reviewed and not adopted: Sousa FX Generator (Max/RNBO effect processors for a tuba rig, not a sound-effect generator, no licence file) and the "Sound Effects Expert" skill (prompt guidance for ElevenLabs/AudioCraft, which send prompts to a service or need a local model).
 - Real-run fixes: vertical and square cutdowns drop pull-text strips (captions already carry the words; they clipped in a narrow frame), the readability audit now catches vertical clipping, and YOUTUBE.md descriptions start on a sentence start.
 
 ### Limits

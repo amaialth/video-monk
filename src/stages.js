@@ -15,6 +15,7 @@ import { STOP_WORDS, cleanWord } from './stress.js';
 import { reviewProduction, buildProduction } from './production.js';
 import { claudeReview } from './review-llm.js';
 import { auditSrt } from './captions.js';
+import { findMisheard, asEntries } from './script.js';
 import { resolveStyle } from './style.js';
 
 const round = n => Math.round(n * 1000) / 1000;
@@ -58,21 +59,12 @@ export function reviewTranscript(artifact, { glossary = [] } = {}) {
     if (next && cleanWord(w.text).toLowerCase() === cleanWord(next.text).toLowerCase() && cleanWord(w.text).length > 1 && next.start - w.end < 0.35) {
       findings.push(finding({ id: `transcript-stutter-${i}`, severity: 'minor', owner: 'transcript', target: { word: i }, message: `repeated word "${w.text}"`, suggestion: 'drop the repeat', fix: { op: 'dropWord', index: i } }));
     }
-    for (const term of glossary) {
-      const a = cleanWord(w.text).toLowerCase(), b = term.toLowerCase();
-      if (a && a !== b && a.length >= 3 && Math.abs(a.length - b.length) <= 1 && editDistance(a, b) <= 1) {
-        findings.push(finding({ id: `transcript-glossary-${i}`, severity: 'major', owner: 'transcript', target: { word: i }, message: `"${w.text}" looks like the glossary term "${term}"`, suggestion: `replace with ${term}`, fix: { op: 'replaceWord', index: i, to: w.text.replace(/[\p{L}\p{N}']+/u, term) } }));
-      }
-    }
   });
+  // Sound-alike and near-spelling mistakes against the glossary (hints in the glossary tie a term to its context).
+  for (const m of findMisheard(words, asEntries(glossary))) {
+    findings.push(finding({ id: `transcript-glossary-${m.index}`, severity: 'major', owner: 'transcript', target: { word: m.index }, message: `"${m.heard}" ${m.kind === 'sound' ? 'sounds like' : 'looks like'} the glossary term "${m.term}"`, suggestion: `replace with ${m.term}`, fix: { op: 'replaceSpan', index: m.index, count: m.count, to: m.to } }));
+  }
   return verdict({ stage: 'transcript', round: 0, reviewer: 'transcript-reviewer (code)', findings, metrics: { words: words.length, wordsPerMinute: Math.round(rate), ordered } });
-}
-
-function editDistance(a, b) {
-  const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...new Array(b.length).fill(0)]);
-  for (let j = 1; j <= b.length; j++) d[0][j] = j;
-  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-  return d[a.length][b.length];
 }
 
 export function reviseTranscript(artifact, findings) {
@@ -82,6 +74,11 @@ export function reviseTranscript(artifact, findings) {
   for (const f of findings) {
     const fx = f.fix;
     if (!fx || fx.index === undefined || !words[fx.index]) continue;
+    if (fx.op === 'replaceSpan' && fx.count > 1) {
+      changed.push(`words ${fx.index}-${fx.index + fx.count - 1}: "${words.slice(fx.index, fx.index + fx.count).map(w => w.text).join(' ')}" → "${fx.to}"`);
+      words[fx.index].text = fx.to; words[fx.index].end = words[fx.index + fx.count - 1].end;
+      for (let k = 1; k < fx.count; k++) drop.add(fx.index + k);
+    } else if (fx.op === 'replaceSpan') { changed.push(`word ${fx.index}: "${words[fx.index].text}" → "${fx.to}"`); words[fx.index].text = fx.to; }
     if (fx.op === 'replaceWord') { changed.push(`word ${fx.index}: "${words[fx.index].text}" → "${fx.to}"`); words[fx.index].text = fx.to; }
     if (fx.op === 'dropWord') { drop.add(fx.index); changed.push(`dropped word ${fx.index} ("${words[fx.index].text}")`); }
   }

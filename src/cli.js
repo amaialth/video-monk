@@ -21,11 +21,21 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
+import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx } from './sfx.js';
+import { parseGlossary, findMisheard, applyScriptFixes, fixesMarkdown } from './script.js';
 
 const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  sfx        --list | --kind <name> --output <new .wav> | --manifest <production.json> --output <new manifest> [--mode subtle|full]
+             Original sound effects synthesised with FFmpeg (no samples, no API). With --manifest, accents the manifest's graphics
+             (whoosh for cutaways, swipe for panels, pop for stats/terms, chime for chapters) as audio.sfx cues; --plan only prints them
+  script-check --words <words.json> --glossary <terms file> [--output <new fixes.json>]
+             Find mis-heard words (sound-alikes like wrist/rist for REST, "red is" for Redis) and propose fixes with reasons.
+             Glossary lines: "REST | api; http; endpoint" (the hints say the term is meant). Proposals are candidates: confirm each in context.
+  script-fix --words <words.json> --fixes <fixes.json> --output <new words.json>
+             Apply confirmed corrections (replace, span, drop, phrase) with timing kept; writes a before/after log (<output>.md)
   brief      [--questions] [--answers <answers.json>] [--output <new brief.json>]
              Settle the format BEFORE editing: long-form 16:9, a vertical 9:16 short, both, or a square/4:5 feed post;
              footage type, pace, graphics, captions, destination. Interactive in a terminal; --questions prints them as JSON.
@@ -34,7 +44,7 @@ AUTOMATED EDITING
              Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
              [--brief <brief.json>] [--deliverables long|short|both|feed] [--short-max <s> --short-from <s> --short-to <s> --short-pick hook|highlight|range]
-             [--captions kinetic|plain|off] [--target youtube|web|master] [--brand <brand.json: theme + logo>]
+             [--sfx off|subtle|full] [--captions kinetic|plain|off] [--target youtube|web|master] [--brand <brand.json: theme + logo>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
              [--style bytemonk|plain (default bytemonk)] [--pace relaxed|natural|tight|extra] [--speed 1-1.5] [--asr-prompt <text>]
@@ -153,9 +163,12 @@ const definitions = {
     output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
     'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string' },
+  sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean' },
+  'script-check': { words: 'string', glossary: 'string', output: 'string' },
+  'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
-  auto: { concurrency: 'string', brief: 'string', brand: 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
+  auto: { concurrency: 'string', brief: 'string', brand: 'string', sfx: 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', title: 'string' },
@@ -352,10 +365,10 @@ export async function main(args) {
         shortFrom: flag('shortFrom', opts['short-from'] ? Number(opts['short-from']) : undefined), shortTo: flag('shortTo', opts['short-to'] ? Number(opts['short-to']) : undefined),
         shortPick: flag('shortPick', opts['short-pick']), concurrency: opts.concurrency ? Number(opts.concurrency) : undefined, words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
-        graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        sfx: flag('sfx', opts.sfx), graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         presenter: opts.presenter, role: opts.role, reviewLoop: opts['review-loop'] === 'off' ? false : undefined,
         maxRounds: opts['max-rounds'] ? integer(opts['max-rounds'], 'max-rounds', 1, 8) : undefined, reviewAgent: opts['review-agent'],
-        glossary: opts.glossary ? (await readFile(opts.glossary, 'utf8')).split(/\r?\n|,/).map(t => t.trim()).filter(Boolean) : undefined
+        glossary: opts.glossary ? parseGlossary(await readFile(opts.glossary, 'utf8')) : undefined
       });
       if (result.loop) console.log(`Review loop: ${result.loop.status}${result.loop.stoppedAt ? ` (stopped at ${result.loop.stoppedAt}; see REVIEW-LOOP.md)` : ''}. Ledger: ${path.resolve(opts.output, 'loop-ledger.json')}`);
       if (result.rendered) {
@@ -364,6 +377,53 @@ export async function main(args) {
         if (result.rendered.status === 'failed-technical-checks' || result.loop?.status === 'needs-human') process.exitCode = 1;
         if (result.short) console.log(`Vertical short: ${result.short.finalFile} (${result.short.rendered.status}, ${result.short.cut.window.duration}s).${result.short.cut.warnings.length ? ` ${result.short.cut.warnings.join('; ')}.` : ''} Watch it before publishing.`);
       } else console.log(`Plan ready: ${result.manifest}. Add overlays/music, then production-review and production-build.`);
+      break;
+    }
+    case 'sfx': {
+      if (opts.list) { console.log(SFX_KINDS.map(k => `${k.padEnd(8)} ${String(SFX[k].seconds).padStart(4)} s  ${SFX[k].why}`).join('\n')); break; }
+      if (opts.kind) {
+        if (!SFX[opts.kind]) throw new Error(`--kind must be one of ${SFX_KINDS.join(', ')}`);
+        const file = path.resolve(required(opts, 'output'));
+        if (await exists(file)) throw new Error(`output already exists: ${file}`);
+        await synthesize(opts.kind, file);
+        console.log(`Wrote ${file} (${opts.kind}). Add it as an audio asset and an audio.sfx cue, or use --manifest to place sounds automatically.`);
+        break;
+      }
+      const manifestFile = path.resolve(required(opts, 'manifest'));
+      const mode = opts.mode || 'subtle';
+      if (!['subtle', 'full'].includes(mode)) throw new Error('--mode must be subtle or full');
+      const base = await readJson(manifestFile);
+      if (opts.plan) {
+        const events = planSfx(graphicsOf(base), { mode, duration: base.scenes.reduce((n, s) => n + s.duration, 0) });
+        console.log(events.length ? events.map(e => `${String(e.at).padStart(7)} s  ${e.kind.padEnd(7)} ${e.gainDb} dB  ${e.why}`).join('\n') : 'No graphics to accent.');
+        break;
+      }
+      const output = path.resolve(required(opts, 'output'));
+      if (path.dirname(output) !== path.dirname(manifestFile)) throw new Error('--output must be in the same folder as the manifest so relative asset paths keep working');
+      if (await exists(output)) throw new Error(`output already exists: ${output}`);
+      const placed = await applySfx(base, { mode, dir: path.join(path.dirname(output), 'sfx'), relTo: path.dirname(output), library: await Library.open(), project: base.title });
+      await writeJson(output, placed.manifest);
+      try { await (await import('./timeline.js')).loadTimeline(output); } catch (error) { await (await import('node:fs/promises')).rm(output, { force: true }); throw new Error(`The manifest with sound effects is invalid (${error.message}); nothing was written`); }
+      console.log(`${placed.events.length} sound effect(s) placed (${mode}): ${output}`);
+      break;
+    }
+    case 'script-check': {
+      const words = await readJson(required(opts, 'words'));
+      const glossary = parseGlossary(await readFile(required(opts, 'glossary'), 'utf8'));
+      const found = findMisheard(words, glossary);
+      const fixes = found.map(f => ({ index: f.index, count: f.count, to: f.to, reason: `heard "${f.heard}", ${f.kind === 'sound' ? 'sounds like' : 'is spelled like'} the term "${f.term}"; confirm in context` }));
+      if (opts.output) await writeJson(path.resolve(opts.output), fixes);
+      console.log(found.length ? found.map(f => `${String(f.index).padStart(5)}  ${f.heard} -> ${f.to}  (${f.kind}; ${Math.floor(words[f.index].start / 60)}:${String(Math.floor(words[f.index].start % 60)).padStart(2, '0')})`).join('\n') : 'No mis-heard glossary terms found.');
+      if (opts.output) console.error(`\nCandidates written to ${opts.output}. Delete any that are wrong in context, then run script-fix.`);
+      break;
+    }
+    case 'script-fix': {
+      const words = await readJson(required(opts, 'words'));
+      const result = applyScriptFixes(words, await readJson(required(opts, 'fixes')));
+      const out = path.resolve(required(opts, 'output'));
+      await writeNew(out, JSON.stringify(result.words, null, 2));
+      await writeNew(out.replace(/\.json$/i, '') + '.fixes.md', fixesMarkdown(result.log));
+      console.log(`${result.log.length} correction(s) applied: ${out}\nLog: ${out.replace(/\.json$/i, '')}.fixes.md`);
       break;
     }
     case 'brief': {

@@ -34,7 +34,7 @@ for (const format of ['claude', 'copilot']) {
       const folder = await temporary(t);
       const files = await install(folder, format, workflow);
       const agentFiles = files.filter(file => path.basename(path.dirname(file)) === 'agents');
-      assert.equal(agentFiles.length, workflow === 'resolve' ? 4 : workflow === 'both' ? 13 : 9);
+      assert.equal(agentFiles.length, workflow === 'resolve' ? 4 : workflow === 'both' ? 14 : 10);
       const isAgent = role => agentFiles.find(file => path.basename(file).startsWith(`video-monk-${role}.`));
       if (workflow !== 'resolve') {
         for (const [role, tools] of Object.entries(roles)) {

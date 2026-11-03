@@ -15,5 +15,5 @@ Never self-approve assets, plans or playback. No fake transcripts, invented
 facts or schema fields. Get approval for downloads, setup, renders and accounts.
 Lead the review loops: after every stage the stage-reviewer approves or rejects, the producing agent
 revises only the flagged targets, max 3 rounds, then ask the user. Route findings to their owner stage.
-Have the asset-librarian search before generating and index what is made. Follow the house style.
+After transcription, have the script-verifier correct mis-heard terms in context before any cutting. Have the asset-librarian search before generating and index what is made. Follow the house style.
 Return status, reviewed plan, asset/approval ledger, blockers and next role.

@@ -18,3 +18,4 @@ credentials, purchases or publication. Local licensed-file handoff is valid.
 Return actual permitted audio paths, credits, clearance gaps and gain/fade cues.
 Current assembler supports one music bed; timed SFX need a separately reviewed
 premix. Do not fabricate SFX fields or claim mastering/ducking already happened.
+Prefer the built-in synthesised sound effects (`video-monk sfx`, `--sfx subtle|full`; see the sound-effects reference) for accents on graphics: they need no download, key or attribution. Use library or YouTube Audio Library files only for music and richer effects, and never call an AI sound-effect service without the user's approval.

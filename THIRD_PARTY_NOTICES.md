@@ -48,6 +48,12 @@ bundles them under the same license. The fonts are unmodified and are not sold o
 Delivery, voice and caption practices were informed by `appariciojunior/video-editor-skills` (MIT), `digitalsamba/claude-code-video-toolkit` (MIT) and
 `zhuyansen/awesome-claude-video-skills`. They were read as references only; no code or prompt text was copied.
 
+## Reviewed, not adopted
+
+`Sousastep/sousa_fx_generator` (audio effect processors for Max/RNBO; no licence file found, bundles ports of other projects) and the
+"Sound Effects Expert" skill listed on mcpmarket.com (guidance for external AI sound-effect services; licence not shown on the listing)
+were reviewed as references. No code or text from either is used; the toolkit's sound effects are its own FFmpeg synthesis.
+
 ## Dev and runtime tools (not bundled)
 
 FFmpeg, Google Chrome / Chromium, whisper.cpp and its models, and the Claude Code CLI are separate programs under

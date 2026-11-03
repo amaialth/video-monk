@@ -1,6 +1,7 @@
 // `video-monk review`: run one stage's deterministic reviewer on files on disk (used by reviewer subagents and by hand).
 // Writes a verdict in the shared finding schema and optionally appends it, or a revision note, to a loop ledger.
 import path from 'node:path';
+import { parseGlossary } from './script.js';
 import { exists, readJson, run, writeJson } from './core.js';
 import { Ledger } from './loop.js';
 import { reviewTranscript, reviewCut, reviewStoryboard, reviewRender } from './stages.js';
@@ -19,7 +20,7 @@ export async function reviewStage(opts, execute = run) {
   let result;
   if (stage === 'transcript') {
     if (!opts.words) fail('transcript review needs --words');
-    const glossary = opts.glossary ? (await readFile(opts.glossary, 'utf8')).split(/\r?\n|,/).map(t => t.trim()).filter(Boolean) : [];
+    const glossary = opts.glossary ? parseGlossary(await readFile(opts.glossary, 'utf8')) : [];
     result = reviewTranscript({ words: await readJson(opts.words) }, { glossary });
   } else if (stage === 'cut') {
     if (!opts.manifest || !opts.media) fail('cut review needs --manifest (the autocut/revised production.json) and --media (the source recording)');

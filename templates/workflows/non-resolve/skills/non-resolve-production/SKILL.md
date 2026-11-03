@@ -11,7 +11,7 @@ the [timeline reference](./references/timeline-v2.md) and
 [explainer graphics](./references/explainer-graphics.md), [kinetic typography](./references/kinetic-typography.md)
 and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
 [review loop](./references/review-loop.md); generated and licensed assets live in the
-[asset library](./references/asset-library.md). Style: `--style bytemonk` (default). **Settle the format first**: ask the [format questions](./references/content-formats.md) unless the request already answers them. Delivery checks are in [delivery QA](./references/delivery-qa.md).
+[asset library](./references/asset-library.md). Style: `--style bytemonk` (default). **Settle the format first**: ask the [format questions](./references/content-formats.md) unless the request already answers them. Delivery checks are in [delivery QA](./references/delivery-qa.md). Transcripts are verified for mis-heard terms first: [script verification](./references/script-verification.md).
 
 ## Team and handoff
 
@@ -20,6 +20,7 @@ and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
 | video-monk-claude-editor | Claude Code | Brief, beat sheet, reviewed v2 manifest, approvals ledger |
 | video-monk-parakeet-transcriber | whisper.cpp (default) or Parakeet | Source-relative words.json and speech-review status |
 | video-monk-hyperframes-animator | Built-in motion templates (Chrome); custom seekable HTML | Template props, previews, visual-review notes |
+| video-monk-script-verifier | `video-monk script-check` / `script-fix` + judgment | Corrected words.json (REST not wrist), before/after log, questions for the user |
 | video-monk-chrome-researcher | Google Chrome | Attributed facts, sources, rights gaps |
 | video-monk-obs-screen-recorder | OBS Studio; optional Shotcut | Original local captures |
 | video-monk-free-sound-designer | YouTube Audio Library; optional Pixabay | Licensed music/SFX, cue sheet, credits |
@@ -55,7 +56,8 @@ Use `--approve-plan`/`--rights-confirmed` only after the user approves.
 3. `video-monk inspect --media <file>` measures loudness, pauses and pacing.
 4. `video-monk transcribe --media <recording> --output <new-folder> --allow-transcribe`
    runs whisper.cpp locally (`--engine parakeet` keeps the HyperFrames route).
-   Words are draft: proofread names and numbers before publishing captions.
+   Words are draft. **Verify the script before cutting**: have the script verifier correct mis-heard terms (REST heard as wrist or rist, "red is" for Redis) in
+   context with `script-check` / `script-fix` and a glossary ([script verification](./references/script-verification.md)); pass the result as `--words`.
 5. `video-monk autocut --media <recording> --output <new-folder> --words <words.json>`
    writes a version-2 production.json plus timeline-remapped captions.
 6. Explain with graphics wherever an idea can be shown:
@@ -69,7 +71,7 @@ Use `--approve-plan`/`--rights-confirmed` only after the user approves.
    `video-monk graphic --template bar-chart --props <props.json> --output <chart.png>`
    and Read the PNG to check layout. Charts need real values, units and citations.
 7. Music: free licensed beds in `audio.music` duck under speech automatically;
-   one-shot SFX go in `audio.sfx`. Record per-track license evidence and credits.
+   one-shot SFX go in `audio.sfx`. Built-in original sound effects: `--sfx subtle|full` or `video-monk sfx --manifest ...` ([sound effects](./references/sound-effects.md)). Record per-track license evidence and credits.
 8. `video-monk production-review --manifest <production.json> --output <review.json>`
    then add `--approve-plan` (fresh file) once the user approves.
 9. `video-monk production-build --manifest <production.json> --review <review.json> --output <new-folder> --allow-render`
