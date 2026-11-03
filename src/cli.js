@@ -31,6 +31,9 @@ const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  ui         [--port 4173] [--no-open]
+             Open the web studio: pick a video, watch every step, review graphics and B-roll, and approve each stage. Local only
+             (127.0.0.1), protected by a one-time token in the printed address. Projects live in ~/.video-monk/ui/projects
   sfx        --list | --credits | --audition <folder of .wav> --output <new page.html>
              --kind <name> --output <new .wav> [--engine synth|mirelo --allow-mirelo]
              --prompt "<sound>" --seconds <s> --output <new .wav> --engine mirelo --allow-mirelo   Any sound or ambience from a text prompt
@@ -190,6 +193,7 @@ const definitions = {
     'allow-search': 'boolean', 'allow-download': 'boolean', 'rights-confirmed': 'boolean', sfx: 'string' },
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
+  ui: { port: 'string', 'no-open': 'boolean' },
   'script-check': { words: 'string', glossary: 'string', output: 'string' },
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
@@ -462,6 +466,21 @@ export async function main(args) {
       try { await (await import('./timeline.js')).loadTimeline(output); } catch (error) { await (await import('node:fs/promises')).rm(output, { force: true }); throw new Error(`The manifest with sound effects is invalid (${error.message}); nothing was written`); }
       console.log(`${placed.events.length} sound effect(s) placed (${mode}, ${engine}${session ? `, ${placed.credits} credits spent` : ''}): ${output}`);
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
+      break;
+    }
+    case 'ui': {
+      const { startServer } = await import('./ui/server.js');
+      const port = opts.port ? integer(opts.port, 'port', 1, 65535) : 4173;
+      let app;
+      try { app = await startServer({ port, log: message => console.error(message) }); }
+      catch (error) { if (error.code === 'EADDRINUSE') app = await startServer({ port: 0, log: message => console.error(message) }); else throw error; }
+      console.log(`Video Monk studio is running.\n\n  ${app.url}\n\nOpen that address (it contains a one-time token). Press Ctrl+C to stop; running projects will be cancelled.`);
+      if (!opts['no-open']) {
+        const { spawn } = await import('node:child_process');
+        const [cmd, args] = process.platform === 'darwin' ? ['open', [app.url]] : process.platform === 'win32' ? ['cmd', ['/c', 'start', '', app.url]] : ['xdg-open', [app.url]];
+        try { spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); } catch { /* the address is printed above */ }
+      }
+      await new Promise(resolve => { const stop = () => { app.close().then(resolve); }; process.once('SIGINT', stop); process.once('SIGTERM', stop); });
       break;
     }
     case 'script-check': {

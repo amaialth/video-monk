@@ -15,6 +15,7 @@
     "src",
     "templates",
     "assets",
+    "web",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"

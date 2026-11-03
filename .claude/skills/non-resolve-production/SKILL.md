@@ -31,6 +31,10 @@ and [graphic briefs](./references/graphic-briefs.md). Every stage runs under a
 The main conversation coordinates; subagents never nest. Skip a stage only with
 an explicit not-needed decision, never a faked output.
 
+## Offer the web studio
+
+For a person who wants to see and approve each step, `video-monk ui` opens a local studio (file browser, the format questions as a wizard, a live pipeline with graphic previews, and recorded approvals for the script, storyboard and final video). Suggest it when the user is not working in the terminal. Agents still use the CLI.
+
 ## Ask first: what are we making?
 
 Long-form 16:9, a vertical 9:16 short, both, or a square/4:5 feed post are different products. If the request does not say which, run

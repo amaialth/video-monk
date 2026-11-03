@@ -262,7 +262,7 @@ export async function reviseStoryboard(artifact, findings, ctx) {
     const fx = f.fix;
     if (!fx) continue;
     if (fx.op === 'dropItem') { const n = storyboard.items.length; storyboard.items = storyboard.items.filter(i => i.id !== fx.id); if (storyboard.items.length < n) changed.push(`dropped ${fx.id}`); }
-    if (fx.op === 'toPanel') { const it = storyboard.items.find(i => i.id === fx.id); if (it) { it.mode = 'panel'; it.duration = Math.min(it.duration + 2, 26); changed.push(`${fx.id}: cutaway → side panel`); } }
+    if (fx.op === 'toPanel') { const it = storyboard.items.find(i => i.id === fx.id); if (it) { it.mode = 'panel'; it.duration = Math.max(0.5, Math.min(it.duration + 2, 26, Math.floor((artifact.duration - it.start - 0.05) * 30) / 30)); changed.push(`${fx.id}: cutaway → side panel`); } }
     if (fx.op === 'setProps') { const it = storyboard.items.find(i => i.id === fx.id); if (it && fx.props) { it.props = fx.props; changed.push(`${fx.id}: props rewritten`); } }
     if (fx.op === 'fillWindow') {
       const window = artifact.words.filter(w => w.start >= fx.from && w.end <= fx.to);
@@ -341,9 +341,8 @@ export async function reviewRender(artifact, ctx) {
   const srtFile = path.join(outputDir, 'captions.srt');
   if (await exists(srtFile)) {
     for (const issue of auditSrt(await readFile(srtFile, 'utf8'))) {
-      const share = issue.count / Math.max(1, issue.total);
       const word = { overlap: 'overlap the next caption', fast: 'are read too fast', long: 'are too long for one screen', flicker: 'flash by too quickly', lone: 'show a lone short word' }[issue.kind];
-      findings.push(finding({ id: `render-captions-${issue.kind}`, severity: issue.kind === 'overlap' || share > 0.25 ? 'major' : 'minor', owner: 'render', target: { time: [issue.examples[0].at, issue.examples[0].at + 2] },
+      findings.push(finding({ id: `render-captions-${issue.kind}`, severity: issue.kind === 'overlap' ? 'major' : 'minor', owner: 'render', target: { time: [issue.examples[0].at, issue.examples[0].at + 2] },
         message: `${issue.count} caption page(s) ${word} (limit ${issue.limit}); first at ${issue.examples[0].at}s: "${issue.examples[0].text}"`,
         suggestion: 'adjust captions.maxWords / maxChars or add captions.fixes' }));
     }
@@ -382,6 +381,7 @@ function mapTimeline(cut, t) {
 
 // ---------------------------------------------------------------- stage factories
 export function buildStages(options, execute = run) {
+  let renderCounter = 0;
   const root = options.root;
   const log = options.log || (() => {});
   const style = resolveStyle(options.style || 'bytemonk');
@@ -461,7 +461,7 @@ export function buildStages(options, execute = run) {
     async produce(ctx) {
       const prior = ctx.artifacts.storyboard || ctx.artifacts.cut;
       const manifest = prior.manifestFile;
-      const version = (ctx.renderVersion = (ctx.renderVersion || 0) + 1);
+      const version = ++renderCounter; // a real counter: the loop hands produce() a copy of ctx, so state on ctx is lost
       const review = path.join(path.dirname(manifest), `review.${version}.${Date.now().toString(36)}.json`);
       await reviewProduction(manifest, review, true, execute);
       const outputDir = path.join(root, version === 1 ? 'render' : `render-r${version}`);

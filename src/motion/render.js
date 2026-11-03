@@ -162,6 +162,21 @@ export class MotionRenderer {
     return { dir, pattern: path.join(dir, 'frame-%06d.png'), frames, captured, audit, cached: false };
   }
 
+  // One settled frame of a job as a PNG (no frame sequence): fast previews for the UI.
+  async still(job, at, outFile) {
+    const html = job.html ? await readFile(job.html, 'utf8') : await motionPage(job);
+    const dir = path.join(path.dirname(outFile), `.still-${createHash('sha256').update(html).update(String(at)).digest('hex').slice(0, 12)}`);
+    await mkdir(dir, { recursive: true });
+    const file = path.join(dir, 'page.html');
+    await writeFile(file, html);
+    const page = await this.#open(file, job);
+    try {
+      await page.evaluate(`window.__seek(${at})`);
+      await page.screenshot(outFile);
+    } finally { await page.close().catch(() => {}); await rm(dir, { recursive: true, force: true }); }
+    return outFile;
+  }
+
   async #open(file, job) {
     await this.start();
     return openPage(this.browser, file, { width: job.width, height: job.height, transparent: !job.background || job.background === 'transparent' });

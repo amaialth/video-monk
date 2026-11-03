@@ -31,7 +31,9 @@ export class Ledger {
   }
 
   record(entry) {
-    this.entries.push({ at: new Date().toISOString(), ...entry });
+    const stamped = { at: new Date().toISOString(), ...entry };
+    this.entries.push(stamped);
+    try { this.onRecord?.(stamped); } catch { /* a listener must never break the loop */ }
     if (!this.file) return Promise.resolve();
     const snapshot = `${JSON.stringify({ version: 1, entries: this.entries }, null, 1)}\n`;
     this.queue = this.queue.then(async () => { const temp = `${this.file}.tmp`; await writeFile(temp, snapshot); await rename(temp, this.file); });
@@ -91,7 +93,10 @@ export async function reviewLoop(stage, artifact, ctx, { ledger, maxRounds = 3, 
 }
 
 // Lead loop: runs stages in order. stage = { name, produce(ctx), review(artifact, ctx), revise(artifact, findings, ctx) }.
-export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), maxRounds = 3, maxReroutes = 3, log = () => {} }) {
+// Optional observers for a UI: onEvent({type, stage, ...}) reports progress; gate(stageName, artifact, info) is awaited when a stage is approved (or
+// escalated) and returns { approved: true, patch? } to continue (patch is merged into the artifact, e.g. a new manifest file) or
+// { approved: false, findings } to send human findings back to the stage's producer; signal (AbortSignal) cancels between stages.
+export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), maxRounds = 3, maxReroutes = 3, log = () => {}, onEvent = () => {}, gate = null, signal = null }) {
   const names = stages.map(s => s.name);
   const artifacts = {};
   ctx = { ...ctx, artifacts };
@@ -100,8 +105,10 @@ export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), max
   let i = 0;
   while (i < stages.length) {
     const stage = stages[i];
+    if (signal?.aborted) return { status: 'cancelled', artifacts, ledger, stoppedAt: stage.name };
     log(`Stage ${i + 1}/${stages.length}: ${stage.name}`);
-    if (!keep.has(stage.name)) artifacts[stage.name] = await stage.produce(ctx);
+    onEvent({ type: 'stage-start', stage: stage.name, index: i, total: stages.length, rerun: keep.has(stage.name) });
+    if (!keep.has(stage.name)) { artifacts[stage.name] = await stage.produce(ctx); onEvent({ type: 'stage-produced', stage: stage.name, artifact: artifacts[stage.name] }); }
     keep.delete(stage.name);
     const result = await reviewLoop(stage, artifacts[stage.name], ctx, { ledger, maxRounds, log });
     artifacts[stage.name] = result.artifact;
@@ -126,7 +133,22 @@ export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), max
         continue;
       }
     }
-    if (result.status === 'escalated' || (result.status === 'rejected' && result.upstream.length)) {
+    const stuck = result.status === 'escalated' || (result.status === 'rejected' && result.upstream.length);
+    if (gate) {
+      onEvent({ type: stuck ? 'stage-escalated' : 'stage-approved', stage: stage.name, artifact: artifacts[stage.name] });
+      const g = await gate(stage.name, artifacts[stage.name], { ...ctx, escalated: stuck, findings: stuck ? result.upstream : [] });
+      if (signal?.aborted) return { status: 'cancelled', artifacts, ledger, stoppedAt: stage.name };
+      if (g && g.approved === false && g.findings?.length) {
+        const revised = await stage.revise(artifacts[stage.name], g.findings, { ...ctx, round: 0 });
+        await ledger.record({ kind: 'human', stage: stage.name, findings: g.findings, changed: revised.changed || [] });
+        artifacts[stage.name] = revised.artifact;
+        keep.add(stage.name); // the human-revised artifact goes through the reviewer again
+        continue;
+      }
+      if (g?.approved === false) return { status: 'needs-human', artifacts, ledger, stoppedAt: stage.name };
+      if (g?.patch) artifacts[stage.name] = { ...artifacts[stage.name], ...g.patch };
+      await ledger.record({ kind: 'human-approve', stage: stage.name, overrode: stuck });
+    } else if (stuck) {
       return { status: 'needs-human', artifacts, ledger, stoppedAt: stage.name };
     }
     i++;

@@ -66,7 +66,7 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   if (options.render && options.approvePlan !== true) throw new Error('Auto: rendering needs --approve-plan (you approve the automatic plan and asset rights).');
   await mkdir(output, { recursive: true });
   log('Inspecting footage...');
-  const analysis = await analyzeFootage(media, execute);
+  const analysis = options.analysis || await analyzeFootage(media, execute);
   await writeJson(path.join(output, 'analysis.json'), analysis);
   const density = options.graphics ?? undefined;
   const wantsGraphics = density !== 'off' && Boolean(options.words || options.transcribe);
@@ -80,7 +80,8 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   if (!wantsGraphics) stages = stages.filter(s => s.name !== 'storyboard');
   if (!options.render) stages = stages.filter(s => s.name !== 'render');
   const ledger = await Ledger.open(path.join(output, 'loop-ledger.json'));
-  const result = await runPipeline({ stages, ledger, maxRounds: options.maxRounds ?? 3, log, ctx: { execute, root: output, agent: options.reviewAgent === 'claude' ? 'claude' : null } });
+  if (options.onEvent) ledger.onRecord = entry => options.onEvent({ type: 'ledger', entry });
+  const result = await runPipeline({ stages, ledger, maxRounds: options.maxRounds ?? 3, log, onEvent: options.onEvent, gate: options.gate, signal: options.signal, ctx: { execute, root: output, agent: options.reviewAgent === 'claude' ? 'claude' : null } });
   await writeFile(path.join(output, 'REVIEW-LOOP.md'), ledger.markdown(`Review loop: ${path.basename(media)}`));
   const a = result.artifacts;
   const rendered = a.render?.report || null;

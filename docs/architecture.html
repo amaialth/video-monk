@@ -105,7 +105,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
 </header>
 
 <nav class="toc"><div>
-  <span class="g"><span class="grp">Start</span><a href="#whatsnew">What's new</a><a href="#bigpicture">Big picture</a><a href="#overview">Overview</a><a href="#architecture">Architecture</a></span><span class="g"><span class="grp">The pipeline</span><a href="#auto">auto</a><a href="#autocut">Cutting</a><a href="#explain">Graphics planner</a><a href="#typography">Typography</a><a href="#style">House style</a></span><span class="g"><span class="grp">Quality</span><a href="#loops">Review loops</a><a href="#gates">Approval gates</a><a href="#library">Asset library</a></span><span class="g"><span class="grp">Rendering</span><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build</a><a href="#audio">Audio</a><a href="#outputs">Outputs</a></span><span class="g"><span class="grp">Reference</span><a href="#commands">Commands</a><a href="#claude">Claude Code</a><a href="#tests">Testing</a><a href="#limits">Limits</a>
+  <span class="g"><span class="grp">Start</span><a href="#whatsnew">What's new</a><a href="#bigpicture">Big picture</a><a href="#overview">Overview</a><a href="#architecture">Architecture</a></span><span class="g"><span class="grp">The pipeline</span><a href="#auto">auto</a><a href="#autocut">Cutting</a><a href="#explain">Graphics planner</a><a href="#typography">Typography</a><a href="#style">House style</a></span><span class="g"><span class="grp">Quality</span><a href="#loops">Review loops</a><a href="#gates">Approval gates</a><a href="#library">Asset library</a></span><span class="g"><span class="grp">Rendering</span><a href="#motion">Motion engine</a><a href="#templates">Templates</a><a href="#manifest">Manifest</a><a href="#build">Build</a><a href="#audio">Audio</a><a href="#outputs">Outputs</a></span><span class="g"><span class="grp">Reference</span><a href="#commands">Commands</a><a href="#studio">Web studio</a><a href="#claude">Claude Code</a><a href="#tests">Testing</a><a href="#limits">Limits</a>
 </div></span></nav>
 </nav>
 
@@ -133,6 +133,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
       <li><b>Unsplash photos.</b> Sharp stills for B-roll with the Unsplash terms handled for you: the download is reported, the photographer is credited, and nothing is saved if that fails. Photos only; demo apps get 50 requests an hour.</li>
       <li><b>No repeated words on screen.</b> A top-bar strip that repeats the burned-in captions is not drawn, and the reviewer flags any that remain.</li>
       <li><b>Several designs per key moment.</b> <code>--variants 3</code> drafts alternatives (structure, typographic, points), renders and audits each, applies the best and keeps all for you to switch.</li>
+      <li><b>A web studio.</b> <code>video-monk ui</code> shows every step visually, with approvals for the script, the storyboard and the final video recorded with who and when.</li>
       <li><b>Pace <code>relaxed</code></b> for interviews and vlogs.</li>
     </ul>
   </div>
@@ -718,6 +719,7 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
   <h2>Command reference</h2>
   <div class="tablewrap"><table>
     <tr><th>Command</th><th>What it does</th></tr>
+    <tr><td><code>ui</code></td><td>Open the web studio: pick a video, see each step, review graphics and B-roll, approve. Local only (127.0.0.1) with a one-time token.</td></tr>
     <tr><td><code>brief</code></td><td>Settle the format first: long-form, vertical short, both or feed; footage type, framing, short length. <code>--questions</code> prints the questions for an agent to ask.</td></tr>
     <tr><td><code>script-check</code>, <code>script-fix</code></td><td>Find mis-heard glossary terms (sound-alikes, split words) and apply confirmed corrections with timing kept and a log.</td></tr>
     <tr><td><code>sfx</code></td><td>Synthesise or Mirelo-generate sound effects and ambience (<code>--kind</code>, <code>--prompt --seconds</code>, <code>--engine mirelo --allow-mirelo</code>), place them on a manifest's graphics (<code>--manifest</code>, <code>--mode</code>, <code>--budget</code>, <code>--plan</code>), check credits (<code>--credits</code>) or build a listening page (<code>--audition</code>).</td></tr>
@@ -745,6 +747,23 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
   </table></div>
   <h3>Environment overrides</h3>
   <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>VIDEO_MONK_LIBRARY</code> (library folder, or <code>off</code>), <code>PEXELS_API_KEY</code> (stock search only), <code>MIRELO_API_KEY</code> (Mirelo sound effects only, with <code>--allow-mirelo</code>), <code>PIXABAY_API_KEY</code> (Pixabay B-roll only, with <code>--allow-search</code>), <code>UNSPLASH_ACCESS_KEY</code> (Unsplash photos only, with <code>--allow-search</code>; <code>UNSPLASH_APP_NAME</code> optional).</p>
+</section>
+
+<section id="studio">
+  <h2>The web studio</h2>
+  <p class="lead"><code>video-monk ui</code> opens a local app on <code>127.0.0.1</code> that drives the same pipeline and shows every step, with human approvals at the points that matter.</p>
+  <div class="grid">
+    <div class="card"><h4>What you see</h4><p>A file browser to pick the recording, the format questions, then a pipeline rail (analyze, transcribe, verify script, cut, storyboard, render, short, final) with live status, a stage panel for each step (waveform and loudness, transcript, before/after cut, graphic previews on a lane timeline, render phases, the finished video and its checks) and a live activity log. The review loop is shown round by round.</p></div>
+    <div class="card"><h4>Approvals</h4><p>The run pauses and waits at the script (each mis-heard-word correction), the storyboard (remove graphics, fetch and choose B-roll), optionally the cut, and a final checklist. Each decision is saved with the user, the time and a fingerprint of the approved manifest in <code>approvals.json</code> and <code>APPROVALS.md</code>.</p></div>
+  </div>
+  <h3>How it is built</h3>
+  <ul>
+    <li><b>Server</b> (<code>src/ui/server.js</code>): Node's <code>http</code> only. Loopback, a one-time token cookie, Host and Origin checks, a strict content-security policy, range streaming for video, server-sent events for live progress (replayed from <code>events.jsonl</code> when a page opens).</li>
+    <li><b>Runner</b> (<code>src/ui/runner.js</code>): runs the toolkit's own functions. <code>runPipeline</code> gained optional <code>onEvent</code>, <code>gate</code> and <code>signal</code>; a gate is awaited when a stage is approved and returns approve, approve with a patch (for example a new manifest with B-roll), or human findings that go back through the producer's revise step and are reviewed again.</li>
+    <li><b>Front end</b> (<code>web/</code>): vanilla ES modules, no build and no dependencies, the bundled Geist and Instrument Serif fonts, light and dark themes.</li>
+    <li><b>Projects</b> live in <code>~/.video-monk/ui/projects/&lt;id&gt;</code> with <code>project.json</code>, <code>events.jsonl</code> and the usual <code>run/</code> output folder; earlier <code>auto</code> output folders open read-only.</li>
+  </ul>
+  <div class="hint"><b>Limits:</b> a run cannot resume after the app is closed (it is marked interrupted; run again, and transcripts, graphics and stock clips are reused from the library). One person on one machine: there are no accounts.</div>
 </section>
 
 <section id="claude">

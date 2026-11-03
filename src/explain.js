@@ -464,6 +464,12 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
     }
     return { ...it, mode, duration: round(Math.round(dur * 30) / 30) };
   });
+  // Nothing may run past the end of the video: shrink a graphic that overhangs it, drop one that no longer has room to read.
+  built = built.map(it => {
+    const room = Math.floor((duration - it.start - 0.05) * 30) / 30;
+    if (it.duration <= room) return it;
+    return room >= Math.max(1.2, (MIN_DURATION[it.template] ?? 2) * 0.6) ? { ...it, duration: round(room) } : null;
+  }).filter(Boolean);
   // Greedy selection under the density budget and face-time rules.
   const minutes = Math.max(duration / 60, 0.25);
   const budget = Math.max(2, Math.round(conf.perMinute * minutes));

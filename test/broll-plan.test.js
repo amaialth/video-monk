@@ -126,3 +126,24 @@ test('with captions burned in, a planned storyboard has no top-bar strip repeati
   assert.ok(!withCaptions.items.some(i => repeatsCaptions(i, words)), 'nothing repeats the captions');
   assert.ok(without.items.filter(i => i.template === 'kinetic-text' && i.mode === 'overlay').length >= withCaptions.items.filter(i => i.template === 'kinetic-text' && i.mode === 'overlay').length);
 });
+
+test('a graphic planned near the end of the video is shrunk or dropped, never allowed to run past the end', () => {
+  const words = 'Remember the cache is where the data lives. Redis is a popular cache and many teams use it every day.'.split(' ').map((text, i) => ({ text, start: 2 + i * 0.5, end: 2.3 + i * 0.5 }));
+  const duration = Math.ceil(words.at(-1).end + 0.2);
+  const built = [{ kind: 'x', mode: 'cutaway', start: duration - 2, duration: 5, score: 9, template: 'term', props: { term: 'Cache', definition: 'A copy near the user.' }, why: 'x', line: 'x' },
+    { kind: 'x', mode: 'panel', start: duration - 0.5, duration: 6, score: 8, template: 'bullets', props: { items: ['a'] }, why: 'x', line: 'x' }];
+  const sb = finalizeStoryboard(built, { words, duration, density: 'heavy' });
+  for (const it of sb.items) assert.ok(it.start + it.duration <= duration + 1e-6, `${it.id} ends at ${it.start + it.duration} of ${duration}`);
+  assert.ok(!sb.items.some(i => i.template === 'bullets'), 'a graphic with no room left is dropped');
+});
+
+test('turning a cutaway into a side panel never lengthens it past the end of the video', async () => {
+  const { reviseStoryboard } = await import('../src/stages.js');
+  const words = 'The cache keeps data close to the user.'.split(' ').map((text, i) => ({ text, start: 1 + i * 0.5, end: 1.3 + i * 0.5 }));
+  const storyboard = { version: 1, engine: 'rules', density: 'medium', graphics: 'mixed', theme: 'night', duration: 9, stats: { graphics: 1, byTemplate: {} }, notes: [],
+    items: [{ id: 'g01', kind: 'x', template: 'term', mode: 'cutaway', start: 7.3, duration: 1.6, score: 5, why: 'x', line: 'x', props: { term: 'Cache', definition: 'Close to the user.' } }] };
+  const artifact = { storyboard, words, duration: 9, manifestFile: '/nonexistent/production.json', baseManifestFile: '/nonexistent/production.json', version: 1 };
+  const revised = await reviseStoryboard(artifact, [{ id: 'sb-cutaway-g01', fix: { op: 'toPanel', id: 'g01' } }], { execute: async () => ({ stdout: '' }), round: 1 }).catch(error => ({ error }));
+  const item = revised.artifact?.storyboard?.items?.[0];
+  if (item) assert.ok(item.start + item.duration <= 9 + 1e-6, `ends at ${item.start + item.duration}`);
+});

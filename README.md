@@ -13,9 +13,24 @@ chapters, thumbnail, stems and a DaVinci Resolve timeline for optional finishing
 - **Gated.** Nothing renders until a plan review approves the exact manifest, media and
   captions (by content hash). Rights and facts stay human decisions.
 
+## The web studio
+
+```bash
+video-monk ui          # opens http://127.0.0.1:4173/?token=... in your browser
+```
+
+A local, professional-grade app for the whole toolkit. Pick a video from a built-in file browser, answer a few questions (long-form, vertical short or both, footage type, pace, graphics, sound, B-roll), then watch every step happen:
+
+- **A pipeline you can see**: footage analysis (waveform, loudness, frames), transcript, script check, cut (before and after), storyboard (a preview of every graphic on a multi-lane timeline with B-roll and sound), render progress, the finished video with its technical checks, and a vertical short.
+- **Approvals built in**: it pauses and waits for you at the script (approve each correction of mis-heard words, with a "Hear it" button), the storyboard (remove graphics, fetch and keep or drop B-roll clips, then approve before anything renders), optionally the cut, and a final sign-off with a checklist. Every decision is recorded with your name, the time and a fingerprint of what you approved (`APPROVALS.md` in the project).
+- **The review loops, visible**: each independent reviewer's findings, what was sent back, what the producer fixed, and the re-check.
+- **Open any earlier output**: "Open an existing output" shows the results of a past `video-monk auto` run read-only.
+
+It listens only on 127.0.0.1, behind a one-time token in the printed address; nothing leaves your machine unless you turn on stock search, Claude or Mirelo for a project. No dependencies and no build step. Projects live in `~/.video-monk/ui/projects`.
+
 ## What's new
 
-- **0.5: production-grade, in the format you need.** Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
+- **0.5: production-grade, in the format you need, now with a web studio.** Asks long-form vs vertical short vs both first (`video-monk brief`), cuts a 9:16 short
   from the long edit (`cutdown`, blurred-background fit), tuned delivery (capped CRF, BT.709, accurate colours), voice treatment, caption and
   graphic readability audits, a logo bug and a drafted `YOUTUBE.md`, a script verifier that fixes mis-heard terms in context (REST, not wrist),
   and sound effects (`--sfx subtle`): built-in synthesis, or Mirelo with your own key (`--sfx-engine mirelo --allow-mirelo`).

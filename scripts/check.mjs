@@ -6,5 +6,5 @@ const walk = dir => readdirSync(dir).flatMap(name => {
   const file = path.join(dir, name);
   return statSync(file).isDirectory() ? walk(file) : file.endsWith('.js') ? [file] : [];
 });
-for (const file of [...walk('bin'), ...walk('src')]) execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
+for (const file of [...walk('bin'), ...walk('src'), ...walk('web')]) execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
 console.log('syntax ok');
