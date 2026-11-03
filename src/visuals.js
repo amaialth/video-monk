@@ -8,7 +8,7 @@ import dns from 'node:dns/promises';
 import net from 'node:net';
 import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
-import { run, exists, writeJson } from './core.js';
+import { run, exists, writeJson, CLAUDE_MODEL } from './core.js';
 import { launchChrome, browsePage } from './chrome.js';
 import { listLibs } from './libs.js';
 import { hook3dHtml, layers3dHtml, ring3dHtml, SCENE3D_KINDS, depthPossible, labelsFor, ringFrom, heroFrom } from './scene3d.js';
@@ -93,7 +93,7 @@ export function normalizeVisualPlan(raw, script) {
   return out.filter(o => o.entities.length || o.broll || o.depth).sort((a, b) => a.beat - b.beat);
 }
 
-export async function recommendVisuals(script, source, { execute = run, model = null, lessons = '', feedback = null } = {}) {
+export async function recommendVisuals(script, source, { execute = run, model = CLAUDE_MODEL, lessons = '', feedback = null } = {}) {
   const args = ['-p', visualPrompt(script, source, { lessons, feedback }), '--output-format', 'json', '--json-schema', JSON.stringify(VISUAL_SCHEMA), '--tools', '', '--no-session-persistence', '--disable-slash-commands'];
   if (model) args.push('--model', model);
   let data;
@@ -197,7 +197,8 @@ export async function captureLogo(entity, { dir, browser, fetcher = fetch, log =
     const provenance = { entity: entity.name, domain, pageUrl, pageTitle: String(r.meta.title || '').slice(0, 120), retrievedAt, rights: `${entity.name} and its logo are trademarks of their owner. Shown only to identify ${entity.name} in an editorial explainer; no endorsement is implied. Check the brand's usage guidelines before publishing.` };
     const nameSeen = [r.meta.title, r.meta.site].join(' ').toLowerCase().includes(entity.name.toLowerCase().split(' ')[0]);
     const alt = r.found?.alt || '';
-    if (alt && !alt.toLowerCase().includes(entity.name.toLowerCase().split(' ')[0])) provenance.warning = `the picture is labelled "${alt}", not "${entity.name}": it may be a seasonal or special logo; check it before approving`;
+    // a label that names something else ("Election Day 2026") is suspicious; a generic one ("light logo", "brand mark") is not
+    if (alt && !alt.toLowerCase().includes(entity.name.toLowerCase().split(' ')[0]) && !/\b(logo|logotype|brand|wordmark|mark|home)\b/i.test(alt)) provenance.warning = `the picture is labelled "${alt}", not "${entity.name}": it may be a seasonal or special logo; check it before approving`;
     else if (!nameSeen) provenance.warning = `the page does not mention "${entity.name}" in its title; check that ${domain} is the right site`;
     const out = path.join(logos, `${base}.png`);
     const attempts = [];
@@ -226,7 +227,7 @@ export async function fetchBroll(items, { dir, search = false, download = { allo
 
 // ---------------------------------------------------------------- the whole research step
 // Nothing is visited or downloaded unless allowed: allowBrowse for the browser, allowStock (search) and allowStockDownload (+ rightsConfirmed) for B-roll.
-export async function researchVisuals({ script, source = '', dir, lessons = '', allowLlm = false, allowBrowse = false, allowStock = false, allowStockDownload = false, rightsConfirmed = false, plan = null, execute = run, fetcher = fetch, model = null, log = () => {} } = {}) {
+export async function researchVisuals({ script, source = '', dir, lessons = '', allowLlm = false, allowBrowse = false, allowStock = false, allowStockDownload = false, rightsConfirmed = false, plan = null, execute = run, fetcher = fetch, model = CLAUDE_MODEL, log = () => {} } = {}) {
   await mkdir(dir, { recursive: true });
   if (!plan) {
     if (!allowLlm) fail('asking Claude where pictures help sends the script and source text to Claude. Confirm with --allow-llm.');

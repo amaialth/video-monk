@@ -3,7 +3,7 @@
 // definitions; this module validates every one against the template schemas, aligns cue words to real word times and
 // hands the result to the same scheduler as the offline rules (density budget, face time, hook protection).
 import os from 'node:os';
-import { run } from './core.js';
+import { run, CLAUDE_MODEL } from './core.js';
 import { templateCatalog, validateProps, TEMPLATES } from './motion/templates.js';
 import { cleanWord } from './stress.js';
 import { DENSITY, MIN_DURATION, finalizeStoryboard, modeFor, sentences, ruleCandidates } from './explain.js';
@@ -162,7 +162,7 @@ export function itemsToCandidates(rawItems, words, { duration, graphics }) {
 }
 const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
-export async function callClaude(prompt, { model, timeout = 600_000 } = {}, execute = run) {
+export async function callClaude(prompt, { model = CLAUDE_MODEL, timeout = 600_000 } = {}, execute = run) {
   const args = ['-p', prompt, '--output-format', 'json', '--json-schema', JSON.stringify(OUTPUT_SCHEMA), '--tools', '', '--no-session-persistence', '--disable-slash-commands'];
   if (model) args.push('--model', model);
   const { stdout } = await execute('claude', args, { cwd: os.tmpdir(), timeout });

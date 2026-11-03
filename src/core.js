@@ -82,3 +82,6 @@ export async function loadProject(folder) {
   }
   return { root, config };
 }
+
+// Every agent that calls Claude (script writer, director, visual planner, reviewers, explain planner) uses this model unless told otherwise.
+export const CLAUDE_MODEL = process.env.VIDEO_MONK_CLAUDE_MODEL || 'claude-opus-5-5';

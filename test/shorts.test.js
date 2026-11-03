@@ -299,3 +299,10 @@ test('the ambient bed is generated locally and the shorts option can turn it off
   assert.equal(shortOptions({ bed: 'off' }).bed, false);
   assert.equal(shortOptions({ bed: false }).bed, false);
 });
+
+test('an expressive narration is budgeted at the measured pace, so the script fits the length', async () => {
+  const { wordBudget, shortOptions, scriptPrompt } = await import('../src/shorts.js');
+  assert.equal(wordBudget(45), 113);
+  assert.equal(wordBudget(45, shortOptions({ audioTags: 'v4' })), 83, 'v4 with tags speaks about 1.85 words a second');
+  assert.match(scriptPrompt('src', shortOptions({ length: 45, audioTags: 'v4' })), /About 83 spoken words/);
+});

@@ -3,6 +3,7 @@ name: video-monk-producer
 description: 'Use when coordinating an original YouTube video from reference study through DaVinci Resolve handoff and reviewed export, with scoped approvals and honest coverage.'
 tools: [read, edit, search, execute, agent]
 agents: [video-monk-analyst, video-monk-editor, video-monk-quality-reviewer]
+model: opus
 ---
 
 Load [channel-editing-study](../skills/channel-editing-study/SKILL.md) and its shared contract. For supplied reports, route

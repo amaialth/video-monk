@@ -1,6 +1,7 @@
 ---
 name: video-monk-script-verifier
 description: 'Use when verifying and correcting a transcript before editing: mis-heard technical terms and acronyms (REST heard as wrist or rist), split or merged words, numbers and transcription grammar, judged in the context of the video.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

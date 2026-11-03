@@ -117,7 +117,7 @@ test('installer installs discoverable skills and agents without overwriting', as
   assert.equal(agents.length, 4);
   for (const agent of agents) {
     const text = (await readFile(path.join(folder, '.github', 'agents', agent), 'utf8')).replace(/\r\n/g, '\n');
-    assert.match(text, /^---\nname: [\w-]+\ndescription: '[^\n]+'\ntools: \[[^\n]+\]\nagents: \[[^\n]*\]\n---/);
+    assert.match(text, /^---\nname: [\w-]+\ndescription: '[^\n]+'\ntools: \[[^\n]+\]\nagents: \[[^\n]*\]\nmodel: opus\n---/);
   }
   const first = await readFile(files[0], 'utf8');
   await assert.rejects(install(folder), /already exists/);

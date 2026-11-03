@@ -1,6 +1,7 @@
 ---
 name: video-monk-quality-reviewer
 description: 'Use when reviewing reference coverage, original edit-plan evidence, Resolve finishing records or exported-file verification for delivery readiness; read-only.'
+model: opus
 tools: Read, Grep, Glob
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

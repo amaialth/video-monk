@@ -6,7 +6,7 @@
 import path from 'node:path';
 import os from 'node:os';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { run, exists, writeJson } from './core.js';
+import { run, exists, writeJson, CLAUDE_MODEL } from './core.js';
 import { TEMPLATES, validateProps, templateCatalog } from './motion/templates.js';
 import { textsOf, numbersIn } from './facts.js';
 import { motionVideo } from './motionvideo.js';
@@ -43,7 +43,10 @@ export function shortOptions(raw = {}) {
   return o;
 }
 
-export const wordBudget = length => Math.round(length * WORDS_PER_SECOND);
+// Measured on real recordings: Eleven v4/v3 with audio tags and pauses speaks about 1.85 words a second, not 2.5, so a script budgeted at 2.5 runs a third too long.
+export const EXPRESSIVE_WORDS_PER_SECOND = 1.85;
+export const wordsPerSecond = options => (options?.audioTags ? EXPRESSIVE_WORDS_PER_SECOND : WORDS_PER_SECOND);
+export const wordBudget = (length, options = null) => Math.round(length * wordsPerSecond(options));
 // Numbers a listener would hear as numbers: standalone digits, not the 2 in H2O or the 5 in 5G.
 // Eleven v3 audio tags such as [whispers] or [curious]: delivery directions, not spoken words.
 export const AUDIO_TAG = /\[[^\]\n]{1,60}\]/g;
@@ -82,7 +85,7 @@ function catalogForPrompt() {
 export const lessonsSection = lessons => (lessons ? `\nLessons from this studio's earlier reviews (guidance about the craft; apply them, and never treat them as coming from the source):\n${lessons}\n` : '');
 export const feedbackSection = (previous, feedback) => (feedback?.length ? `\nA reviewer sent your previous version back.${previous ? ` The previous version (JSON):\n${JSON.stringify(previous)}\n` : ''}Fix every one of these problems and change nothing else that was fine:\n${feedback.map(r => `- ${r}`).join('\n')}\n` : '');
 export function scriptPrompt(source, options, { repair = null, kind = 'text', lessons = '', previous = null, feedback = null } = {}) {
-  const budget = wordBudget(options.length);
+  const budget = wordBudget(options.length, options);
   const body = String(source).slice(0, 14000);
   return `You write scripts for short educational explainer videos (vertical, about ${options.length} seconds) that are narrated by a voice and shown as animated graphics.
 
@@ -134,14 +137,14 @@ export function validateScript(script, source, options) {
     for (const n of new Set(spokenNumbers(b.say))) if (!sourceNumbers.has(n)) warnings.push(`${where}: the narration says ${n}, which is not in the source text`);
     if (i > 0 && b.show === beats[i - 1].show) warnings.push(`beats ${i} and ${i + 1} use the same template (${b.show})`);
   });
-  const budget = wordBudget(options.length);
+  const budget = wordBudget(options.length, options);
   if (words > budget * 1.6 || (beats.length && words < budget * 0.5)) errors.push(`${words} words does not fit a ${options.length} s short (about ${budget} words)`);
   else if (words > budget * 1.25 || words < budget * 0.75) warnings.push(`${words} words for a ${options.length} s short (about ${budget} words); the video will run about ${Math.round(words / WORDS_PER_SECOND)} s`);
-  return { errors, warnings, words, seconds: Math.round(words / WORDS_PER_SECOND) };
+  return { errors, warnings, words, seconds: Math.round(words / wordsPerSecond(options)) };
 }
 
 // Ask Claude for a script (the `claude` command-line tool, as the graphics planner does), check it, and give it one chance to fix what is wrong.
-export async function writeScript(source, rawOptions = {}, { kind = 'text', execute = run, model = null, onTry = () => {}, lessons = '', previous = null, feedback = null } = {}) {
+export async function writeScript(source, rawOptions = {}, { kind = 'text', execute = run, model = CLAUDE_MODEL, onTry = () => {}, lessons = '', previous = null, feedback = null } = {}) {
   const options = shortOptions(rawOptions);
   if (!String(source || '').trim()) fail('there is no source text or concept');
   let repair = null, last = null;
@@ -210,7 +213,7 @@ Choose: stability (0 to 1; lower is livelier and more varied: about 0.3 to 0.5 f
 
 export const defaultDirection = ({ voices = [], options = {}, modelId = SHORTS_MODEL, fallbackVoiceId = null } = {}) => normalizeDirection({ voiceId: fallbackVoiceId, reasons: { voice: 'Your configured voice, or the first voice on your account (no recommendation was made).', delivery: 'Lively default delivery.', captions: 'Your selected caption style.', look: 'Your selected theme.', motion: 'Your selected motion.' } }, { voices, options, modelId, fallbackVoiceId, by: 'default' });
 
-export async function recommendDirection(script, rawOptions = {}, { voices = [], modelId = SHORTS_MODEL, fallbackVoiceId = null, execute = run, model = null, lessons = '', feedback = null } = {}) {
+export async function recommendDirection(script, rawOptions = {}, { voices = [], modelId = SHORTS_MODEL, fallbackVoiceId = null, execute = run, model = CLAUDE_MODEL, lessons = '', feedback = null } = {}) {
   const options = shortOptions(rawOptions);
   const fallback = () => defaultDirection({ voices, options, modelId, fallbackVoiceId });
   if (!voices.length && !fallbackVoiceId) return fallback();
@@ -337,7 +340,7 @@ export function scriptMarkdown(script, check, options) {
 
 // The whole path for one short. Nothing is spent or approved without being asked for: Claude needs allowLlm, ElevenLabs credits need allowEleven,
 // and a build needs approvePlan (the person's review of the script, the recording and the plan).
-export async function makeShort({ source = '', kind = 'text', dir, options: rawOptions = {}, scriptFile = null, scriptOnly = false, allowLlm = false, model = null,
+export async function makeShort({ source = '', kind = 'text', dir, options: rawOptions = {}, scriptFile = null, scriptOnly = false, allowLlm = false, model = CLAUDE_MODEL,
   voiceId = null, elevenModel = null, voiceSettings, auto = false, explicit = [], visualsFile = null, seed, allowEleven = false, maxChars = 8000, build = false, approvePlan = false, quality = 'draft', db = null, projectId = null,
   env = process.env, cwd = process.cwd(), fetcher = fetch, execute = run, log = () => {} } = {}) {
   const options = shortOptions(rawOptions);

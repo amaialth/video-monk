@@ -2,7 +2,8 @@
 // A background worker takes one job at a time with no deadline. Nothing is sent, spent or approved without the person: every gate is an explicit confirmation.
 import path from 'node:path';
 import { rm } from 'node:fs/promises';
-import { createPipeline, grantGate } from '../pipeline/agents.js';
+import { createPipeline, grantGate, resume, AGENT_PROFILES, REVIEWER_OF } from '../pipeline/agents.js';
+import { CLAUDE_MODEL } from '../core.js';
 import { GATES } from '../pipeline/queue.js';
 import * as L from '../pipeline/lessons.js';
 import { shortsRoot } from './shorts.js';
@@ -31,7 +32,7 @@ export function registerPipeline(on, { store, err, deps = {} }) {
     else if (last?.type === 'needs.human') status = 'needs-you';
     else if (jobs.some(j => j.type === 'short.completed')) status = 'complete';
     else if (!real.length) status = 'idle';
-    return { status, counts, gates: q.gates(id).map(g => g.gate), waiting: q.waiting(id),
+    return { status, counts, agents: AGENT_PROFILES, reviewerOf: REVIEWER_OF, model: CLAUDE_MODEL, gates: q.gates(id).map(g => g.gate), waiting: q.waiting(id),
       jobs: jobs.slice(-120).map(j => ({ id: j.id, handler: j.handler, type: j.type, status: j.status, attempts: j.attempts, createdAt: j.created_at, startedAt: j.started_at, endedAt: j.ended_at, gate: j.wait_gate, note: j.wait_note, error: j.error, payload: j.type === 'needs.human' ? j.payload : undefined })),
       reviews: reviews.map(r => ({ id: r.id, stage: r.stage, round: r.round, reviewer: r.reviewer, verdict: r.verdict, at: r.at, metrics: r.metrics, findings: r.findings.map(f => ({ id: f.id, code: f.code, severity: f.severity, message: f.message, suggestion: f.suggestion, owner: f.owner, lesson: f.lesson, by: f.reviewer || 'code' })) })),
       feedback: L.feedbackFor(store.db, id), needsYou: last?.type === 'needs.human' ? last.payload : null };
@@ -69,6 +70,7 @@ export function registerPipeline(on, { store, err, deps = {} }) {
     const kind = ['note', 'dispute'].includes(body.kind) ? body.kind : 'note';
     try { const r = L.recordFeedback(store.db, { shortId: id, stage: body.stage, kind, text: String(body.text || ''), details: { code: body.code ? String(body.code).slice(0, 60) : undefined } }); return { ok: true, lesson: r.lesson }; } catch (error) { throw err(String(error.message)); }
   });
+  on('POST', '/api/shorts/:sid/pipeline/resume', async ({ params, body }) => { const id = sid(params); if (summary(id).status !== 'needs-you') throw err('Nothing is waiting for your decision', 409); const r = await resume(pipeline, { shortId: id, db: store.db, note: String(body.note || '').slice(0, 500) }); kick(); return { ...r, ...summary(id) }; });
   on('POST', '/api/shorts/:sid/pipeline/retry', async ({ params }) => { const id = sid(params); const n = pipeline.queue.retryDead(id); kick(); return { retried: n }; });
   on('POST', '/api/shorts/:sid/pipeline/cancel', async ({ params }) => ({ cancelled: pipeline.queue.cancel(sid(params)) }));
 

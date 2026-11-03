@@ -3,6 +3,7 @@ name: video-monk-quality-reviewer
 description: 'Use when reviewing reference coverage, original edit-plan evidence, Resolve finishing records or exported-file verification for delivery readiness; read-only.'
 tools: [read, search]
 agents: []
+model: opus
 ---
 
 Read the [shared contract](../skills/channel-editing-study/references/workflow-contract.md). Load the study index

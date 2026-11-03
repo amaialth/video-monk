@@ -33,7 +33,9 @@ export const roundFor = (db, shortId, stage) => db.get('SELECT COUNT(*) AS n FRO
 
 // ---------------------------------------------------------------- learning
 // One finding seen again is a pattern. `source` says who wrote the rule: 'code' (our own reviewers), 'claude' (a model reviewer) or 'human'.
-export function learn(db, finding, { stage, source = 'code', now = Date.now() } = {}) {
+// With a shortId, "seen again" means in a DIFFERENT production: a problem repeated across the rounds of one short is one sighting, not a pattern.
+const sightings = (db, stage, code, fallback) => { const r = db.get("SELECT COUNT(DISTINCT short_id) AS n FROM pipeline_reviews WHERE stage = ? AND findings LIKE ?", stage, `%"code":"${code}"%`); return r?.n > 0 ? r.n : fallback; };
+export function learn(db, finding, { stage, source = 'code', now = Date.now(), shortId = null } = {}) {
   const code = codeOf(finding.code);
   if (!code || !finding.lesson) return null;
   let rule; try { rule = sanitizeRule(finding.lesson); } catch { return null; }
@@ -44,7 +46,7 @@ export function learn(db, finding, { stage, source = 'code', now = Date.now() } 
     db.run('INSERT INTO lessons (stage, code, rule, source, status, severity, occurrences, first_seen, last_seen) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)', stage, code, rule, source, status, severity, now, now);
   } else {
     let status = existing.status;
-    const occurrences = existing.occurrences + 1;
+    const occurrences = shortId ? Math.max(1, sightings(db, stage, code, existing.occurrences)) : existing.occurrences + 1;
     if (status === 'candidate' && occurrences >= 2) status = source === 'code' ? 'active' : 'proposed';       // a model's rule always waits for the person
     db.run('UPDATE lessons SET occurrences = ?, last_seen = ?, status = ?, severity = ? WHERE id = ?', occurrences, now, status, WEIGHT[severity] > WEIGHT[existing.severity] ? severity : existing.severity, existing.id);
   }
@@ -73,6 +75,17 @@ export function judgeLessons(db, stage, appliedIds, findings) {
   return { held, recurred };
 }
 
+// Repair counts from the stored reviews (distinct productions only); a rule that became active on repeats within one short goes back to candidate, unless the person made or approved it.
+export function recomputeLessons(db) {
+  let changed = 0;
+  for (const l of db.all("SELECT * FROM lessons WHERE source != 'human'")) {
+    const n = sightings(db, l.stage, l.code, l.occurrences);
+    const status = l.status === 'active' && n < 2 && !l.note?.includes('approved') ? 'candidate' : l.status;
+    if (n !== l.occurrences || status !== l.status) { db.run('UPDATE lessons SET occurrences = ?, status = ? WHERE id = ?', n, status, l.id); changed++; }
+  }
+  return changed;
+}
+
 export function listLessons(db, { stage = null, status = null } = {}) {
   const where = [], params = [];
   if (stage) { where.push('stage = ?'); params.push(stage); }
@@ -81,7 +94,7 @@ export function listLessons(db, { stage = null, status = null } = {}) {
 }
 export function setLessonStatus(db, id, status) {
   if (!LESSON_STATUSES.includes(status)) fail(`unknown status ${status}`);
-  return db.run('UPDATE lessons SET status = ? WHERE id = ?', status, id).changes;
+  return db.run('UPDATE lessons SET status = ?, note = CASE WHEN ? = \'active\' THEN \'approved by the person\' ELSE note END WHERE id = ?', status, status, id).changes;
 }
 export function editLesson(db, id, rule) { return db.run("UPDATE lessons SET rule = ?, status = CASE WHEN status IN ('ineffective','proposed') THEN 'active' ELSE status END, recurred = 0, held = 0 WHERE id = ?", sanitizeRule(rule), id).changes; }
 export function deleteLesson(db, id) { return db.run('DELETE FROM lessons WHERE id = ?', id).changes; }

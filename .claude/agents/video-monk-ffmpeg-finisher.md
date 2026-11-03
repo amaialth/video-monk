@@ -1,6 +1,7 @@
 ---
 name: video-monk-ffmpeg-finisher
 description: 'Use when rendering, mastering and verifying a non-Resolve final video with FFmpeg from an approved version-2 timeline, motion graphics and licensed narration/music.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

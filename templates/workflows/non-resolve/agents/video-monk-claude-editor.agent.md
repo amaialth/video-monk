@@ -3,6 +3,7 @@ name: video-monk-claude-editor
 description: 'Use when editing and coordinating a video without Resolve in Claude Code: auto-cut, whisper.cpp captions, Chrome-rendered motion graphics, Chrome research, OBS Studio, free licensed audio and FFmpeg mastering.'
 tools: [read, edit, search, execute, agent]
 agents: [video-monk-parakeet-transcriber, video-monk-script-verifier, video-monk-hyperframes-animator, video-monk-chrome-researcher, video-monk-obs-screen-recorder, video-monk-free-sound-designer, video-monk-ffmpeg-finisher, video-monk-stage-reviewer, video-monk-asset-librarian]
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md).

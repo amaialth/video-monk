@@ -1,6 +1,7 @@
 ---
 name: video-monk-editor
 description: 'Use when storyboarding and validating an original-footage rough cut from approved style direction, then preparing a picture-only Resolve handoff with manual finishing tasks.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

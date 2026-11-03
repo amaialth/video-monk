@@ -3,6 +3,7 @@ name: video-monk-free-sound-designer
 description: 'Use when selecting free YouTube Audio Library music and SFX or optional Pixabay audio, recording per-track licenses and preparing explicit production mix cues.'
 tools: [read, edit, search]
 agents: []
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), stage 6.

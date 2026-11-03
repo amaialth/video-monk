@@ -1,7 +1,7 @@
 // Optional independent reviewer backed by Claude (headless `claude -p`). It sees only the artifact and the criteria, never the
 // producer's reasoning, and answers in the shared finding schema. Opt-in: material is sent to Anthropic via your Claude Code login.
 import os from 'node:os';
-import { run } from './core.js';
+import { run, CLAUDE_MODEL } from './core.js';
 import { finding } from './loop.js';
 
 const SCHEMA = {
@@ -56,7 +56,7 @@ ${material}
 </material>`;
 }
 
-export async function claudeReview({ stage, material, images = [], cwd = os.tmpdir(), model, allowLlm, style = null }, execute = run) {
+export async function claudeReview({ stage, material, images = [], cwd = os.tmpdir(), model = CLAUDE_MODEL, allowLlm, style = null }, execute = run) {
   if (allowLlm !== true) throw new Error('Review: the Claude reviewer sends the material to Anthropic through your Claude Code login. Pass --allow-llm to confirm.');
   let prompt = reviewPrompt(stage, material, style);
   const args = ['-p', '', '--output-format', 'json', '--json-schema', JSON.stringify(SCHEMA), '--no-session-persistence', '--disable-slash-commands'];

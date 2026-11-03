@@ -3,6 +3,7 @@ name: video-monk-editor
 description: 'Use when storyboarding and validating an original-footage rough cut from approved style direction, then preparing a picture-only Resolve handoff with manual finishing tasks.'
 tools: [read, edit, search, execute]
 agents: []
+model: opus
 ---
 
 Load [original-edit-planning](../skills/original-edit-planning/SKILL.md) and its shared contract.

@@ -41,7 +41,7 @@ export function checkScript(script, source, options) {
   const beats = script.beats || [];
   const hook = wordsOf(beats[0]?.say || '');
   if (hook.length > 14) f.push(makeFinding('script', 'hook-long', 'major', `the hook is ${hook.length} words (at most 14)`, { target: { beat: 1 }, suggestion: 'cut it to one short question or surprising claim', lesson: 'Keep the opening hook to at most 14 words: one short question or surprising claim.' }));
-  const budget = wordBudget(options.length || 45), words = beats.reduce((n, b) => n + countWords(b.say), 0);
+  const budget = wordBudget(options.length || 45, options), words = beats.reduce((n, b) => n + countWords(b.say), 0);
   if (words > budget * 1.2) f.push(makeFinding('script', 'too-long', 'major', `${words} spoken words for a ${options.length || 45} s short (about ${budget} fit): it will run over`, { suggestion: 'trim the least important beat or shorten sentences', lesson: 'Aim for about 2.5 spoken words per second of the target length; audio tags and pauses add time, so land at the low end.' }));
   else if (words < budget * 0.7) f.push(makeFinding('script', 'too-short', 'minor', `${words} spoken words is short for ${options.length || 45} s`, { lesson: 'Use most of the word budget so the short does not feel rushed or empty.' }));
   if (beats.length < 6 || beats.length > 9) f.push(makeFinding('script', 'beat-count', 'minor', `${beats.length} beats (6 to 9 read best)`, { lesson: 'Use 6 to 9 beats of 10 to 30 words each.' }));
@@ -126,7 +126,10 @@ async function loudness(file, execute) {
 export async function checkAudio({ script, audio, options, execute = run, transcribe = true, workDir }) {
   const f = [], metrics = {};
   const target = options.length || 45;
-  if (audio.totalSeconds > target * 1.1) f.push(makeFinding('audio', 'too-long', 'major', `the narration runs ${audio.totalSeconds.toFixed(1)} s for a ${target} s short`, { owner: 'script', suggestion: 'shorten the longest beats, or pick a longer length', lesson: 'Audio tags and pauses add time: write to about 85% of the word budget for the target length.' }));
+  // a short must end inside 60 s; a little over the chosen length is a note, not a reason to re-record (each re-record costs credits)
+  const over = audio.totalSeconds > 60 || audio.totalSeconds > target * 1.3;
+  if (over) f.push(makeFinding('audio', 'too-long', 'major', `the narration runs ${audio.totalSeconds.toFixed(1)} s for a ${target} s short`, { owner: 'script', suggestion: 'shorten the longest beats, or pick a longer length', lesson: 'Audio tags and pauses add time: write to about 85% of the word budget for the target length.' }));
+  else if (audio.totalSeconds > target * 1.1) f.push(makeFinding('audio', 'a-little-long', 'minor', `the narration runs ${audio.totalSeconds.toFixed(1)} s for a ${target} s short (still inside 60 s)`, { owner: 'script' }));
   (audio.layout || []).forEach((beat, i) => {
     const w = countWords(script.beats[i].say), secs = beat.narrationSeconds || beat.seconds;
     if (secs && w / secs > 3.8) f.push(makeFinding('audio', 'pace-fast', 'minor', `beat ${i + 1} is ${w} words in ${secs.toFixed(1)} s: that is fast`, { target: { beat: i + 1 }, owner: 'script' }));

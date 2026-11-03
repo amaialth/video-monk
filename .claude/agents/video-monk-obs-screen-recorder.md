@@ -1,6 +1,7 @@
 ---
 name: video-monk-obs-screen-recorder
 description: 'Use when preparing original screen, webcam and audio recordings with free OBS Studio and optional Shotcut edits for local production handoffs.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

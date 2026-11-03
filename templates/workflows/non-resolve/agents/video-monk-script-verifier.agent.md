@@ -2,6 +2,7 @@
 name: video-monk-script-verifier
 description: 'Use when verifying and correcting a transcript before editing: mis-heard technical terms and acronyms (REST heard as wrist or rist), split or merged words, numbers and transcription grammar, judged in the context of the video.'
 tools: [read, edit, search, execute]
+model: opus
 ---
 
 Read [script verification](../skills/non-resolve-production/references/script-verification.md). You verify the words, not the edit.

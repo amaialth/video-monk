@@ -7,7 +7,7 @@ import path from 'node:path';
 import { run } from '../src/core.js';
 import { Db } from '../src/db.js';
 import { findChrome } from '../src/chrome.js';
-import { createPipeline, grantGate } from '../src/pipeline/agents.js';
+import { createPipeline, grantGate, resume, AGENT_PROFILES, REVIEWER_OF, agentLabel } from '../src/pipeline/agents.js';
 import { reviewsFor, listLessons, lessonBlock } from '../src/pipeline/lessons.js';
 import { checkScript, checkDirection, checkPlan, checkVisuals, verdictOf, makeFinding } from '../src/pipeline/reviewers.js';
 import { shortOptions } from '../src/shorts.js';
@@ -201,4 +201,30 @@ test('the web app\'s pipeline routes: nothing starts without confirmations, gate
   assert.equal((await call('PUT', `/api/lessons/${own.id}`, { status: 'disabled' })).status, 200);
   assert.equal((await call('DELETE', `/api/lessons/${own.id}`)).json.deleted, true);
   for (const r of [st, after, list]) assert.ok(!JSON.stringify(r).includes(SECRET));
+});
+
+test('after a stage comes to the person, resuming gives fresh rounds and sends the open findings back to the right agent; every agent has a name', async t => {
+  const { db, id, pipeline } = await setup(t);
+  const q = pipeline.queue;
+  for (let r = 1; r <= 3; r++) (await import('../src/pipeline/lessons.js')).recordReview(db, { shortId: id, stage: 'script', round: r, reviewer: 'code', verdict: 'revise', findings: [] });
+  q.publish(id, 'needs.human', { stage: 'script', findings: [{ severity: 'major', message: 'Name Knostic in beat 5' }] });
+  const r = await resume(pipeline, { shortId: id, db, note: 'Keep it under 50 seconds' });
+  assert.deepEqual(r, { stage: 'script', next: 'script.revise' });
+  const job = q.jobs(id).find(j => j.type === 'script.revise');
+  assert.equal(job.handler, 'script-writer');
+  assert.deepEqual(job.payload.findings.map(f => f.message), ['Name Knostic in beat 5', 'The person says: Keep it under 50 seconds']);
+  const state = JSON.parse(await readFile(path.join(pipeline.dirOf(id), 'short.json'), 'utf8'));
+  assert.equal(state.roundBase.script, 3, 'the next script review counts as round 1 of a fresh set');
+  for (const name of Object.keys(pipeline.agents)) assert.ok(AGENT_PROFILES[name]?.person, `${name} has a name`);
+  for (const stage of Object.keys(REVIEWER_OF)) assert.ok(pipeline.agents[REVIEWER_OF[stage]], stage);
+  assert.equal(agentLabel('script-writer'), 'Carl Sagan (script writer)');
+});
+
+test('a narration a little over the chosen length is a note; only past 60 s or far past the target is it sent back', async () => {
+  const { checkAudio } = await import('../src/pipeline/reviewers.js');
+  const script = { beats: [{ say: 'one two three' }] };
+  const run = async seconds => (await checkAudio({ script, audio: { totalSeconds: seconds, layout: [] }, options: shortOptions({ length: 45 }), transcribe: false })).findings.map(f => `${f.code}:${f.severity}`);
+  assert.deepEqual(await run(49.6), ['audio.a-little-long:minor']);
+  assert.deepEqual(await run(61), ['audio.too-long:major']);
+  assert.deepEqual(await run(44), []);
 });

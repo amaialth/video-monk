@@ -1,6 +1,7 @@
 ---
 name: video-monk-free-sound-designer
 description: 'Use when selecting free YouTube Audio Library music and SFX or optional Pixabay audio, recording per-track licenses and preparing explicit production mix cues.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

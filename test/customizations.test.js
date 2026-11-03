@@ -101,7 +101,8 @@ test('agent tools and delegation enforce distinct read-only and operator roles',
     assert.deepEqual(list(fields.tools), tools);
     assert.deepEqual(list(fields.agents), role === 'producer'
       ? ['video-monk-analyst', 'video-monk-editor', 'video-monk-quality-reviewer'] : []);
-    assert.deepEqual(Object.keys(fields).sort(), ['agents', 'description', 'name', 'tools']);
+    assert.deepEqual(Object.keys(fields).sort(), ['agents', 'description', 'model', 'name', 'tools']);
+    assert.equal(fields.model, 'opus', 'every agent runs on Opus');
   }
   assert.match(content(path.join('agents', 'video-monk-analyst.agent.md')), /Operator-only steps[\s\S]*do not override/);
   assert.match(content(path.join('agents', 'video-monk-quality-reviewer.agent.md')), /Read\/search is permitted/);

@@ -3,6 +3,7 @@ name: video-monk-analyst
 description: 'Use when assessing supplied reference-video evidence or external editing reports for timestamped observations, limitations and original-production options; read-only.'
 tools: [read, search]
 agents: []
+model: opus
 ---
 
 Load [channel-editing-study](../skills/channel-editing-study/SKILL.md), its shared contract and only the assigned topic

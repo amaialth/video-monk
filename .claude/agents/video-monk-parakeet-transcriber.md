@@ -1,6 +1,7 @@
 ---
 name: video-monk-parakeet-transcriber
 description: 'Use when transcribing authorized local audio or video with whisper.cpp (default) or Parakeet through HyperFrames and reviewing source-relative word timestamps.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

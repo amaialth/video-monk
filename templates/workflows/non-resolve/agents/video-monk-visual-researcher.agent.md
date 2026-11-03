@@ -3,6 +3,7 @@ name: video-monk-visual-researcher
 description: 'Use when a short or explainer needs real pictures or depth: plan where true 3D scenes, logos and footage help, find the logos of the companies and products the script names (a browser visits each one''s own website), look for stock footage for scenes that benefit, and bring back candidates with their source and rights note for the user to approve.'
 tools: [read, search, execute]
 agents: []
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), [educational shorts](../skills/non-resolve-production/references/shorts.md) and [B-roll](../skills/non-resolve-production/references/broll.md).

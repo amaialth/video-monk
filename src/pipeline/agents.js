@@ -19,6 +19,24 @@ import { shortOptions, writeScript, generateNarration, planShort, recommendDirec
 import { researchVisuals, readVisuals } from '../visuals.js';
 import { reviewProduction, buildProduction } from '../production.js';
 
+// Each agent is named, as a homage, after a person known for that craft (historical figures only; the names are labels, not impersonations).
+export const AGENT_PROFILES = {
+  'script-writer': { person: 'Carl Sagan', role: 'Script writer', craft: 'made hard science clear and wondrous for everyone' },
+  'script-reviewer': { person: 'Maxwell Perkins', role: 'Script reviewer', craft: 'the editor who made great writers better' },
+  'director': { person: 'Alfred Hitchcock', role: 'Director', craft: 'chose every voice, look and beat with intent' },
+  'direction-reviewer': { person: 'Roger Ebert', role: 'Direction reviewer', craft: 'judged whether a film\'s choices served it' },
+  'visual-planner': { person: 'Paul Rand', role: 'Visual researcher', craft: 'designed the brand marks the world knows' },
+  'visual-reviewer': { person: 'Massimo Vignelli', role: 'Visual reviewer', craft: 'held images and type to exacting standards' },
+  'narrator': { person: 'Orson Welles', role: 'Narrator', craft: 'the voice that made radio feel live' },
+  'audio-reviewer': { person: 'Les Paul', role: 'Sound reviewer', craft: 'pioneered recording and sound engineering' },
+  'producer': { person: 'Sergei Eisenstein', role: 'Producer and planner', craft: 'invented montage: scenes timed to meaning' },
+  'plan-reviewer': { person: 'Dede Allen', role: 'Plan reviewer', craft: 'the film editor who cut for pace and clarity' },
+  'renderer': { person: 'Georges Méliès', role: 'Renderer', craft: 'the first master of film effects' },
+  'final-reviewer': { person: 'Pauline Kael', role: 'Final reviewer', craft: 'the critic who watched every frame' }
+};
+export const REVIEWER_OF = { script: 'script-reviewer', direction: 'direction-reviewer', visuals: 'visual-reviewer', audio: 'audio-reviewer', plan: 'plan-reviewer', render: 'final-reviewer' };
+export const agentLabel = handler => (AGENT_PROFILES[handler] ? `${AGENT_PROFILES[handler].person} (${AGENT_PROFILES[handler].role.toLowerCase()})` : handler || '(recorded)');
+
 const note = f => `${f.message}${f.suggestion ? ` (${f.suggestion})` : ''}`;
 const blocking = f => f.severity === 'blocker' || f.severity === 'major';
 const readJson = async file => JSON.parse(await readFile(file, 'utf8'));
@@ -39,7 +57,7 @@ export function createPipeline({ db, root, execute = run, fetcher = fetch, env =
       script: async () => readJson(path.join(dir, 'script.json')).catch(() => null),
       gate: (name, why = '') => { if (!queue.granted(shortId, name)) throw new WaitForGate(name, why); },
       emit: (type, payload = {}) => queue.publish(shortId, type, payload, { parentId: job.id }),
-      log: message => log(`[${shortId}] ${message}`)
+      log: message => log(`[${shortId}] ${AGENT_PROFILES[job.handler]?.person || job.handler}: ${message}`)
     };
     api.options = async () => { const s = await api.st(); const m = s.direction?.modelId || s.modelId || shortsModel({}); return shortOptions({ ...s.options, audioTags: isV4(m) ? 'v4' : isV3(m) }); };
     api.allowLlm = () => queue.granted(shortId, 'llm');
@@ -51,13 +69,14 @@ export function createPipeline({ db, root, execute = run, fetcher = fetch, env =
   async function conclude(api, stage, review, { approved, revised, payload = {} }) {
     const round = L.roundFor(db, api.shortId, stage);
     L.recordReview(db, { shortId: api.shortId, stage, round, reviewer: review.reviewer, verdict: review.verdict, findings: review.findings, metrics: review.metrics, jobId: api.job.id, now: now() });
-    for (const f of review.findings) if (f.code && f.lesson) L.learn(db, f, { stage, source: f.reviewer === 'claude' ? 'claude' : 'code', now: now() });
+    for (const f of review.findings) if (f.code && f.lesson) L.learn(db, f, { stage, source: f.reviewer === 'claude' ? 'claude' : 'code', now: now(), shortId: api.shortId });
     const s = await api.st();
     L.judgeLessons(db, stage, s.applied?.[stage] || [], review.findings);
     await api.save({ applied: { ...(s.applied || {}), [stage]: [] }, lastReview: { ...(s.lastReview || {}), [stage]: { round, verdict: review.verdict, at: new Date().toISOString() } } });
     const notes = review.findings.filter(f => !blocking(f));
+    const used = round - ((s.roundBase || {})[stage] || 0);          // rounds since the person last resumed this stage
     if (review.verdict === 'approve') return api.emit(approved, { ...payload, round, notes: notes.map(f => f.message).slice(0, 12) });
-    if (round < maxRounds) return api.emit(revised, { ...payload, round, findings: review.findings.filter(blocking).concat(notes) });
+    if (used < maxRounds) return api.emit(revised, { ...payload, round, findings: review.findings.filter(blocking).concat(notes) });
     return api.emit('needs.human', { stage, round, findings: review.findings.filter(blocking), reason: `still not approved after ${round} review rounds` });
   }
   const reroutes = async (api, key) => { const s = await api.st(); return (s.reroutes || {})[key] || 0; };
@@ -170,7 +189,7 @@ export function createPipeline({ db, root, execute = run, fetcher = fetch, env =
       const toScript = review.findings.filter(f => blocking(f) && f.owner === 'script');
       if (review.verdict === 'revise' && toScript.length && await reroutes(api, 'script') < maxReroutes) {
         L.recordReview(db, { shortId: api.shortId, stage: 'audio', round: L.roundFor(db, api.shortId, 'audio'), reviewer: review.reviewer, verdict: 'revise', findings: review.findings, metrics: review.metrics, jobId: job.id, now: now() });
-        for (const f of review.findings) if (f.code && f.lesson) L.learn(db, f, { stage: 'audio', source: 'code', now: now() });
+        for (const f of review.findings) if (f.code && f.lesson) L.learn(db, f, { stage: 'audio', source: 'code', now: now(), shortId: api.shortId });
         await bumpReroute(api, 'script');
         await rm(path.join(api.dir, 'visuals.json.stale'), { force: true });
         return api.emit('script.revise', { findings: toScript, from: 'audio-reviewer' });
@@ -221,7 +240,7 @@ export function createPipeline({ db, root, execute = run, fetcher = fetch, env =
       if (review.verdict === 'revise' && fixable.length && !human.length && await reroutes(api, 'render') < maxReroutes) {
         // fixes that cost no credits are made automatically: drop what the reviewer flagged, then re-plan and re-render
         L.recordReview(db, { shortId: api.shortId, stage: 'render', round, reviewer: review.reviewer, verdict: 'revise', findings: review.findings, metrics: review.metrics, jobId: job.id, now: now() });
-        for (const f of review.findings) if (f.code && f.lesson) L.learn(db, f, { stage: 'render', source: f.reviewer === 'claude' ? 'claude' : 'code', now: now() });
+        for (const f of review.findings) if (f.code && f.lesson) L.learn(db, f, { stage: 'render', source: f.reviewer === 'claude' ? 'claude' : 'code', now: now(), shortId: api.shortId });
         await bumpReroute(api, 'render');
         const drops = fixable.filter(f => f.fix?.op === 'drop');
         if (drops.length) { const v = await readVisuals(path.join(api.dir, 'visuals.json')).catch(() => null); if (v) { for (const f of drops) { const b = v.beats.find(x => x.beat === f.fix.beat); if (!b) continue; if (f.fix.kind === 'logo' && b.logos[f.fix.index]) b.logos[f.fix.index].approved = false; if (f.fix.kind === 'broll' && b.broll) b.broll.approved = false; } await writeJsonFile(path.join(api.dir, 'visuals.json'), v); } }
@@ -255,14 +274,29 @@ export function createPipeline({ db, root, execute = run, fetcher = fetch, env =
   return { queue, agents, step, drain, start, dirOf };
 }
 
+// The person has looked at a short that needed them and wants the agents to try again: every stage gets a fresh set of rounds, re-routing counts reset,
+// and the work restarts from the stage that stopped, with that stage's open findings (or the person's own note) as the feedback.
+export async function resume(pipeline, { shortId, db, note = '' }) {
+  const file = path.join(pipeline.dirOf(shortId), 'short.json');
+  const s = await readJson(file);
+  const last = pipeline.queue.jobs(shortId).filter(j => j.type === 'needs.human').at(-1);
+  const stage = last?.payload?.stage || 'script';
+  const roundBase = Object.fromEntries(L.STAGES.map(st => [st, L.roundFor(db, shortId, st) - 1]));
+  await writeJsonFile(file, { ...s, roundBase, reroutes: {}, updatedAt: new Date().toISOString() });
+  const findings = [...(last?.payload?.findings || []), ...(note ? [{ severity: 'major', message: `The person says: ${note}`, code: 'human-note' }] : [])];
+  const next = { script: 'script.revise', direction: 'direction.revise', visuals: 'visuals.revise', audio: 'audio.ready', plan: 'audio.ready', render: 'audio.ready' }[stage] || 'script.revise';
+  pipeline.queue.publish(shortId, next, { findings, resumedBy: 'person' });
+  return { stage, next };
+}
+
 // A person's go-ahead for one gate, with the side effects that gate has.
-export async function grantGate(pipeline, { shortId, gate, details = {}, store = null, now = () => new Date().toISOString() }) {
+export async function grantGate(pipeline, { shortId, gate, details = {}, store = null, by = 'local user', now = () => new Date().toISOString() }) {
   const dir = pipeline.dirOf(shortId), file = path.join(dir, 'short.json');
   if (gate === 'direction') {
     const s = await readJson(file);
     if (!s.direction) throw new Error('there is no direction to approve yet');
     await writeJsonFile(file, { ...s, direction: { ...s.direction, approved: true, approvedAt: now() }, updatedAt: now() });
-    store?.recordApproval(`short-${shortId}`, { gate: 'short-direction', decision: 'approved', by: 'local user', at: now(), summary: `Short "${s.title}": voice ${s.direction.voiceName || s.direction.voiceId}`, fingerprint: null, details: {} });
+    store?.recordApproval(`short-${shortId}`, { gate: 'short-direction', decision: 'approved', by, at: now(), summary: `Short "${s.title}": voice ${s.direction.voiceName || s.direction.voiceId}`, fingerprint: null, details: {} });
   }
-  return pipeline.queue.grant(shortId, gate, { details });
+  return pipeline.queue.grant(shortId, gate, { by, details });
 }

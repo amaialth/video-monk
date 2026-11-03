@@ -1,6 +1,7 @@
 ---
 name: video-monk-producer
 description: 'Use when coordinating an original YouTube video from reference study through DaVinci Resolve handoff and reviewed export, with scoped approvals and honest coverage.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

@@ -3,6 +3,7 @@ name: video-monk-parakeet-transcriber
 description: 'Use when transcribing authorized local audio or video with whisper.cpp (default) or Parakeet through HyperFrames and reviewing source-relative word timestamps.'
 tools: [read, edit, search, execute]
 agents: []
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), step 4

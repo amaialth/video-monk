@@ -3,6 +3,7 @@ name: video-monk-ffmpeg-finisher
 description: 'Use when rendering, mastering and verifying a non-Resolve final video with FFmpeg from an approved version-2 timeline, motion graphics and licensed narration/music.'
 tools: [read, edit, search, execute]
 agents: []
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), steps 8-10.

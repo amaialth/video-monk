@@ -3,6 +3,7 @@ name: video-monk-obs-screen-recorder
 description: 'Use when preparing original screen, webcam and audio recordings with free OBS Studio and optional Shotcut edits for local production handoffs.'
 tools: [read, edit, search]
 agents: []
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), stage 3.

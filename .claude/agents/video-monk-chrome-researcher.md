@@ -1,7 +1,7 @@
 ---
 name: video-monk-chrome-researcher
 description: 'Use when researching video claims and B-roll leads using Google Chrome primary-source browsing, attributed evidence and access limitations.'
-model: sonnet
+model: opus
 tools: Read, Grep, Glob
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

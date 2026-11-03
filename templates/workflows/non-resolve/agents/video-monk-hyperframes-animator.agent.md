@@ -3,6 +3,7 @@ name: video-monk-hyperframes-animator
 description: 'Use when designing motion graphics and animated infographics (titles, charts, diagrams, code, callouts, captions) with the built-in Chrome-rendered templates or custom seekable HTML for a non-Resolve edit.'
 tools: [read, edit, search, execute]
 agents: []
+model: opus
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), step 6,

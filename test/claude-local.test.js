@@ -26,7 +26,7 @@ test('Claude installation converts agents, preserves skills and resolves relativ
   for (const name of agents) {
     assert.ok(!name.endsWith('.agent.md'));
     const text = await readFile(path.join(folder, '.claude', 'agents', name), 'utf8');
-    assert.match(text, /^---\nname: video-monk-[\w-]+\ndescription: '[^\n]+'\ntools: /);
+    assert.match(text, /^---\nname: video-monk-[\w-]+\ndescription: '[^\n]+'\nmodel: opus\ntools: /, 'every agent runs on Opus');
     assert.doesNotMatch(text, /^agents:/m);
     assert.match(text, /no nested subagent delegation/);
     const expected = /analyst|quality-reviewer/.test(name)

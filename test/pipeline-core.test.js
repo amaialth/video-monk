@@ -120,3 +120,15 @@ test('lessons are cleaned and refuse anything that reads like an instruction aim
   assert.throws(() => sanitizeRule('short'), /at least a few words/);
   assert.ok(sanitizeRule('x'.repeat(500) + ' words here for a rule').length <= 240);
 });
+
+test('a problem repeated across the rounds of one short is one sighting; it becomes a pattern only in a second production', async t => {
+  const db = await database(t);
+  const f = { code: 'script.hook-long', severity: 'major', lesson: 'Keep the opening hook to at most 14 words.' };
+  const review = shortId => recordReview(db, { shortId, stage: 'script', round: 1, reviewer: 'code', verdict: 'revise', findings: [f] });
+  review('s-1'); learn(db, f, { stage: 'script', source: 'code', shortId: 's-1' });
+  review('s-1'); assert.equal(learn(db, f, { stage: 'script', source: 'code', shortId: 's-1' }).status, 'candidate', 'the same short again is not a pattern');
+  review('s-2'); const l = learn(db, f, { stage: 'script', source: 'code', shortId: 's-2' });
+  assert.equal(l.occurrences, 2); assert.equal(l.status, 'active');
+  const { recomputeLessons } = await import('../src/pipeline/lessons.js');
+  assert.equal(recomputeLessons(db), 0);
+});

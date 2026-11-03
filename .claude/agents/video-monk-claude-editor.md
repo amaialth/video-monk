@@ -1,6 +1,7 @@
 ---
 name: video-monk-claude-editor
 description: 'Use when editing and coordinating a video without Resolve in Claude Code: auto-cut, whisper.cpp captions, Chrome-rendered motion graphics, Chrome research, OBS Studio, free licensed audio and FFmpeg mastering.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

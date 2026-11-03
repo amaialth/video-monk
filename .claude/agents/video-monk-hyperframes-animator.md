@@ -1,6 +1,7 @@
 ---
 name: video-monk-hyperframes-animator
 description: 'Use when designing motion graphics and animated infographics (titles, charts, diagrams, code, callouts, captions) with the built-in Chrome-rendered templates or custom seekable HTML for a non-Resolve edit.'
+model: opus
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

@@ -250,7 +250,7 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
-  'short-pipeline': { create: 'boolean', source: 'string', concept: 'string', id: 'string', start: 'boolean', run: 'boolean', status: 'boolean', grant: 'string', quality: 'string', 'allow-llm': 'boolean', 'allow-browse': 'boolean', 'allow-stock': 'boolean', 'rights-confirmed': 'boolean', 'allow-eleven': 'boolean', 'max-chars': 'string', 'seed-audio': 'string', lessons: 'boolean', stage: 'string', approve: 'string', disable: 'string', delete: 'string', feedback: 'string', length: 'string', tone: 'string', audience: 'string', language: 'string', title: 'string', 'eleven-model': 'string' },
+  'short-pipeline': { create: 'boolean', source: 'string', concept: 'string', id: 'string', start: 'boolean', run: 'boolean', status: 'boolean', grant: 'string', quality: 'string', 'allow-llm': 'boolean', 'allow-browse': 'boolean', 'allow-stock': 'boolean', 'rights-confirmed': 'boolean', 'allow-eleven': 'boolean', 'max-chars': 'string', 'seed-audio': 'string', lessons: 'boolean', stage: 'string', approve: 'string', disable: 'string', delete: 'string', feedback: 'string', length: 'string', tone: 'string', audience: 'string', language: 'string', title: 'string', 'eleven-model': 'string', script: 'string', by: 'string', resume: 'boolean', note: 'string' },
   'short-visuals': { script: 'string', source: 'string', output: 'string', 'allow-llm': 'boolean', 'allow-browse': 'boolean', 'allow-stock': 'boolean', 'allow-stock-download': 'boolean', 'rights-confirmed': 'boolean', model: 'string', approve: 'string', visuals: 'string', logo: 'string' },
   short: { check: 'boolean', visuals: 'string', voices: 'boolean', models: 'boolean', search: 'string', source: 'string', concept: 'string', output: 'string', script: 'string', 'script-only': 'boolean', 'allow-llm': 'boolean', model: 'string', length: 'string', tone: 'string', audience: 'string', language: 'string', theme: 'string', calm: 'boolean', 'on-twos': 'boolean', captions: 'string', sfx: 'string', current: 'string', cta: 'string', topic: 'string', music: 'string', 'music-rights': 'string', 'music-attribution': 'string', voice: 'string', auto: 'boolean', bed: 'string', 'eleven-model': 'string', stability: 'string', similarity: 'string', style: 'string', speed: 'string', seed: 'string', 'allow-eleven': 'boolean', 'max-chars': 'string', build: 'boolean', 'approve-plan': 'boolean', quality: 'string' },
   focus: { detect: 'string', max: 'string', 'min-gap': 'string', sensitivity: 'string', from: 'string', seconds: 'string', manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
@@ -662,10 +662,11 @@ export async function main(args) {
       // The queued, reviewed way to make a short: agents react to events, every stage has a reviewer, and what they learn is kept. It is slow on purpose.
       const { Db } = await import('./db.js');
       const { shortsRoot } = await import('./ui/shorts.js');
-      const { createPipeline, grantGate } = await import('./pipeline/agents.js');
+      const { createPipeline, grantGate, resume, agentLabel, REVIEWER_OF } = await import('./pipeline/agents.js');
       const L = await import('./pipeline/lessons.js');
       const db = await Db.open();
       if (opts.lessons || opts.approve || opts.disable || opts.delete) {
+        L.recomputeLessons(db);
         if (opts.approve) L.setLessonStatus(db, Number(opts.approve), 'active');
         if (opts.disable) L.setLessonStatus(db, Number(opts.disable), 'disabled');
         if (opts.delete) L.deleteLesson(db, Number(opts.delete));
@@ -699,21 +700,29 @@ export async function main(args) {
         if (opts['allow-browse']) q.grant(id, 'browse');
         if (opts['allow-stock']) { if (!opts['rights-confirmed']) throw new Error('Footage is downloaded under the stock provider\'s licence: add --rights-confirmed to accept it.'); q.grant(id, 'stock'); }
         if (opts['allow-eleven']) q.grant(id, 'spend', { details: { maxChars: Number(opts['max-chars']) || 3000 } });
-        pipeline.start(id);
+        if (opts.script) {
+          // start from a script you already have: the writer is skipped, but the reviewer still reviews it
+          const file = path.join(shortsRoot(), id, 'script.json');
+          await fs.copyFile(path.resolve(opts.script), file);
+          const sf = path.join(shortsRoot(), id, 'short.json'); const st = JSON.parse(await fs.readFile(sf, 'utf8'));
+          await fs.writeFile(sf, `${JSON.stringify({ ...st, stage: 'script', title: JSON.parse(await fs.readFile(file, 'utf8')).title }, null, 2)}\n`);
+          q.publish(id, 'script.written', { round: 1, provided: true });
+        } else pipeline.start(id);
         console.log('Started. Run it with: video-monk short-pipeline --id ' + id + ' --run');
       }
       for (const gate of String(opts.grant || '').split(',').map(x => x.trim()).filter(Boolean)) {
         const details = gate === 'spend' ? { maxChars: Number(opts['max-chars']) || 3000 } : gate === 'plan' ? { quality: opts.quality === 'final' ? 'final' : 'draft' } : {};
         if (gate === 'stock' && !opts['rights-confirmed']) throw new Error('Add --rights-confirmed to accept the stock licence.');
-        await grantGate(pipeline, { shortId: id, gate, details });
+        await grantGate(pipeline, { shortId: id, gate, details, by: opts.by });
         console.log(`Granted ${gate}.`);
       }
+      if (opts.resume) { const r = await resume(pipeline, { shortId: id, db, note: opts.note || '' }); console.log(`Resumed at ${r.stage}: published ${r.next} with the open findings; each stage has a fresh set of review rounds.`); }
       if (opts.run) { const n = await pipeline.drain({ backoffMs: 30_000 }); console.log(`Processed ${n} step(s).`); }
       if (opts.status || opts.run || opts.start || opts.grant) {
         const jobs = q.jobs(id), counts = q.counts(id);
         console.log(`\nQueue: ${Object.entries(counts).map(([k, v]) => `${v} ${k}`).join(', ') || 'empty'}`);
-        for (const j of jobs.slice(-25)) console.log(`  #${j.id} ${j.status.padEnd(8)} ${(j.handler || '(recorded)').padEnd(18)} ${j.type}${j.wait_gate ? ` [waiting for ${j.wait_gate}${j.wait_note ? `: ${j.wait_note}` : ''}]` : ''}${j.error ? `  ! ${String(j.error).slice(0, 100)}` : ''}`);
-        for (const r of L.reviewsFor(db, id)) console.log(`  review ${r.stage} round ${r.round} (${r.reviewer}): ${r.verdict}${r.findings.length ? ` - ${r.findings.filter(f => f.severity !== 'minor').length} to fix, ${r.findings.filter(f => f.severity === 'minor').length} notes` : ''}`);
+        for (const j of jobs.slice(-25)) console.log(`  #${j.id} ${j.status.padEnd(8)} ${agentLabel(j.handler).padEnd(42)} ${j.type}${j.wait_gate ? ` [waiting for ${j.wait_gate}${j.wait_note ? `: ${j.wait_note}` : ''}]` : ''}${j.error ? `  ! ${String(j.error).slice(0, 100)}` : ''}`);
+        for (const r of L.reviewsFor(db, id)) console.log(`  review ${r.stage} round ${r.round} by ${agentLabel(REVIEWER_OF[r.stage])} (${r.reviewer}): ${r.verdict}${r.findings.length ? ` - ${r.findings.filter(f => f.severity !== 'minor').length} to fix, ${r.findings.filter(f => f.severity === 'minor').length} notes` : ''}`);
         const w = q.waiting(id); if (w.length) console.log(`\nWaiting for you: ${w.map(x => x.wait_gate).join(', ')}  ->  video-monk short-pipeline --id ${id} --grant <gate> --run`);
       }
       break;
