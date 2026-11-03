@@ -32,7 +32,9 @@ export function auditExpression(width, height, background) {
       if (box.left < -tol || box.top < -tol || box.right > W + tol || box.bottom > H + tol) add('offcanvas', text, Math.round(box.left) + ',' + Math.round(box.top) + ' to ' + Math.round(box.right) + ',' + Math.round(box.bottom));
       for (let e = el; e && e !== document.body; e = e.parentElement) {
         const s = getComputedStyle(e);
-        if ((s.overflow !== 'visible' || s.overflowX !== 'visible') && e.scrollWidth > e.clientWidth + 3 && e.clientWidth > 0) { add('clipped', text, 'content ' + e.scrollWidth + ' px in ' + e.clientWidth + ' px'); break; }
+        const clips = s.overflow !== 'visible' || s.overflowX !== 'visible' || s.overflowY !== 'visible';
+        if (clips && e.scrollWidth > e.clientWidth + 3 && e.clientWidth > 0) { add('clipped', text, 'content ' + e.scrollWidth + ' px wide in ' + e.clientWidth + ' px'); break; }
+        if (clips && e.scrollHeight > e.clientHeight + 3 && e.clientHeight > 0) { add('clipped', text, 'content ' + e.scrollHeight + ' px tall in ' + e.clientHeight + ' px'); break; }
       }
       const isSvg = el instanceof SVGElement;
       const size = parseFloat(style.fontSize);

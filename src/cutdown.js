@@ -80,6 +80,7 @@ export async function cutdownManifest(manifestFile, outputFile, options = {}) {
   const from = Math.round(fromS * fps), to = Math.round(toS * fps);
 
   const portraitOrSquare = height >= width;
+  let pulled = 0;
   const scenes = [];
   m.scenes.forEach((scene, i) => {
     const s0 = starts[i], s1 = s0 + Math.round(scene.duration * fps);
@@ -109,6 +110,13 @@ export async function cutdownManifest(manifestFile, outputFile, options = {}) {
     if (out.kind === 'video' || out.kind === 'image') out.fit = fit;
     if (out.motion?.type && out.motion.type !== 'none' && fit === 'blur') out.motion = { type: 'none' };
     for (const o of out.overlays || []) if (portraitOrSquare) delete o.layout;
+    // Pull-text strips repeat what the captions already say and need three lines in a narrow frame: drop them for vertical and square.
+    if (portraitOrSquare && out.overlays) {
+      const keep = out.overlays.filter(o => !(o.template === 'kinetic-text' && /^strip/.test(o.placement || '')));
+      pulled += out.overlays.length - keep.length;
+      out.overlays = keep;
+      if (!out.overlays.length) delete out.overlays;
+    }
     scenes.push(out);
   });
   if (!scenes.length) fail('no scene falls inside the window');
@@ -116,9 +124,11 @@ export async function cutdownManifest(manifestFile, outputFile, options = {}) {
 
   const next = { ...m, title: `${m.title} (${aspect}${sliced ? ' cutdown' : ''})`, width, height, scenes };
   next.globalOverlays = (m.globalOverlays || []).filter(o => o.start * fps >= from - 1e-6 && (o.start + o.duration) * fps <= to + 1e-6)
+    .filter(o => !(portraitOrSquare && o.template === 'kinetic-text' && /^strip/.test(o.placement || '')) || (pulled++, false))
     .map(o => { const c = { ...o, start: round(o.start - fromS) }; if (portraitOrSquare) delete c.layout; return c; });
   if (!next.globalOverlays.length) delete next.globalOverlays;
-  const dropped = (m.globalOverlays || []).length - (next.globalOverlays?.length ?? 0);
+  const dropped = (m.globalOverlays || []).length - (next.globalOverlays?.length ?? 0) - pulled;
+  if (pulled) warnings.push(`${pulled} pull-text strip(s) dropped for the narrow frame (captions already carry the words)`);
   if (sliced && dropped) warnings.push(`${dropped} graphic(s) outside or across the window edge were left out`);
 
   if (m.audio) {

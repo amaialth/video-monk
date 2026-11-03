@@ -28,6 +28,8 @@ test('caption audit finds overlap, fast reading, long pages, flicker and lone wo
 test('publishing package: chapters only when YouTube would accept them, credits, tags, Shorts notes', () => {
   const words = 'Caching speeds up reads. Caching stores results near the user. Latency drops when caching works. Latency matters.'.split(' ').map((text, i) => ({ text, start: i, end: i + 0.5 }));
   assert.deepEqual(keywords(words).slice(0, 2), ['caching', 'latency']);
+  const frag = 'ce so anyone can use it. Apache has a community. It is big.'.split(' ').map((text, i) => ({ text, start: i, end: i + 0.5 }));
+  assert.match(youtubePackage({ title: 'x', duration: 40, width: 1080, height: 1920, words: frag, chapters: [], credits: [] }), /## Description\n\nApache has a community\./);
   assert.equal(validChapters([{ time: 0, title: 'a' }, { time: 30, title: 'b' }], 100).ok, false);
   assert.equal(validChapters([{ time: 5, title: 'a' }, { time: 30, title: 'b' }, { time: 60, title: 'c' }], 100).ok, false);
   const ok = [{ time: 0, title: 'Intro' }, { time: 20, title: 'How it works' }, { time: 50, title: 'Wrap up' }];

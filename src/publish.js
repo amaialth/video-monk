@@ -19,7 +19,11 @@ export function firstSentences(words, maxChars = 280) {
   const out = [];
   let len = 0;
   let sentence = [];
-  for (const w of words || []) {
+  // Start on a sentence start: a clip cut from the middle of a sentence begins with a fragment.
+  let list = words || [];
+  const startAt = list.findIndex((w, i) => i === 0 ? /^[A-Z0-9"']/.test(w.text) : /[.!?]["')\]]?$/.test(list[i - 1].text));
+  if (startAt > 0) list = list.slice(startAt);
+  for (const w of list) {
     sentence.push(w.text);
     if (/[.!?]["')\]]?$/.test(w.text)) {
       const text = sentence.join(' ');

@@ -44,6 +44,11 @@ test('cutdown reformats to 9:16, slices a window, shifts captions and drops what
   const kept = await readJson(path.join(folder, m.captions.words));
   assert.deepEqual(kept.map(w => w.text), ['Gamma', 'delta', 'end.']);
   assert.equal(kept[0].start, 0.5);
+  const strip = longManifest(); strip.scenes[0].overlays = [{ template: 'kinetic-text', props: { text: 'Hi' }, start: 1, duration: 2, placement: 'strip-top' }, { template: 'bullets', props: { items: [{ text: 'a' }] }, start: 1, duration: 2, placement: 'left' }];
+  await writeJson(path.join(folder, 'strip.json'), strip);
+  const sr = await cutdownManifest(path.join(folder, 'strip.json'), path.join(folder, 'strip-short.json'), { aspect: '9:16', from: 0, to: 4 });
+  assert.deepEqual((await readJson(path.join(folder, 'strip-short.json'))).scenes[0].overlays.map(o => o.template), ['bullets'], 'pull-text strips are dropped for vertical');
+  assert.ok(sr.warnings.some(w => /pull-text/.test(w)));
   await assert.rejects(cutdownManifest(path.join(folder, 'long.json'), out, { aspect: '9:16' }), /already exists/);
   await assert.rejects(cutdownManifest(path.join(folder, 'long.json'), path.join(folder, 'x.json'), { aspect: '2:1' }), /aspect must be/);
 });

@@ -31,6 +31,8 @@ informed by the public video-editor-skills, claude-code-video-toolkit and awesom
 - **`YOUTUBE.md`** in every render: title options, description draft, chapters only when YouTube would accept them, credits, tags and an upload checklist.
 - New references for agents: `content-formats.md`, `delivery-qa.md`.
 
+- Real-run fixes: vertical and square cutdowns drop pull-text strips (captions already carry the words; they clipped in a narrow frame), the readability audit now catches vertical clipping, and YOUTUBE.md descriptions start on a sentence start.
+
 ### Limits
 No HDR to SDR conversion (warning only). The highlight picker is a heuristic proposal, not a judgement of what is interesting. Graphics laid out for landscape can be tight in 9:16; the readability audit reports where.
 
