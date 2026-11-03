@@ -162,7 +162,11 @@ const scriptSafe = text => text.replace(/<\/(script)/gi, '<\\/$1');
 
 // Expand <vm-lib name="three"></vm-lib> and <vm-asset name="model" src="model.glb"></vm-asset> in a custom graphic's HTML so it needs nothing from the network.
 export async function expandVm(html, { baseDir, root = libsRoot() } = {}) {
-  if (!/<vm-(lib|asset)\b/.test(html)) return { html, used: [] };
+  if (!/<vm-(lib|asset)\b/.test(html)) {
+    // nothing to inline, but a page loaded from another place still needs its base so relative files (scripts, images, fonts) resolve
+    if (baseDir && !/<base\s/i.test(html)) { const tag = `<base href="${new URL(`file://${path.resolve(baseDir)}/`).href}">`; return { html: /<head[\s>]/i.test(html) ? html.replace(/<head([^>]*)>/i, `<head$1>${tag}`) : `${tag}${html}`, used: [] }; }
+    return { html, used: [] };
+  }
   const used = [];
   const libTag = /<vm-lib\s+name="([\w@/.-]+)"(?:\s+version="([^"]+)")?(?:\s+with="([^"]*)")?\s*(?:\/>|><\/vm-lib>)/g;
   const assetTag = /<vm-asset\s+name="([\w.-]+)"\s+src="([^"]+)"\s*(?:\/>|><\/vm-asset>)/g;
@@ -203,6 +207,6 @@ export async function expandVm(html, { baseDir, root = libsRoot() } = {}) {
   if (importMapAt !== null) parts[importMapAt] = `<script type="importmap">${JSON.stringify({ imports: importMap })}</script>`;
   let out = parts.join('');
   // relative files (images, fonts) next to the graphic keep working although the page is rendered from a cache folder
-  if (baseDir && !/<base\s/i.test(out)) out = out.replace(/<head([^>]*)>/i, `<head$1><base href="${new URL(`file://${path.resolve(baseDir)}/`).href}">`);
+  if (baseDir && !/<base\s/i.test(out)) { const tag = `<base href="${new URL(`file://${path.resolve(baseDir)}/`).href}">`; out = /<head[\s>]/i.test(out) ? out.replace(/<head([^>]*)>/i, `<head$1>${tag}`) : `${tag}${out}`; }   // a page without a <head> still needs its base
   return { html: out, used };
 }

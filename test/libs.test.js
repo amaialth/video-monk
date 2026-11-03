@@ -111,3 +111,13 @@ test('expandVm says how to install a missing library and a missing asset file', 
 test('the registry lists every library the skill documents', () => {
   for (const id of ['three', 'gsap', 'animejs', 'lottie-web', 'motion', 'rive', 'babylonjs', 'playcanvas', 'aframe']) assert.ok(LIBS[id], id);
 });
+
+test('a page with nothing to inline still gets its base, with or without a <head>', async () => {
+  const a = await expandVm('<html><head><title>x</title></head><body><script src="lib/a.js"></script></body></html>', { baseDir: '/some/folder' });
+  assert.match(a.html, /<head><base href="file:\/\/\/some\/folder\/">/);
+  const b = await expandVm('<meta charset="utf-8"><div></div><script src="lib/a.js"></script>', { baseDir: '/some/folder' });
+  assert.match(b.html, /^<base href="file:\/\/\/some\/folder\/">/);
+  const keep = await expandVm('<head><base href="https://x/"></head>', { baseDir: '/some/folder' });
+  assert.equal((keep.html.match(/<base/g) || []).length, 1);
+  assert.deepEqual((await expandVm('<p>no base asked</p>')).html, '<p>no base asked</p>');
+});

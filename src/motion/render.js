@@ -81,7 +81,7 @@ export async function motionPage(job) {
   if (job.html) {
     // A custom graphic may name vaulted libraries and assets (<vm-lib>, <vm-asset>); they are inlined so the page needs nothing from the network.
     const raw = await readFile(job.html, 'utf8');
-    return /<vm-(lib|asset)\b/.test(raw) ? (await expandVm(raw, { baseDir: path.dirname(path.resolve(job.html)) })).html : raw;
+    return (await expandVm(raw, { baseDir: path.dirname(path.resolve(job.html)) })).html;   // also adds the base, so a page's relative files resolve from the cache folder
   }
   const def = TEMPLATES[job.template];
   if (!def) throw new Error(`Motion: unknown template ${job.template}`);
@@ -140,7 +140,7 @@ export class MotionRenderer {
         // Sample after the entrance has settled and before the exit starts; transparent overlays sit on the theme background.
         const bg = job.background && job.background !== 'transparent' ? resolveTheme(job.theme).background : resolveTheme(job.theme).background;
         for (const at of [0.55, 0.8]) {
-          await page.evaluate(`window.__seek(${(job.duration * at).toFixed(3)})`);
+          await page.evaluate(`Promise.resolve(window.__seek(${(job.duration * at).toFixed(3)}))`, true);
           audit.push(...await page.evaluate(auditExpression(job.width, job.height, bg)));
         }
         const seen = new Set();
@@ -150,7 +150,7 @@ export class MotionRenderer {
       let previousFile = null;
       for (let i = 0; i < frames; i++) {
         const t = i / job.fps;
-        const sig = await page.evaluate(`(window.__seek(${t}), typeof window.__sig === 'function' ? window.__sig() : 'f' + ${i})`);
+        const sig = await page.evaluate(`(async () => { await window.__seek(${t}); return typeof window.__sig === 'function' ? window.__sig() : 'f' + ${i}; })()`, true);   // a page may render asynchronously: wait for what its seek returns
         const file = path.join(dir, `frame-${String(i + 1).padStart(6, '0')}.png`);
         if (sig === previous && previousFile) {
           await link(previousFile, file).catch(() => copyFile(previousFile, file));
@@ -177,7 +177,7 @@ export class MotionRenderer {
     await writeFile(file, html);
     const page = await this.#open(file, job);
     try {
-      await page.evaluate(`window.__seek(${at})`);
+      await page.evaluate(`Promise.resolve(window.__seek(${at}))`, true);
       await page.screenshot(outFile);
     } finally { await page.close().catch(() => {}); await rm(dir, { recursive: true, force: true }); }
     return outFile;

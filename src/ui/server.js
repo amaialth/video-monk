@@ -16,6 +16,7 @@ import { roots, list as listDir, probeMedia, thumbnail, MEDIA_EXT } from './fsbr
 import { discover, timelineOf } from './artifacts.js';
 import { Previews } from './previews.js';
 import { registerMotion } from './motion.js';
+import { registerShorts } from './shorts.js';
 
 const WEB = new URL('../../web/', import.meta.url).pathname;
 const FONTS = new URL('../../assets/fonts/', import.meta.url).pathname;
@@ -62,7 +63,7 @@ const pickSettings = body => Object.fromEntries(['theme', 'defaultOptions', 'las
 const stripPrivate = options => { const { rightsConfirmed, wordsFile, shortFrom, shortTo, ...rest } = options || {}; return rest; };
 const inside = (root, target) => { const rel = path.relative(root, target); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
 
-export async function startServer({ port = 4173, host = '127.0.0.1', store = null, runner = null, token = randomBytes(18).toString('hex'), previews = new Previews(), log = () => {} } = {}) {
+export async function startServer({ port = 4173, host = '127.0.0.1', store = null, runner = null, token = randomBytes(18).toString('hex'), previews = new Previews(), shortsDeps = {}, log = () => {} } = {}) {
   store ||= await Store.open();
   runner ||= new Runner(store);
   await runner.recover();
@@ -191,6 +192,7 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = nul
 
   // ---- motion studio: template previews, standalone-video planner, library vault
   registerMotion(on, { previews, serveFile, HANDLED });
+  registerShorts(on, { store, serveFile, HANDLED, err, deps: shortsDeps });
 
   // ---- things remembered between projects (all in the local database)
   on('GET', '/api/db', async () => ({ ...store.db.info(), file: store.db.file, usage: usageSummary(), schemaTarget: store.db.version }));
@@ -258,7 +260,7 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = nul
         if (!route) throw err('Not found', 404);
         const params = route.re.exec(url.pathname).groups || {};
         if (params.id && !validId(params.id)) throw err('Invalid project id');
-        const body = req.method === 'POST' ? await readBody(req) : {};
+        const body = req.method === 'POST' || req.method === 'PUT' ? await readBody(req) : {};
         const result = await route.handler({ req, res, params, query: url.searchParams, body });
         if (result !== HANDLED) send(res, 200, result ?? null);
         return;

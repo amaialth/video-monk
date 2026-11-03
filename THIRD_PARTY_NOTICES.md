@@ -31,6 +31,7 @@ bundles them under the same license. The fonts are unmodified and are not sold o
   Adapted: the springs, spatial-consistency, depth and materials, typography and restraint ideas, rewritten in original words and
   mapped to video in `.../motion-graphics-studio/references/apple-motion-audit.md`. The interactive-interface parts (gestures, drag, haptics) are not used.
   Its own source is Apple's WWDC talk *Designing Fluid Interfaces*; no Apple text is reproduced.
+- **ElevenLabs** (https://elevenlabs.io): the `short` command and Shorts in the web studio call the ElevenLabs text-to-speech API with the user's own API key and account. No ElevenLabs code, voice or audio is bundled; generated narration is subject to the user's ElevenLabs plan and its terms (https://elevenlabs.io/terms-of-use): commercial use of the audio needs a paid plan. That note is written into the production credits of every short.
 - **HyperFrames** by HeyGen, Inc., Apache License 2.0, Copyright 2026 HeyGen, Inc. https://github.com/heygen-com/hyperframes
   Read as reference only. The motion doctrine (one direction of travel, matched exits and entries, carriers, cause before effect, no idle wobble, stillness before the peak)
   informed `.../motion-graphics-studio/references/scene-seams.md` and the single-direction default of `motion-video` seams, rewritten in original words;

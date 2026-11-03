@@ -133,13 +133,13 @@ test('the captured HyperFrames catalog is served read-only with statuses, groups
   assert.equal((await call('POST', '/api/motion/catalog', {})).status, 404);
 });
 
-test('catalog blocks: import needs confirmation and refuses components and unknown names; imported blocks appear in the studio and can be planned as beats', async t => {
+test('catalog blocks: import needs confirmation and refuses skipped items and unknown names; imported blocks appear in the studio and can be planned as beats', async t => {
   const home = await temporary(t);
   const { call } = await app(t, home);
   assert.equal((await call('POST', '/api/catalog/import', { name: 'lt-clean-bar' })).status, 400);
-  const comp = await call('POST', '/api/catalog/import', { name: 'confetti', confirm: true });
-  assert.equal(comp.status, 400);
-  assert.match(comp.json.error, /component/);
+  const skipped = await call('POST', '/api/catalog/import', { name: 'slack-notification-ad', confirm: true });   // refused before anything is fetched
+  assert.equal(skipped.status, 400);
+  assert.match(skipped.json.error, /skipped/);
   assert.match((await call('POST', '/api/catalog/import', { name: 'nope', confirm: true })).json.error, /not in the catalog inventory/);
   assert.equal((await call('GET', '/api/motion/catalog-preview?name=lt-test')).status, 404);
   assert.equal((await call('POST', '/api/catalog/remove', { name: 'lt-test' })).json.removed, 0);

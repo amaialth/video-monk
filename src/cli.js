@@ -23,8 +23,10 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
-import { catalogData, catalogEntry, importBlock, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
+import { catalogData, catalogEntry, importBlock, importAll, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
 import { focusManifest, detectActivity } from './focus.js';
+import { makeShort, readSource, LENGTHS, TONES, AUDIENCES, CAPTION_STYLES } from './shorts.js';
+import { elevenConfig, listVoices, listModels } from './elevenlabs.js';
 import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
@@ -39,6 +41,7 @@ const HELP = `video-monk - automated video editing: analyze, transcribe, cut, mo
 AUTOMATED EDITING
   motion-catalog [--list [--group G] [--status adapt|have|defer|skip] [--top] [--search text]] [--info <name>] [--imported]
              [--import <block> --allow-download [--vars '{"name":"Ada"}'] [--transparent true|false]] [--remove <block>]
+             motion-catalog --import-all --allow-download [--group G] [--status adapt|have|defer] [--concurrency 4] [--report results.json]: import every item that can run offline (downloads many items: use deliberately)
              The captured HyperFrames catalog (448 items, Apache-2.0). --import downloads one standalone block once (fixed commit, github.com only), swaps its GSAP
              for the library vault, inlines its fonts and adds a seek bridge so it plays offline; it refuses blocks that cannot (video, nested compositions, other libraries).
              Use it with a motion-video beat: { "catalog": "<block>", "vars": {...}, "seconds": 5 }. It is third-party code: read it first.
@@ -76,6 +79,14 @@ AUTOMATED EDITING
              a beat can be a 3D / library scene: "starter": "three-showcase" (see assets/motion-starters); its libraries are checked and listed in PLAN.md.
              checks beat count, length, a 3 s hold on the last beat and facts-first numbers, then writes production.json with transitions, music and subtle SFX.
              Builds nothing: review the plan, then production-review --approve-plan and production-build.
+  short      --source <blog.md|.txt|.html> | --concept "<topic>"  --output <new folder>  [--allow-llm] [--allow-eleven] [--voice <id>] [--length 30|45|60] [--tone friendly|neutral|energetic|calm|playful]
+             [--audience beginner|general|intermediate] [--language en] [--theme night|paper] [--calm] [--on-twos] [--captions highlight|kinetic|pill|slam|wipe|weight|karaoke|plain] [--sfx off|subtle|full]
+             [--music <file> --music-rights <text> --music-attribution <text>] [--cta "text"] [--topic "focus"] [--script <script.json>] [--script-only]
+             [--eleven-model id] [--stability 0.5 --similarity 0.75 --style 0 --speed 1] [--max-chars 8000] [--build --approve-plan [--quality draft|final]]
+             An educational explainer short: Claude writes a script from your text (every number on screen must be in the source), ElevenLabs records the narration beat by beat (cached, so a
+             recording is never paid for twice), and a vertical video of graphic scenes with word-timed captions is planned. Needs ELEVENLABS_API_KEY in the environment (optionally ELEVENLABS_VOICE_ID,
+             ELEVENLABS_MODEL_ID). Writing the script needs --allow-llm; recording needs --allow-eleven (it uses credits); a build needs --approve-plan after you have read the script and plan.
+             short --check (what is configured, names only)   short --voices [--search x]   short --models
   focus      --manifest <production.json> --clicks <clicks.json> --output <new manifest in the same folder> [--amount 0.5] [--hold 1.4] [--ramp 0.5] [--asset id] [--replace]
              focus --detect <recording> --output <new clicks.json> [--max 12] [--min-gap 2] [--sensitivity 1] [--from s --seconds s]: propose the moments from screen activity
              (something new starting to change: a toast, a modal, typed text, a highlight); proposals, not recorded clicks: review them. Sensitivity 0.8-1.3 is the reliable range; above 1.5 adds false alarms.
@@ -227,7 +238,7 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
-  'motion-catalog': { list: 'boolean', info: 'string', import: 'string', imported: 'boolean', remove: 'string', 'allow-download': 'boolean', vars: 'string', transparent: 'string', group: 'string', status: 'string', top: 'boolean', search: 'string' },
+  'motion-catalog': { 'import-all': 'boolean', report: 'string', concurrency: 'string', list: 'boolean', info: 'string', import: 'string', imported: 'boolean', remove: 'string', 'allow-download': 'boolean', vars: 'string', transparent: 'string', group: 'string', status: 'string', top: 'boolean', search: 'string' },
   libs: { list: 'boolean', add: 'string', remove: 'string', 'allow-download': 'boolean', version: 'string', with: 'string', supported: 'boolean' },
   brand: { output: 'string', name: 'string', background: 'string', surface: 'string', text: 'string', muted: 'string', accent: 'string', preset: 'string', font: 'string', logo: 'string', feel: 'string', never: 'string', 'on-twos': 'boolean', calm: 'boolean', rights: 'string', attribution: 'string' },
   'facts-check': { manifest: 'string', facts: 'string' },
@@ -236,6 +247,7 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
+  short: { check: 'boolean', voices: 'boolean', models: 'boolean', search: 'string', source: 'string', concept: 'string', output: 'string', script: 'string', 'script-only': 'boolean', 'allow-llm': 'boolean', model: 'string', length: 'string', tone: 'string', audience: 'string', language: 'string', theme: 'string', calm: 'boolean', 'on-twos': 'boolean', captions: 'string', sfx: 'string', current: 'string', cta: 'string', topic: 'string', music: 'string', 'music-rights': 'string', 'music-attribution': 'string', voice: 'string', 'eleven-model': 'string', stability: 'string', similarity: 'string', style: 'string', speed: 'string', seed: 'string', 'allow-eleven': 'boolean', 'max-chars': 'string', build: 'boolean', 'approve-plan': 'boolean', quality: 'string' },
   focus: { detect: 'string', max: 'string', 'min-gap': 'string', sensitivity: 'string', from: 'string', seconds: 'string', manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
   auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
@@ -509,6 +521,19 @@ export async function main(args) {
       break;
     }
     case 'motion-catalog': {
+      if (opts['import-all']) {
+        const q = (opts.search || '').toLowerCase();
+        const names = (await catalogData()).items.filter(i => i.status !== 'skip' && (!opts.group || i.group.toLowerCase() === opts.group.toLowerCase()) && (!opts.status || i.status === opts.status) && (!opts.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')}`.toLowerCase().includes(q))).map(i => i.name);
+        if (!opts['allow-download']) throw new Error(`This downloads ${names.length} catalog item(s) from github.com/heygen-com/hyperframes (a fixed commit, Apache-2.0). Pass --allow-download to confirm.`);
+        let done = 0;
+        const results = await importAll(names, { allowDownload: true, concurrency: opts.concurrency ? Number(opts.concurrency) : 4, onResult: r => { done++; if (done % 25 === 0 || done === names.length) console.error(`  ${done}/${names.length} (${r.name})`); } });
+        const ok = results.filter(r => r.ok), bad = results.filter(r => !r.ok);
+        const reasons = {};
+        for (const r of bad) { const k = r.error.replace(/^.*because /, '').replace(/ from [\w.-]+/g, ' from <host>'); reasons[k] = (reasons[k] || 0) + 1; }
+        if (opts.report) await writeJson(path.resolve(opts.report), { commit: CATALOG_COMMIT, importedAt: new Date().toISOString(), imported: ok.length, refused: bad.length, results });
+        console.log(`Imported ${ok.length} of ${names.length}; ${bad.length} refused.${Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => `\n  ${String(v).padStart(3)}  ${k.slice(0, 110)}`).join('')}${opts.report ? `\nReport: ${path.resolve(opts.report)}` : ''}`);
+        break;
+      }
       if (opts.import) {
         const vars = opts.vars ? JSON.parse(opts.vars) : {};
         const r = await importBlock(opts.import, { allowDownload: opts['allow-download'], vars, transparent: opts.transparent === undefined ? undefined : opts.transparent === 'true' });
@@ -626,6 +651,27 @@ export async function main(args) {
       }
       const result = await motionVideo(required(opts, 'brief'), required(opts, 'output'), { facts: opts.facts, sfx: opts.sfx || 'subtle', log: message => console.error(message) });
       console.log(`Motion video plan: ${result.scenes} graphic scenes, ${result.seconds}s, ${result.width}x${result.height}${result.sfx ? `, ${result.sfx} sound cues` : ''}${result.facts ? `, facts-check OK (${result.facts.checked} numbers)` : ''}.\nManifest: ${result.output}${result.warnings.length ? `\n${result.warnings.map(w => `  warning: ${w}`).join('\n')}` : ''}\nNext: production-review --manifest ${result.output} --approve-plan, then production-build --quality draft and read the contact sheet.`);
+      break;
+    }
+    case 'short': {
+      if (opts.check) {
+        const c = await elevenConfig();
+        console.log(`ELEVENLABS_API_KEY: ${c.hasKey ? 'set' : 'not set'}\nELEVENLABS_VOICE_ID: ${c.voiceId ? 'set' : 'not set'}\nELEVENLABS_MODEL_ID: ${c.modelId}\nOutput format: ${c.outputFormat}\nOptions: length ${LENGTHS.join('/')} s; tone ${TONES.join('/')}; audience ${AUDIENCES.join('/')}; captions ${CAPTION_STYLES.join('/')}`);
+        break;
+      }
+      if (opts.voices) { console.log((await listVoices({ search: opts.search || '' })).map(v => `${v.id}  ${v.name.padEnd(24)} ${v.category || ''} ${Object.values(v.labels || {}).join(', ')}`).join('\n')); break; }
+      if (opts.models) { console.log((await listModels()).map(m => `${m.id.padEnd(28)} ${m.name}  (up to ${m.maxChars || '?'} characters; cost x${m.costFactor})`).join('\n')); break; }
+      const num = key => (opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })()));
+      if (!opts.source && !opts.concept && !opts.script) throw new Error('Give --source <file>, --concept "<topic>" or --script <script.json>.');
+      const settings = {};
+      for (const [flag, key] of [['stability', 'stability'], ['similarity', 'similarity_boost'], ['style', 'style'], ['speed', 'speed']]) if (num(flag) !== undefined) settings[key] = num(flag);
+      const r = await makeShort({ source: opts.source ? await readSource(opts.source) : opts.concept || '', kind: opts.source ? 'text' : 'concept', dir: required(opts, 'output'), scriptFile: opts.script, scriptOnly: opts['script-only'], allowLlm: opts['allow-llm'], model: opts.model,
+        options: { length: opts.length, tone: opts.tone, audience: opts.audience, language: opts.language, theme: opts.theme, calm: opts.calm, onTwos: opts['on-twos'], captions: opts.captions, sfx: opts.sfx, current: opts.current, cta: opts.cta, topic: opts.topic,
+          ...(opts.music ? { music: { file: opts.music, rights: opts['music-rights'], attribution: opts['music-attribution'] } } : {}) },
+        voiceId: opts.voice, elevenModel: opts['eleven-model'], voiceSettings: Object.keys(settings).length ? settings : undefined, seed: num('seed'), allowEleven: opts['allow-eleven'], maxChars: num('max-chars'), build: opts.build, approvePlan: opts['approve-plan'], quality: opts.quality === 'final' ? 'final' : 'draft', log: m => console.error(m) });
+      if (r.stage === 'script') console.log(`Script written: ${r.scriptPath}\n  ${r.script.beats.length} beats, about ${r.seconds} s spoken, ${r.characters} characters (about ${r.credits} ElevenLabs credits at the standard rate).${r.warnings.map(w => `\n  warning: ${w}`).join('')}\nRead SCRIPT.md, edit script.json if you like, then run again with --script ${r.scriptPath} --output <a new folder> --allow-eleven to record it.`);
+      else if (r.stage === 'plan') console.log(`Short planned: ${r.plan}\n  ${r.script.beats.length} beats, ${r.seconds} s, ${r.characters} characters narrated (${r.recorded} recorded now, ${r.cached} already recorded).${r.warnings.map(w => `\n  warning: ${w}`).join('')}\nNext: read PLAN.md and play audio/, then  video-monk production-review --manifest ${r.plan} --output ${path.join(r.dir, 'review.json')} --approve-plan  and production-build, or run this again with --build --approve-plan.`);
+      else console.log(`${r.status}: ${r.video}. Watch it end to end before publishing.`);
       break;
     }
     case 'focus': {

@@ -193,15 +193,19 @@ function libsTab(body, data, track, reload) {
 
 // ---------------------------------------------------------------- catalog
 const STATUS_TEXT = { have: ['Built in', 'good'], adapt: ['Portable (untested)', ''], defer: ['Needs WebGPU', 'warn'], skip: ['Skipped', ''] };
+// What was measured by importing every item and playing it in the offline renderer (see references/hyperframes-catalog.md)
+const offlineKind = i => (i.offline ? (i.offline.import === 'skipped' ? 'skipped' : i.offline.import !== 'ok' ? 'refused' : i.offline.verified ? 'verified' : 'unverified') : 'unknown');
+const OFFLINE_TEXT = { verified: ['Runs offline (verified)', 'good'], unverified: ['Imports; did not run cleanly', 'warn'], refused: ['Cannot run offline', ''], skipped: ['Skipped', ''], unknown: ['Not tested', ''] };
 async function catalogTab(body, track) {
   const cat = await api.get('/api/motion/catalog');
-  const f = { q: '', group: '', status: '', top: false, limit: 60 };
+  const f = { q: '', group: '', status: '', offline: '', top: false, limit: 60 };
   const groups = [...new Set(cat.items.map(i => i.group))].sort();
   const list = h('div', { class: 'col', style: { gap: '8px' } });
   const count = h('div', { class: 'muted small' });
   const imported = new Set(cat.imported || []);
   const importRow = i => {
-    if (i.type !== 'block' || i.status === 'skip' || i.status === 'defer') return null;
+    if (i.status === 'skip') return null;
+    if (i.offline && i.offline.import !== 'ok') return h('div', { class: 'small muted mt-s' }, `Cannot be imported: ${i.offline.reason || 'it needs something that is not available offline'}`);
     const img = h('img', { alt: '', style: { width: '100%', maxWidth: '520px', borderRadius: '10px', display: 'none', marginTop: '10px', background: 'var(--bg2)' } });
     const msg = h('div', { class: 'small muted mt-s' });
     const row = h('div', { class: 'mt-s' });
@@ -220,10 +224,10 @@ async function catalogTab(body, track) {
   };
   const draw = () => {
     const q = f.q.toLowerCase();
-    const hits = cat.items.filter(i => (!f.group || i.group === f.group) && (!f.status || i.status === f.status) && (!f.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')} ${i.description || ''}`.toLowerCase().includes(q)));
+    const hits = cat.items.filter(i => (!f.group || i.group === f.group) && (!f.status || i.status === f.status) && (!f.offline || offlineKind(i) === f.offline) && (!f.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')} ${i.description || ''}`.toLowerCase().includes(q)));
     count.textContent = `${hits.length} of ${cat.count} items`;
     mount(list, hits.slice(0, f.limit).map(i => h('div', { class: 'card pad' },
-      h('div', { class: 'row between' }, h('div', {}, h('b', {}, i.title), ' ', h('span', { class: 'faint small mono' }, i.name)), h('div', { class: 'row' }, i.top ? h('span', { class: 'chip good' }, 'build next') : null, h('span', { class: `chip ${STATUS_TEXT[i.status][1]}` }, STATUS_TEXT[i.status][0]), h('span', { class: 'chip' }, i.group))),
+      h('div', { class: 'row between' }, h('div', {}, h('b', {}, i.title), ' ', h('span', { class: 'faint small mono' }, i.name)), h('div', { class: 'row' }, i.top ? h('span', { class: 'chip good' }, 'build next') : null, h('span', { class: `chip ${STATUS_TEXT[i.status][1]}` }, STATUS_TEXT[i.status][0]), h('span', { class: `chip ${OFFLINE_TEXT[offlineKind(i)][1]}`, title: i.offline?.reason || i.offline?.problem || '' }, OFFLINE_TEXT[offlineKind(i)][0]), h('span', { class: 'chip' }, i.group))),
       h('div', { class: 'muted small mt-s' }, i.why || i.description || ''),
       importRow(i),
       h('div', { class: 'row wrap mt-s small faint' }, (i.needs || []).map(n => h('span', { class: 'chip' }, n)), i.ours ? h('span', {}, i.status === 'have' ? `Built in as ${i.ours}` : `A new style for the ${i.ours} template`) : h('span', {}, i.note), h('a', { href: i.url, target: '_blank', rel: 'noopener noreferrer', style: { marginLeft: 'auto' } }, 'Catalog page ', icon('external', 12))))),
@@ -235,6 +239,7 @@ async function catalogTab(body, track) {
       h('input', { class: 'input', placeholder: 'Search names, tags, descriptions', style: { maxWidth: '320px' }, oninput: e => { f.q = e.target.value; f.limit = 60; draw(); } }),
       h('select', { class: 'select', style: { maxWidth: '230px' }, onchange: e => { f.group = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'All groups'), groups.map(g => h('option', { value: g }, g))),
       h('select', { class: 'select', style: { maxWidth: '200px' }, onchange: e => { f.status = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'Any status'), Object.entries(STATUS_TEXT).map(([k, [t]]) => h('option', { value: k }, t))),
+      h('select', { class: 'select', style: { maxWidth: '230px' }, onchange: e => { f.offline = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'Any offline result'), Object.entries(OFFLINE_TEXT).map(([k, [t]]) => h('option', { value: k }, t))),
       h('label', { class: 'row small' }, h('input', { type: 'checkbox', onchange: e => { f.top = e.target.checked; f.limit = 60; draw(); } }), 'Build next only')),
     h('div', { class: 'mt-s' }, count), h('div', { class: 'mt-s' }, list));
   draw();

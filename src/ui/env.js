@@ -29,7 +29,7 @@ export async function environment() {
   try { claude = first(await run('claude', ['--version'], { timeout: 10000 })); } catch { /* not installed */ }
   add('claude', 'Claude Code CLI (smarter graphics and reviews)', Boolean(claude), claude || 'not found', { optional: true });
   const keys = {};
-  for (const [id, label, name] of [['pixabay', 'Pixabay (B-roll video and photos)', 'PIXABAY_API_KEY'], ['unsplash', 'Unsplash (B-roll photos)', 'UNSPLASH_ACCESS_KEY'], ['mirelo', 'Mirelo (generated sound effects)', 'MIRELO_API_KEY'], ['pexels', 'Pexels (B-roll video)', 'PEXELS_API_KEY']]) {
+  for (const [id, label, name] of [['pixabay', 'Pixabay (B-roll video and photos)', 'PIXABAY_API_KEY'], ['unsplash', 'Unsplash (B-roll photos)', 'UNSPLASH_ACCESS_KEY'], ['elevenlabs', 'ElevenLabs (narration for shorts)', 'ELEVENLABS_API_KEY'], ['mirelo', 'Mirelo (generated sound effects)', 'MIRELO_API_KEY'], ['pexels', 'Pexels (B-roll video)', 'PEXELS_API_KEY']]) {
     const present = Boolean(await envKey(name));
     keys[id] = present;
     add(`key-${id}`, label, present, present ? 'key found' : `${name} not set`, { optional: true });

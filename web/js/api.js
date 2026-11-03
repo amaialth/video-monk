@@ -7,7 +7,7 @@ async function call(method, url, body) {
   return data;
 }
 export const api = {
-  get: url => call('GET', url), post: (url, body = {}) => call('POST', url, body), del: url => call('DELETE', url),
+  get: url => call('GET', url), put: (url, body = {}) => call('PUT', url, body), post: (url, body = {}) => call('POST', url, body), del: url => call('DELETE', url),
   session: () => api.get('/api/session'), env: () => api.get('/api/env'), questions: () => api.get('/api/brief/questions'),
   roots: () => api.get('/api/fs/roots'), list: p => api.get(`/api/fs/list?path=${encodeURIComponent(p || '')}`), probe: p => api.get(`/api/fs/probe?path=${encodeURIComponent(p)}`),
   thumb: (p, t) => `/api/fs/thumb?path=${encodeURIComponent(p)}${t === undefined ? '' : `&t=${t}`}`,
