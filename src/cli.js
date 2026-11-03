@@ -31,6 +31,9 @@ const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  db         [--info] [--prune]
+             The local SQLite database (projects, progress, approvals, remembered terms, usage): where it is and what it holds;
+             --prune removes expired cache entries and usage older than 90 days. $VIDEO_MONK_HOME moves it
   ui         [--port 4173] [--no-open]
              Open the web studio: pick a video, watch every step, review graphics and B-roll, and approve each stage. Local only
              (127.0.0.1), protected by a one-time token in the printed address. Projects live in ~/.video-monk/ui/projects
@@ -194,6 +197,7 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
+  db: { info: 'boolean', prune: 'boolean' },
   'script-check': { words: 'string', glossary: 'string', output: 'string' },
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
@@ -466,6 +470,15 @@ export async function main(args) {
       try { await (await import('./timeline.js')).loadTimeline(output); } catch (error) { await (await import('node:fs/promises')).rm(output, { force: true }); throw new Error(`The manifest with sound effects is invalid (${error.message}); nothing was written`); }
       console.log(`${placed.events.length} sound effect(s) placed (${mode}, ${engine}${session ? `, ${placed.credits} credits spent` : ''}): ${output}`);
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
+      break;
+    }
+    case 'db': {
+      const { Db } = await import('./db.js');
+      const db = await Db.open();
+      if (opts.prune) console.log(`Pruned ${db.pruneKv()} expired cache entries and ${db.pruneUsage()} old usage records.`);
+      const i = db.info();
+      console.log(`Database: ${i.file}\nSchema ${i.schema}, ${(i.bytes / 1024).toFixed(0)} KB\nProjects ${i.projects} (${i.runs} runs, ${i.checkpoints} checkpoints), events ${i.events}, approvals ${i.approvals}\nRemembered: ${i.terms} term(s), ${i.presets} preset(s), ${i.recentMedia} recent file(s); usage records ${i.usage}`);
+      db.close();
       break;
     }
     case 'ui': {

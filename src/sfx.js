@@ -5,6 +5,7 @@
 import path from 'node:path';
 import { mkdir, rm } from 'node:fs/promises';
 import { exists, run } from './core.js';
+import { tryDb } from './db.js';
 import { mireloKey, account, creditsPerSecond, generate, finish, cacheId, PROMPTS, RIGHTS as MIRELO_RIGHTS, DEFAULT_MODEL } from './mirelo.js';
 
 const tool = name => process.env[`VIDEO_MONK_${name.toUpperCase()}`] || name;
@@ -108,6 +109,7 @@ export async function obtainFromMirelo({ prompt, seconds, file, session, library
   await rm(raw, { force: true });
   const charged = Number.isFinite(made.credits) ? made.credits : estimate;
   session.spent += charged;
+  (await tryDb())?.addUsage('mirelo', charged, { project: null, note: prompt.slice(0, 60) });
   await library?.add({ id, kind: 'audio', source: file, name: name || `Mirelo: ${prompt.slice(0, 40)}`, description: prompt, tags: ['sfx', 'mirelo', 'generated', ...tags],
     rights: MIRELO_RIGHTS, attribution: 'Generated with Mirelo', approved: true, createdBy: 'sfx', project, meta: { prompt, model: made.model, seconds, credits: charged } });
   return { reused: false, credits: charged };

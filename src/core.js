@@ -25,6 +25,13 @@ export async function exists(file) {
   }
 }
 
+// A folder name that does not exist yet: name, then name-x2, name-x3... (a resumed run must not collide with a half-written folder of the run it continues).
+export async function freshDir(root, name) {
+  let dir = path.join(root, name), n = 1;
+  while (await exists(dir)) dir = path.join(root, `${name}-x${++n}`);
+  return dir;
+}
+
 export async function writeNew(file, content) {
   await mkdir(path.dirname(file), { recursive: true });
   await writeFile(file, content, { flag: 'wx' });

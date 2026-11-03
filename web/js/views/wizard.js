@@ -14,9 +14,9 @@ const demo = {
 };
 
 export async function renderWizard(view, ctx) {
-  let questions = [], envInfo = null, browser = null;
+  let questions = [], envInfo = null, browser = null, presets = [], terms = { terms: [] }, recents = [];
   mount(view, h('div', { class: 'skeleton', style: { height: '320px' } }));
-  [questions, envInfo] = await Promise.all([api.questions(), api.env().catch(() => null)]);
+  [questions, envInfo, presets, terms, recents] = await Promise.all([api.questions(), api.env().catch(() => null), api.presets().catch(() => []), api.terms().catch(() => ({ terms: [] })), api.recent().catch(() => [])]);
   const q = id => questions.find(x => x.id === id);
   const o = draft.options;
 
@@ -60,7 +60,11 @@ export async function renderWizard(view, ctx) {
     browser?.destroy();
     browser = fileBrowser({ mode: 'file', selected: draft.media, initial: draft.media ? draft.media.replace(/\/[^/]+$/, '') : null, onSelect: async e => { draft.media = e.path; draft.probe = null; draft.name = e.name.replace(/\.[^.]+$/, ''); paintDetail(); updateFoot(); try { draft.probe = await api.probe(e.path); } catch (error) { toast(error.message, 'bad'); draft.media = null; } paintDetail(); updateFoot(); } });
     paintDetail();
-    return h('div', {}, h('div', { class: 'grid', style: { gridTemplateColumns: 'minmax(0,1fr) 340px', alignItems: 'start' } }, browser.el, detail));
+    const pick = async p => { draft.media = p.path; draft.probe = null; draft.name = p.name.replace(/\.[^.]+$/, ''); paintDetail(); updateFoot(); try { draft.probe = await api.probe(p.path); } catch (error) { toast(error.message, 'bad'); draft.media = null; } paintDetail(); updateFoot(); };
+    const extras = [];
+    if (presets.length) extras.push(h('div', { class: 'card pad row wrap', style: { marginBottom: '14px' } }, h('b', {}, 'Start from a preset'), h('select', { class: 'select', style: { maxWidth: '280px' }, onchange: e => { const pr = presets.find(x => String(x.id) === e.target.value); if (pr) { Object.assign(o, pr.options, { rightsConfirmed: false }); toast(`Applied "${pr.name}"`, 'good'); } } }, h('option', { value: '' }, 'Choose…'), presets.map(pr => h('option', { value: pr.id }, pr.name))), h('span', { class: 'muted small' }, 'Your saved settings. Rights are always confirmed per project.')));
+    if (recents.length) extras.push(h('div', { style: { marginBottom: '14px' } }, h('div', { class: 'small muted', style: { marginBottom: '8px' } }, 'Recent footage'), h('div', { class: 'row wrap' }, recents.slice(0, 6).map(r => h('button', { class: 'btn sm', title: r.path, onclick: () => pick(r) }, icon('film', 14), r.name)))));
+    return h('div', {}, extras, h('div', { class: 'grid', style: { gridTemplateColumns: 'minmax(0,1fr) 340px', alignItems: 'start' } }, browser.el, detail));
   }
 
   // ---- 2. format
@@ -112,6 +116,9 @@ export async function renderWizard(view, ctx) {
         h('div', { class: 'mt' }, field('Or use an existing words file', h('input', { class: 'input mono', value: o.wordsFile, placeholder: '/path/to/words.json (source-relative word timestamps)', oninput: e => { o.wordsFile = e.target.value.trim(); } })))),
       section('Names, acronyms and jargon', 'Speech recognition spells what it hears: REST becomes “wrist”, Redis becomes “red is”. List the terms in your video and you will approve each correction before it is applied.',
         h('textarea', { class: 'textarea', placeholder: 'REST | api; http; endpoint\nRedis\nApache Camel | integration; route\nKubernetes', value: o.glossary, oninput: e => { o.glossary = e.target.value; } }),
+        terms.terms.length ? h('div', { class: 'card pad mt col' }, h('div', { class: 'row between' }, h('b', {}, 'Remembered from your earlier projects'), h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: o.useRemembered !== false, onchange: e => { o.useRemembered = e.target.checked; } }), 'Check these too')),
+          h('div', { class: 'muted small' }, 'Corrections you approved before are proposed again automatically; you still approve each one.'),
+          h('div', { class: 'row wrap' }, terms.terms.slice(0, 24).map(t => h('span', { class: `chip ${t.enabled ? 'info' : ''}`, title: `${t.uses}× · ${t.hints || 'no hints'}`, style: { cursor: 'pointer' }, onclick: async () => { t.enabled = t.enabled ? 0 : 1; await api.toggleTerm(t.heard, t.term, Boolean(t.enabled)); paint(); } }, `${t.heard} → ${t.term}`, h('span', { class: 'faint', onclick: async e => { e.stopPropagation(); await api.deleteTerm(t.heard, t.term); terms.terms = terms.terms.filter(x => x !== t); paint(); }, title: 'Forget' }, ' ×'))))) : null,
         h('div', { class: 'hint mt-s' }, icon('info', 18), h('div', {}, 'One term per line. After a ', h('code', {}, '|'), ' list words that show the term is meant (', h('code', {}, 'REST | api; http'), '), so a real “wrist” in a sentence about hands is left alone.'))));
   }
 
@@ -132,6 +139,8 @@ export async function renderWizard(view, ctx) {
           toggle('After cutting', 'Check what was removed before graphics are planned.', 'cut', o.gates),
           toggle('Final approval', 'Watch the finished video and sign off before it is marked ready.', 'final', o.gates))),
       h('div', { class: 'col' },
+        h('div', { class: 'card pad col' }, h('h3', {}, 'Save these settings'), h('div', { class: 'sub muted small' }, 'Reuse them for the next video. Footage, rights and one-off ranges are not saved.'),
+          h('div', { class: 'row' }, h('input', { class: 'input', id: 'preset-name', placeholder: 'Preset name, e.g. My explainers' }), h('button', { class: 'btn', onclick: async () => { const name = document.getElementById('preset-name').value.trim(); if (!name) return toast('Give the preset a name', 'bad'); try { const saved = await api.savePreset(name, { ...o, glossary: '' }); presets = [...presets.filter(x => x.name !== saved.name), saved]; toast(`Saved "${saved.name}"`, 'good'); } catch (error) { toast(error.message, 'bad'); } } }, 'Save'))),
         h('div', { class: 'card pad col' }, h('h3', {}, 'Before you start'),
           missing.length ? h('div', { class: 'hint bad' }, icon('alert', 18), h('div', {}, h('b', {}, 'Missing tools: '), missing.map(m => m.label).join(', '), '. ', h('a', { href: '#/system' }, 'See how to fix'))) : h('div', { class: 'hint' }, icon('check', 18), 'FFmpeg and Chrome are ready.'),
           h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: o.rightsConfirmed, onchange: e => { o.rightsConfirmed = e.target.checked; updateFoot(); } }), h('div', {}, h('b', {}, 'I have the right to edit and publish this footage'), h('div', { class: 'muted small' }, 'I am responsible for checking facts, caption wording and the licences of any stock material before publishing.'))))));

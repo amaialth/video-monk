@@ -15,6 +15,10 @@ export const api = {
   start: id => api.post(`/api/projects/${id}/start`), cancel: id => api.post(`/api/projects/${id}/cancel`), duplicate: id => api.post(`/api/projects/${id}/duplicate`), remove: id => api.del(`/api/projects/${id}`),
   data: (id, name) => api.get(`/api/projects/${id}/data/${name}`), gate: (id, gate, body) => api.post(`/api/projects/${id}/gates/${gate}`, body),
   action: (id, name, body) => api.post(`/api/projects/${id}/actions/${name}`, body), library: (q, kind) => api.get(`/api/library?q=${encodeURIComponent(q || '')}${kind ? `&kind=${kind}` : ''}`),
+  resume: id => api.post(`/api/projects/${id}/resume`), runs: id => api.get(`/api/projects/${id}/runs`),
+  presets: () => api.get('/api/presets'), savePreset: (name, options) => api.post('/api/presets', { name, options }), deletePreset: id => api.del(`/api/presets/${id}`),
+  terms: () => api.get('/api/terms'), toggleTerm: (heard, term, enabled) => api.post('/api/terms/toggle', { heard, term, enabled }), deleteTerm: (heard, term) => api.post('/api/terms/delete', { heard, term }),
+  recent: () => api.get('/api/recent'), approvals: () => api.get('/api/approvals'), db: () => api.get('/api/db'),
   source: id => `/api/projects/${id}/source`
 };
 

@@ -5,12 +5,13 @@ import { renderWizard } from './views/wizard.js';
 import { renderProject } from './views/project.js';
 import { renderLibrary } from './views/library.js';
 import { renderSystem } from './views/system.js';
+import { renderApprovals } from './views/approvals.js';
 
 const app = document.getElementById('app');
 let cleanup = null, session = null, pollTimer = null;
 const ctx = { get session() { return session; }, refreshBadge: () => badge(), navigate: to => { location.hash = to; } };
 
-const NAV = [['#/', 'Projects', 'grid'], ['#/new', 'New project', 'plus'], ['#/library', 'Asset library', 'library'], ['#/system', 'System', 'gear']];
+const NAV = [['#/', 'Projects', 'grid'], ['#/new', 'New project', 'plus'], ['#/library', 'Asset library', 'library'], ['#/approvals', 'Approvals', 'shield'], ['#/system', 'System', 'gear']];
 
 function shell() {
   const theme = () => document.documentElement.dataset.theme;
@@ -48,6 +49,7 @@ async function route() {
     else if (parts[0] === 'new') cleanup = await renderWizard(view, ctx);
     else if (parts[0] === 'project' && parts[1]) cleanup = await renderProject(view, ctx, parts[1], parts[2]);
     else if (parts[0] === 'library') cleanup = await renderLibrary(view, ctx);
+    else if (parts[0] === 'approvals') cleanup = await renderApprovals(view, ctx);
     else if (parts[0] === 'system') cleanup = await renderSystem(view, ctx);
     else mount(view, h('div', { class: 'empty' }, h('h3', {}, 'Page not found'), h('a', { href: '#/' }, 'Back to projects')));
   } catch (error) {

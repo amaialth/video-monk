@@ -15,6 +15,7 @@ import { Library } from '../library.js';
 import { fetchPlan, applyPlacements } from '../broll.js';
 import { pickProvider } from '../stock.js';
 import { discover, timelineOf } from './artifacts.js';
+import { checkpointOf, restoreArtifacts } from '../resume.js';
 
 const tool = name => process.env[`VIDEO_MONK_${name.toUpperCase()}`] || name;
 const readJson = async f => JSON.parse(await readFile(f, 'utf8'));
@@ -66,6 +67,8 @@ export class Runner {
       if (['running', 'waiting'].includes(p.status) && !this.active.has(p.id)) {
         p.status = 'interrupted'; p.pending = null;
         for (const s of Object.values(p.steps)) if (['running', 'waiting'].includes(s.status)) s.status = 'interrupted';
+        const last = this.store.lastRun(p.id);
+        if (last?.status === 'running') this.store.endRun(last.id, 'interrupted', 'the app was closed');
         await this.store.save(p);
       }
     }
@@ -75,28 +78,53 @@ export class Runner {
     const project = await this.store.get(id);
     if (this.active.has(id)) fail('This project is already running', 409);
     if (project.imported) fail('Imported projects are read-only', 400);
-    if (project.status !== 'draft') fail('Only a new project can be started; duplicate it to run again', 409);
+    if (project.status !== 'draft') fail('Only a new project can be started; resume it or duplicate it to run again', 409);
     const o = normalizeOptions(project.options);
     if (!project.options?.rightsConfirmed) fail('Confirm you have the rights to this footage before starting');
-    const ctrl = new AbortController();
-    const entry = { ctrl, project, options: o, gates: new Map(), manifestOverride: null, broll: null, current: null };
-    this.active.set(id, entry);
     project.options = o;
     project.status = 'running';
     project.startedAt = new Date().toISOString();
     project.steps = Object.fromEntries(plannedSteps(o).map(s => [s, { status: 'pending', label: STEPS[s] }]));
     project.root = path.join(this.store.dir(id), 'run');
     await this.store.save(project);
-    this.#run(entry).catch(async error => {
+    this.#launch(project, o, null);
+    return project;
+  }
+
+  // Resume an interrupted, failed or cancelled run: steps approved earlier keep their results and are not repeated; the run continues at the first unfinished step.
+  async resume(id) {
+    const project = await this.store.get(id);
+    if (this.active.has(id)) fail('This project is already running', 409);
+    if (project.imported) fail('Imported projects are read-only', 400);
+    if (!['interrupted', 'failed', 'cancelled'].includes(project.status)) fail('Only an interrupted, failed or cancelled run can be resumed', 409);
+    const o = normalizeOptions(project.options);
+    const checkpoints = this.store.checkpoints(id);
+    const done = Object.entries(project.steps).filter(([k, s]) => s.status === 'done' && (k !== 'final')).map(([k]) => k);
+    for (const [k, s] of Object.entries(project.steps)) { if (!done.includes(k)) { project.steps[k] = { status: 'pending', label: STEPS[k] }; } else project.steps[k] = { ...s, restored: true }; }
+    project.status = 'running'; project.pending = null; delete project.error; delete project.finishedAt;
+    project.resumeCount = (project.resumeCount || 0) + 1;
+    await this.store.save(project);
+    this.#launch(project, o, { checkpoints });
+    return project;
+  }
+
+  #launch(project, o, resumeInfo) {
+    const id = project.id;
+    const ctrl = new AbortController();
+    const entry = { ctrl, project, options: o, gates: new Map(), manifestOverride: null, broll: null, current: null, runId: null };
+    const previous = this.store.lastRun(id);
+    entry.runId = this.store.startRun(id, resumeInfo ? previous?.id ?? null : null);
+    this.active.set(id, entry);
+    this.#run(entry, resumeInfo).catch(async error => {
       const cancelled = error instanceof Cancelled || ctrl.signal.aborted;
       project.status = cancelled ? 'cancelled' : 'failed';
       project.pending = null;
       if (!cancelled) project.error = String(error.message || error).slice(0, 2000);
       for (const [k, s] of Object.entries(project.steps)) if (['running', 'waiting'].includes(s.status)) project.steps[k] = { ...s, status: cancelled ? 'cancelled' : 'failed', ...(cancelled ? {} : { error: project.error }) };
+      this.store.endRun(entry.runId, project.status, project.error || null);
       await this.store.save(project);
       await this.#emit(id, cancelled ? 'cancelled' : 'failed', { error: project.error });
     }).finally(() => this.active.delete(id));
-    return project;
   }
 
   cancel(id) {
@@ -124,6 +152,7 @@ export class Runner {
     const p = entry.project;
     const full = { id: `a-${p.approvals.length + 1}`, at: new Date().toISOString(), by: os.userInfo().username, ...record };
     p.approvals.push(full);
+    this.store.recordApproval(p.id, full);
     await this.store.save(p);
     const dir = this.store.dir(p.id);
     await writeFile(path.join(dir, 'approvals.json'), `${JSON.stringify({ version: 1, project: p.name, media: p.media?.path, approvals: p.approvals }, null, 1)}\n`);
@@ -166,40 +195,62 @@ export class Runner {
   }
 
   // --- the run ---------------------------------------------------------------------------------------------------------------
-  async #run(entry) {
+  async #run(entry, resumeInfo = null) {
     const { project, options: o, ctrl } = entry;
+    const cps = resumeInfo?.checkpoints || {};
+    const reuse = async key => { const f = cps[key]?.file; return f && await exists(f) ? f : null; };
     const id = project.id;
     const dir = this.store.dir(id);
     const execute = (c, a, opts = {}) => this.deps.run(c, a, { ...opts, signal: ctrl.signal });
     const media = project.media.path;
-    await this.#emit(id, 'run-start', { media: project.media.name });
+    await this.#emit(id, resumeInfo ? 'run-resumed' : 'run-start', { media: project.media.name, restoredSteps: Object.entries(project.steps).filter(([, s]) => s.restored).map(([k]) => k) });
+    this.store.db.touchMedia({ path: media, name: project.media.name, duration: project.media.duration });
 
     // 1. footage
-    await this.#step(entry, 'inspect', { status: 'running' });
-    const analysis = await this.deps.analyzeFootage(media, execute);
-    await writeFile(path.join(dir, 'analysis.json'), JSON.stringify(analysis, null, 1));
-    await this.#footageVisuals(media, path.join(dir, 'media'), analysis.duration, execute).catch(() => {});
-    await this.#step(entry, 'inspect', { status: 'done', summary: { duration: analysis.duration, width: analysis.video?.width, height: analysis.video?.height, fps: analysis.video?.fps,
-      lufs: analysis.audio?.integratedLufs, speechRatio: analysis.audio?.speechRatio, pauses: analysis.audio?.pauses, silenceSeconds: analysis.audio?.silenceSeconds, suggestions: analysis.suggestions } });
+    let analysis;
+    const analysisFile = await reuse('ui:inspect');
+    if (analysisFile && project.steps.inspect?.restored) { analysis = await readJson(analysisFile); await this.#emit(id, 'step', { step: 'inspect', ...project.steps.inspect }); }
+    else {
+      await this.#step(entry, 'inspect', { status: 'running' });
+      analysis = await this.deps.analyzeFootage(media, execute);
+      await writeFile(path.join(dir, 'analysis.json'), JSON.stringify(analysis, null, 1));
+      await this.#footageVisuals(media, path.join(dir, 'media'), analysis.duration, execute).catch(() => {});
+      this.store.saveCheckpoint(id, 'ui:inspect', { file: path.join(dir, 'analysis.json') }, entry.runId);
+      await this.#step(entry, 'inspect', { status: 'done', summary: { duration: analysis.duration, width: analysis.video?.width, height: analysis.video?.height, fps: analysis.video?.fps,
+        lufs: analysis.audio?.integratedLufs, speechRatio: analysis.audio?.speechRatio, pauses: analysis.audio?.pauses, silenceSeconds: analysis.audio?.silenceSeconds, suggestions: analysis.suggestions } });
+    }
     if (ctrl.signal.aborted) throw new Cancelled('cancelled');
 
     // 2. transcript
     let wordsFile = null;
     if (project.steps.transcript) {
-      await this.#step(entry, 'transcript', { status: 'running' });
-      if (o.wordsFile) { wordsFile = path.resolve(o.wordsFile); await this.#step(entry, 'transcript', { status: 'done', summary: { source: 'supplied words file' } }); }
+      const kept = project.steps.transcript.restored ? await reuse('ui:transcript') : null;
+      if (kept) { wordsFile = kept; await this.#emit(id, 'step', { step: 'transcript', ...project.steps.transcript }); }
       else {
-        const out = path.join(dir, 'transcript');
-        const t = await this.deps.transcribeWhisper(media, out, { allowTranscribe: true, model: o.model, language: o.language, prompt: o.asrPrompt }, execute);
-        wordsFile = path.join(out, 'words.json');
-        await this.#step(entry, 'transcript', { status: 'done', summary: { words: t.words.length, model: t.report.model, language: t.report.language, cached: Boolean(t.report.cached) } });
+        await this.#step(entry, 'transcript', { status: 'running' });
+        if (o.wordsFile) { wordsFile = path.resolve(o.wordsFile); await this.#step(entry, 'transcript', { status: 'done', summary: { source: 'supplied words file' } }); }
+        else {
+          const out = path.join(dir, 'transcript');
+          let t;
+          if (await exists(path.join(out, 'words.json'))) { // a finished transcript left by an interrupted run
+            t = { words: await readJson(path.join(out, 'words.json')), report: await readJson(path.join(out, 'transcription-report.json')).catch(() => ({})) };
+          } else t = await this.deps.transcribeWhisper(media, out, { allowTranscribe: true, model: o.model, language: o.language, prompt: o.asrPrompt }, execute);
+          wordsFile = path.join(out, 'words.json');
+          await this.#step(entry, 'transcript', { status: 'done', summary: { words: t.words.length, model: t.report.model, language: t.report.language, cached: Boolean(t.report.cached) } });
+        }
+        this.store.saveCheckpoint(id, 'ui:transcript', { file: wordsFile }, entry.runId);
       }
     }
 
     // 3. script check, with approval of each correction
     if (project.steps.script && wordsFile) {
-      await this.#step(entry, 'script', { status: 'running' });
-      wordsFile = await this.#scriptStep(entry, wordsFile, dir);
+      const kept = project.steps.script.restored ? await reuse('ui:script') : null;
+      if (kept) { wordsFile = kept; await this.#emit(id, 'step', { step: 'script', ...project.steps.script }); }
+      else {
+        await this.#step(entry, 'script', { status: 'running' });
+        wordsFile = await this.#scriptStep(entry, wordsFile, dir);
+        this.store.saveCheckpoint(id, 'ui:script', { file: wordsFile }, entry.runId);
+      }
     }
 
     // 4-7. the staged pipeline with its review loops, paused for approval where asked
@@ -218,12 +269,19 @@ export class Runner {
       onEvent: e => this.#onPipelineEvent(entry, e),
       gate: (stage, artifact, info) => this.#pipelineGate(entry, stage, artifact, info)
     };
+    if (resumeInfo) {
+      const { restored, missing } = await restoreArtifacts(cps, execute);
+      const pipelineStages = Object.keys(restored);
+      if (pipelineStages.length || missing.length) await this.#emit(id, 'log', { line: `Resuming: ${pipelineStages.length ? `restored ${pipelineStages.join(', ')} from the earlier run` : 'nothing to restore'}${missing.length ? `; files for ${missing.join(', ')} are gone, so those repeat` : ''}` });
+      autoOptions.resume = { restored, shortDone: Boolean(project.steps.short?.status === 'done' && project.steps.short?.restored) };
+    }
     const result = await this.deps.autoEdit(media, project.root, autoOptions, execute);
     if (ctrl.signal.aborted) throw new Cancelled('cancelled');
     const found = await discover(project.root);
     if (result.loop?.status === 'needs-human') {
       for (const s of Object.values(project.steps)) if (['running', 'waiting'].includes(s.status)) s.status = 'failed';
       project.status = 'needs-attention'; project.error = `The review loop stopped at ${result.loop.stoppedAt}. Open the review notes.`;
+      this.store.endRun(entry.runId, 'needs-attention', project.error);
       await this.store.save(project);
       return this.#emit(id, 'needs-attention', { stage: result.loop.stoppedAt });
     }
@@ -242,6 +300,7 @@ export class Runner {
     } else project.status = 'done';
     project.finishedAt = new Date().toISOString();
     project.pending = null;
+    this.store.endRun(entry.runId, project.status);
     await this.store.save(project);
     await this.#emit(id, 'done', { status: project.status });
   }
@@ -255,7 +314,9 @@ export class Runner {
   async #scriptStep(entry, wordsFile, dir) {
     const { project, options: o } = entry;
     const words = await readJson(wordsFile);
-    const glossary = o.glossary ? parseGlossary(o.glossary) : [];
+    // Terms you corrected in earlier projects are checked again, unless you turned that off.
+    const remembered = o.useRemembered === false ? '' : this.store.db.glossaryText();
+    const glossary = parseGlossary([o.glossary || '', remembered].filter(Boolean).join('\n'));
     const found = findMisheard(words, glossary);
     const candidates = found.map((f, i) => ({ id: `c${i + 1}`, index: f.index, count: f.count, heard: f.heard, to: f.to, kind: f.kind, term: f.term,
       before: words.slice(Math.max(0, f.index - 8), f.index).map(w => w.text).join(' '), after: words.slice(f.index + f.count, f.index + f.count + 8).map(w => w.text).join(' '), at: words[f.index].start }));
@@ -272,6 +333,9 @@ export class Runner {
     const fixes = candidates.filter(c => accept.has(c.id)).map(c => ({ index: c.index, count: c.count, to: decision.custom?.[c.id] || c.to, reason: `heard "${c.heard}", you confirmed "${decision.custom?.[c.id] || c.to}"` }));
     for (const m of decision.manual || []) if (m.phrase && m.to) fixes.push({ phrase: m.phrase, to: m.to, reason: 'added by you' });
     const applied = applyScriptFixes(words, fixes);
+    // Remember what you confirmed, so the next project catches it without being told.
+    for (const c of candidates.filter(c => accept.has(c.id))) this.store.db.learnTerm(c.heard.split(/\s+/).join(' '), decision.custom?.[c.id] || c.to, glossary.find(g => g.term === c.term)?.hints || []);
+    for (const m of decision.manual || []) if (m.phrase && m.to) this.store.db.learnTerm(m.phrase, m.to, []);
     const out = path.join(sdir, 'words.corrected.json');
     await writeFile(out, JSON.stringify(applied.words, null, 2));
     await writeFile(path.join(sdir, 'words.corrected.fixes.md'), fixesMarkdown(applied.log));
@@ -302,11 +366,17 @@ export class Runner {
     const stepOf = stage => (stage === 'transcript' ? null : stage);
     if (e.type === 'stage-start') {
       const step = stepOf(e.stage);
-      if (step && entry.project.steps[step]) { entry.current = step; this.#step(entry, step, { status: 'running', rerun: e.rerun || undefined }); }
+      if (step && entry.project.steps[step]) { entry.current = step; this.#step(entry, step, { status: 'running', restored: undefined, rerun: e.rerun || undefined }); }
     } else if (e.type === 'stage-produced') {
       const step = stepOf(e.stage);
       if (step === 'cut') this.#step(entry, 'cut', { summary: cutSummary(e.artifact?.result?.report) });
       if (step === 'storyboard') this.#step(entry, 'storyboard', { summary: storyboardSummary(e.artifact) });
+    } else if (e.type === 'stage-done') {
+      const cp = checkpointOf(e.stage, e.artifact);
+      if (cp) this.store.saveCheckpoint(id, e.stage, cp, entry.runId);
+    } else if (e.type === 'stage-restored') {
+      const step = stepOf(e.stage);
+      if (step && entry.project.steps[step]) this.#step(entry, step, { status: 'done', restored: true, summary: step === 'cut' ? cutSummary(e.artifact.result?.report) : step === 'storyboard' ? storyboardSummary(e.artifact) : step === 'render' ? renderSummary(e.artifact.report) : undefined });
     } else if (e.type === 'ledger') this.#emit(id, 'ledger', { entry: e.entry });
   }
 

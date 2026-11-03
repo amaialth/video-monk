@@ -18,7 +18,7 @@ async function temporary(t) {
 }
 async function app(t, home) {
   process.env.VIDEO_MONK_HOME = home;
-  const server = await startServer({ port: 0, store: new Store(path.join(home, 'projects')) });
+  const server = await startServer({ port: 0, store: await Store.open(home) });
   t.after(() => server.close());
   const call = async (method, url, body, headers = {}) => {
     const r = await fetch(server.origin + url, { method, headers: { 'x-vm-token': server.token, ...(body ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: body ? JSON.stringify(body) : undefined });
@@ -132,7 +132,7 @@ test('a project runs end to end with real approvals: script, storyboard and fina
   assert.deepEqual(done.approvals.map(a => a.gate), ['script', 'storyboard', 'final']);
   assert.ok(done.approvals.every(a => a.by && a.at));
   assert.ok(done.approvals[1].fingerprint, 'the approved storyboard is fingerprinted');
-  assert.match(await readFile(path.join(home, 'projects', id, 'APPROVALS.md'), 'utf8'), /\| final \| approved \|/);
+  assert.match(await readFile(path.join(home, 'ui', 'projects', id, 'APPROVALS.md'), 'utf8'), /\| final \| approved \|/);
   assert.ok((await call('GET', `/api/projects/${id}/data/words`)).json.corrected, 'the corrected words are used');
   assert.match((await call('GET', `/api/projects/${id}/data/script`)).json.fixes, /wrist/);
 
@@ -163,4 +163,106 @@ test('a run can be cancelled while it waits for approval', { skip: ffmpegOk ? fa
   assert.equal(p.pending, null);
   assert.equal((await call('DELETE', `/api/projects/${id}`)).status, 200);
   assert.equal((await call('GET', `/api/projects/${id}`)).status, 404);
+});
+
+
+// ---------------------------------------------------------------------------------------------- persistence and resume
+async function media(home, name = 'talk.mp4', seconds = 14) {
+  const file = path.join(home, name);
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `testsrc2=s=640x360:d=${seconds}:r=24`, '-f', 'lavfi', '-i', `aevalsrc='0.4*sin(2*PI*220*t)*(between(t,0.2,3.5)+between(t,4.4,8)+between(t,9,${seconds - 0.6}))':s=48000:d=${seconds}`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', file]);
+  const text = 'So today we are talking about wrist APIs and how a wrist endpoint works over http. The server receives a request and then the server sends back a response. Caching keeps a copy of the data close to the user and that makes every later request faster. Redis is a popular cache and many teams use it.';
+  const words = text.split(' ').map((w, i, all) => ({ text: w, start: 0.25 + i * (seconds - 1.4) / all.length, end: 0.25 + i * (seconds - 1.4) / all.length + 0.28 }));
+  await writeFile(path.join(home, `${name}.words.json`), JSON.stringify(words));
+  return { file, words: path.join(home, `${name}.words.json`) };
+}
+
+test('a run can be resumed: approved steps are restored and not repeated, you are not asked again for what you approved, and the run history is kept', { skip: ffmpegOk ? false : 'needs ffmpeg and Chrome', timeout: 900000 }, async t => {
+  const home = await temporary(t);
+  const { server, call } = await app(t, home);
+  const m = await media(home);
+  const { id } = (await call('POST', '/api/projects', { media: m.file, name: 'Resume me', start: true, options: { content: 'explainer', graphics: 'heavy', quality: 'draft', wordsFile: m.words, glossary: 'REST | api; http; endpoint', rightsConfirmed: true, gates: { script: true, storyboard: true, final: true } } })).json;
+  const state = async () => (await call('GET', `/api/projects/${id}`)).json;
+  const waitFor = gate => until(async () => { const p = await state(); return p.pending?.gate === gate ? p : (p.status === 'failed' ? assert.fail(p.error) : null); });
+
+  const s1 = await waitFor('script');
+  await call('POST', `/api/projects/${id}/gates/script`, { accept: s1.pending.payload.candidates.map(c => c.id) });
+  await waitFor('storyboard');
+  // stop while it waits for the storyboard approval
+  assert.equal((await call('POST', `/api/projects/${id}/cancel`)).status, 200);
+  const cancelled = await until(async () => { const p = await state(); return p.status === 'cancelled' ? p : null; });
+  const runs1 = (await call('GET', `/api/projects/${id}/runs`)).json;
+  assert.equal(runs1.runs.length, 1); assert.equal(runs1.runs[0].status, 'cancelled');
+  assert.deepEqual(Object.keys(runs1.checkpoints).sort(), ['cut', 'transcript', 'ui:inspect', 'ui:script', 'ui:transcript']);
+  assert.equal(cancelled.steps.cut.status, 'done');
+
+  // resume
+  assert.equal((await call('POST', `/api/projects/${id}/resume`)).status, 200);
+  const s2 = await waitFor('storyboard');
+  assert.ok(s2.steps.inspect.restored && s2.steps.script.restored && s2.steps.cut.restored, 'finished steps are marked restored');
+  assert.deepEqual(s2.approvals.map(a => a.gate), ['script'], 'the script was not asked again');
+  assert.equal((await call('POST', `/api/projects/${id}/gates/storyboard`, { drop: [] })).status, 200);
+  const s3 = await waitFor('final');
+  assert.equal((await call('POST', `/api/projects/${id}/gates/final`, { approved: true, checklist: { watched: true, facts: true, rights: true } })).status, 200);
+  const done = await until(async () => { const p = await state(); return p.status === 'done' ? p : null; });
+  assert.equal(done.resumeCount, 1);
+  assert.deepEqual(done.approvals.map(a => a.gate), ['script', 'storyboard', 'final']);
+  const runs2 = (await call('GET', `/api/projects/${id}/runs`)).json.runs;
+  assert.deepEqual(runs2.map(r => [r.status, r.resumed_from]), [['cancelled', null], ['done', runs2[0].id]]);
+  const events = (await call('GET', `/api/projects/${id}/data/ledger`)).json;
+  assert.ok(events.entries.filter(e => e.kind === 'review' && e.stage === 'cut').length <= 2, 'the cut was not reviewed a second time');
+  const sse = await new Promise(resolve => { const req = http.get({ host: '127.0.0.1', port: server.port, path: `/api/projects/${id}/events?after=0`, headers: { 'x-vm-token': server.token } }, res => { let buf = ''; res.on('data', d => { buf += d; if (buf.includes('run-resumed') && buf.includes('"type":"done"')) { req.destroy(); resolve(buf); } }); setTimeout(() => { req.destroy(); resolve(buf); }, 4000); }); });
+  assert.match(sse, /run-resumed/); assert.match(sse, /restored cut from the earlier run|restored .*cut/);
+  // what you corrected is remembered for later projects, and so is the footage
+  const terms = (await call('GET', '/api/terms')).json;
+  assert.ok(terms.terms.some(x => x.heard === 'wrist' && x.term === 'REST'));
+  assert.match(terms.glossary, /REST/);
+  assert.equal((await call('GET', '/api/recent')).json[0].name, 'talk.mp4');
+  assert.ok((await call('GET', '/api/approvals')).json.length >= 3, 'every approval is in the history across projects');
+  assert.equal((await call('POST', `/api/projects/${id}/resume`)).status, 409, 'a finished project cannot be resumed');
+});
+
+test('after the app is closed mid-run the project is marked interrupted and can be resumed by a new server on the same database; remembered terms catch mishearings in the next project', { skip: ffmpegOk ? false : 'needs ffmpeg and Chrome', timeout: 900000 }, async t => {
+  const home = await temporary(t);
+  const m = await media(home);
+  let first = await app(t, home);
+  const { id } = (await first.call('POST', '/api/projects', { media: m.file, name: 'Crash me', start: true, options: { content: 'explainer', graphics: 'heavy', quality: 'draft', wordsFile: m.words, glossary: 'REST | api; http', rightsConfirmed: true, gates: { script: true, storyboard: true, final: true } } })).json;
+  const waitFor = async (c, gate) => until(async () => { const p = (await c.call('GET', `/api/projects/${id}`)).json; return p.pending?.gate === gate ? p : (p.status === 'failed' ? assert.fail(p.error) : null); });
+  const s1 = await waitFor(first, 'script');
+  await first.call('POST', `/api/projects/${id}/gates/script`, { accept: s1.pending.payload.candidates.map(c => c.id) });
+  await waitFor(first, 'storyboard');
+  // simulate a crash: the process disappears without cancelling anything
+  first.server.runner.active.clear();
+  const store = first.server.store;
+  const p = await store.get(id); p.status = 'running'; p.pending = null; p.steps.storyboard.status = 'running'; await store.save(p);
+  await first.server.server.close(); first.server.server.closeAllConnections?.();
+  // a new server on the same database
+  const second = await app(t, home);
+  const after = (await second.call('GET', `/api/projects/${id}`)).json;
+  assert.equal(after.status, 'interrupted');
+  assert.equal(after.steps.storyboard.status, 'interrupted');
+  assert.equal((await second.call('POST', `/api/projects/${id}/start`)).status, 409);
+  assert.equal((await second.call('POST', `/api/projects/${id}/resume`)).status, 200);
+  const s2 = await waitFor(second, 'storyboard');
+  assert.ok(s2.steps.cut.restored);
+  await second.call('POST', `/api/projects/${id}/cancel`);
+  await until(async () => (await second.call('GET', `/api/projects/${id}`)).json.status === 'cancelled');
+  // the next project needs no glossary: what you approved is remembered
+  const n = (await second.call('POST', '/api/projects', { media: m.file, name: 'Next one', start: true, options: { content: 'explainer', graphics: 'light', quality: 'draft', wordsFile: m.words, rightsConfirmed: true, gates: { script: true, storyboard: true, final: true } } })).json;
+  const g = await until(async () => { const x = (await second.call('GET', `/api/projects/${n.id}`)).json; return x.pending?.gate === 'script' ? x : (x.status === 'failed' ? assert.fail(x.error) : null); });
+  assert.ok(g.pending.payload.candidates.length >= 1, 'found without a glossary, from remembered terms');
+  assert.deepEqual([g.pending.payload.candidates[0].heard, g.pending.payload.candidates[0].to], ['wrist', 'REST']);
+  await second.call('POST', `/api/projects/${n.id}/cancel`);
+});
+
+test('presets, settings, remembered terms and the database summary are available, and a preset never carries the rights attestation', async t => {
+  const home = await temporary(t);
+  const { call } = await app(t, home);
+  const saved = (await call('POST', '/api/presets', { name: 'My explainers', options: { content: 'explainer', graphics: 'heavy', rightsConfirmed: true, wordsFile: '/x.json', pace: 'tight' } })).json;
+  assert.equal(saved.name, 'My explainers'); assert.equal(saved.options.rightsConfirmed, undefined); assert.equal(saved.options.wordsFile, undefined); assert.equal(saved.options.pace, 'tight');
+  assert.equal((await call('POST', '/api/presets', { name: '', options: {} })).status, 400);
+  assert.equal((await call('GET', '/api/presets')).json.length, 1);
+  assert.equal((await call('DELETE', `/api/presets/${saved.id}`)).json.deleted, 1);
+  assert.deepEqual((await call('POST', '/api/settings', { theme: 'light', evil: 'x' })).json, { theme: 'light' }, 'only known settings are stored');
+  const db = (await call('GET', '/api/db')).json;
+  assert.equal(db.schema, 2); assert.match(db.file, /video-monk\.db$/); assert.ok(db.usage.unsplashHour);
 });

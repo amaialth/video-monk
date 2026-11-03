@@ -4,7 +4,7 @@
 // optional Claude reviewer. Fixes are machine-applicable and target only the flagged segment, word or item.
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
-import { exists, readJson, run, writeJson, writeNew } from './core.js';
+import { exists, readJson, run, writeJson, writeNew, freshDir } from './core.js';
 import { finding, verdict } from './loop.js';
 import { autocut, alignRanges, materializeEdit, FILLERS, LEVEL_STEP } from './autocut.js';
 import { transcribeWhisper } from './transcribe.js';
@@ -185,7 +185,8 @@ export async function reviseCut(artifact, findings, ctx) {
   if (fixes.some(x => x.op === 'calmZoom')) { context = { ...context, options: { ...context.options, jumpZoom: false } }; changed.push('removed the per-cut zoom'); }
   const aligned = alignRanges(merge(list.map(r => ({ in: r.in, out: r.out })), 0.06), context.fps, context.info.duration);
   const version = (artifact.version || 1) + 1;
-  const outputDir = path.join(ctx.root, `edit-r${version}`);
+  let outputDir = path.join(ctx.root, `edit-r${version}`);
+  for (let n = version; await exists(outputDir); n++) outputDir = path.join(ctx.root, `edit-r${n + 1}`); // never reuse a folder from an interrupted run
   const next = await materializeEdit(context, aligned, outputDir);
   return { artifact: { ...artifact, context, result: next, outputDir, manifestFile: path.join(outputDir, 'production.json'), version }, changed };
 }
@@ -283,7 +284,9 @@ export async function reviseStoryboard(artifact, findings, ctx) {
   const version = (artifact.version || 1) + 1;
   const base = await readJson(artifact.baseManifestFile);
   const applied = applyStoryboard(base, storyboard, style);
-  const stem = path.join(path.dirname(artifact.baseManifestFile), `production.graphics.r${version}`);
+  // a revision never overwrites an earlier one (a resumed run revises again from the same plan)
+  let stem = path.join(path.dirname(artifact.baseManifestFile), `production.graphics.r${version}`);
+  for (let n = version; await exists(`${stem}.json`); n++) stem = path.join(path.dirname(artifact.baseManifestFile), `production.graphics.r${n + 1}`);
   await writeJson(`${stem}.json`, applied);
   await loadTimeline(`${stem}.json`, ctx.execute);
   await writeJson(`${stem}.storyboard.json`, storyboard);
@@ -409,7 +412,8 @@ export function buildStages(options, execute = run) {
       async revise(artifact, findings) {
         const out = reviseTranscript(artifact, findings);
         if (out.artifact.dirty) {
-          const file = path.join(root, `words.r${out.artifact.version}.json`);
+          let file = path.join(root, `words.r${out.artifact.version}.json`);
+          for (let n = out.artifact.version; await exists(file); n++) file = path.join(root, `words.r${n + 1}.json`);
           await writeJson(file, out.artifact.words);
           out.artifact.file = file;
           out.artifact.dirty = false;
@@ -423,7 +427,7 @@ export function buildStages(options, execute = run) {
     name: 'cut',
     async produce(ctx) {
       const words = ctx.artifacts.transcript?.file;
-      const dir = path.join(root, 'edit');
+      const dir = await freshDir(root, 'edit');
       const result = await autocut(options.media, dir, { ...options.cut, words, style: style.name }, execute);
       return { result, context: result.context, outputDir: dir, manifestFile: path.join(dir, 'production.json'), version: 1 };
     },
@@ -464,7 +468,8 @@ export function buildStages(options, execute = run) {
       const version = ++renderCounter; // a real counter: the loop hands produce() a copy of ctx, so state on ctx is lost
       const review = path.join(path.dirname(manifest), `review.${version}.${Date.now().toString(36)}.json`);
       await reviewProduction(manifest, review, true, execute);
-      const outputDir = path.join(root, version === 1 ? 'render' : `render-r${version}`);
+      let outputDir = path.join(root, version === 1 ? 'render' : `render-r${version}`);
+      if (await exists(outputDir)) outputDir = await freshDir(root, 'render'); // a half-written folder from an interrupted run
       const report = await buildProduction(manifest, review, outputDir, true, execute, undefined, { log, quality: options.quality, concurrency: options.concurrency });
       return { outputDir, report, manifestFile: manifest, version, manifestCaptions: Boolean(JSON.parse(await readFile(manifest, 'utf8')).captions) };
     },

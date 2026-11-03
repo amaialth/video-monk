@@ -19,7 +19,7 @@ export async function discover(root) {
   if (await exists(at('loop-ledger.json'))) out.ledger = at('loop-ledger.json');
   if (await exists(at('REVIEW-LOOP.md'))) out.reviewLoop = at('REVIEW-LOOP.md');
   // the latest edit folder (edit, edit-r2, ...)
-  const edits = (await dirs(root)).filter(d => /^edit(-r\d+)?$/.test(d)).map(d => at(d));
+  const edits = (await dirs(root)).filter(d => /^edit(-r\d+|-x\d+)?$/.test(d)).map(d => at(d));
   const edit = await newest(edits);
   if (edit) {
     out.editDir = edit;

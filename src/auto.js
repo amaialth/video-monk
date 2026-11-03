@@ -1,7 +1,7 @@
 // One-shot automated pipeline: inspect -> transcribe -> autocut -> review -> render.
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { exists, run, writeJson } from './core.js';
+import { exists, run, writeJson, freshDir } from './core.js';
 import { analyzeFootage, autocut } from './autocut.js';
 import { transcribeWhisper, findWhisper, findModel } from './transcribe.js';
 import { reviewProduction, buildProduction } from './production.js';
@@ -62,12 +62,14 @@ async function legacyAutoEdit(media, output, options = {}, execute = run) {
 export async function autoEdit(media, output, options = {}, execute = run) {
   if (options.reviewLoop === false) return legacyAutoEdit(media, output, options, execute);
   const log = options.log || (() => {});
-  if (await exists(output)) throw new Error(`Auto: output already exists: ${output}`);
+  // resume: { restored: { stage: artifact }, shortDone } continues in an existing output folder, skipping stages approved in an earlier run
+  const resume = options.resume || null;
+  if (!resume && await exists(output)) throw new Error(`Auto: output already exists: ${output}`);
   if (options.render && options.approvePlan !== true) throw new Error('Auto: rendering needs --approve-plan (you approve the automatic plan and asset rights).');
   await mkdir(output, { recursive: true });
   log('Inspecting footage...');
   const analysis = options.analysis || await analyzeFootage(media, execute);
-  await writeJson(path.join(output, 'analysis.json'), analysis);
+  if (!(resume && await exists(path.join(output, 'analysis.json')))) await writeJson(path.join(output, 'analysis.json'), analysis);
   const density = options.graphics ?? undefined;
   const wantsGraphics = density !== 'off' && Boolean(options.words || options.transcribe);
   if (density !== 'off' && !wantsGraphics) log('Graphics need a transcript: pass --transcribe (or --words) to plan explainer graphics.');
@@ -81,16 +83,16 @@ export async function autoEdit(media, output, options = {}, execute = run) {
   if (!options.render) stages = stages.filter(s => s.name !== 'render');
   const ledger = await Ledger.open(path.join(output, 'loop-ledger.json'));
   if (options.onEvent) ledger.onRecord = entry => options.onEvent({ type: 'ledger', entry });
-  const result = await runPipeline({ stages, ledger, maxRounds: options.maxRounds ?? 3, log, onEvent: options.onEvent, gate: options.gate, signal: options.signal, ctx: { execute, root: output, agent: options.reviewAgent === 'claude' ? 'claude' : null } });
+  const result = await runPipeline({ stages, ledger, maxRounds: options.maxRounds ?? 3, log, onEvent: options.onEvent, gate: options.gate, signal: options.signal, restored: resume?.restored || {}, ctx: { execute, root: output, agent: options.reviewAgent === 'claude' ? 'claude' : null } });
   await writeFile(path.join(output, 'REVIEW-LOOP.md'), ledger.markdown(`Review loop: ${path.basename(media)}`));
   const a = result.artifacts;
   const rendered = a.render?.report || null;
   const out = { analysis, loop: { status: result.status, stoppedAt: result.stoppedAt || null, summary: ledger.stageSummary() }, cut: a.cut?.result, manifest: (a.storyboard || a.cut)?.manifestFile,
     storyboard: a.storyboard?.storyboard || null, rendered, renderDir: a.render?.outputDir || null, finalFile: a.render ? path.join(a.render.outputDir, 'final.mp4') : null };
   // "Long-form plus a vertical short": the short is cut from the approved long edit, so it carries the same cuts, captions and graphics.
-  if (options.deliverables === 'both' && out.manifest && result.status !== 'needs-human' && rendered && rendered.status !== 'failed-technical-checks') {
+  if (options.deliverables === 'both' && out.manifest && result.status !== 'needs-human' && result.status !== 'cancelled' && rendered && rendered.status !== 'failed-technical-checks' && !resume?.shortDone) {
     log('Cutting the vertical short from the long edit...');
-    out.short = await buildShort({ manifest: out.manifest, output: path.join(output, 'short'), options, execute, log });
+    out.short = await buildShort({ manifest: out.manifest, output: await freshDir(output, 'short'), options, execute, log });
   }
   return out;
 }

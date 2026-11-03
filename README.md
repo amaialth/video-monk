@@ -26,6 +26,8 @@ A local, professional-grade app for the whole toolkit. Pick a video from a built
 - **The review loops, visible**: each independent reviewer's findings, what was sent back, what the producer fixed, and the re-check.
 - **Open any earlier output**: "Open an existing output" shows the results of a past `video-monk auto` run read-only.
 
+**It remembers, and it resumes.** Everything lives in one local SQLite file (`~/.video-monk/video-monk.db`, built into Node 22.13+, no dependency): projects, every step's status, the event log, approvals, run history and checkpoints. If the app is closed or a step fails, **Resume** continues from the first unfinished step; steps you finished are kept ("kept" chips), approvals are not asked twice, and the run history shows each attempt. The database also remembers your wizard **presets**, the **glossary corrections** you approved (so "wrist" becomes REST in your next project without being told), recent footage, and usage counts that protect stock-API limits (for example Unsplash's 50 requests an hour). `video-monk db` shows where it is and what it holds.
+
 It listens only on 127.0.0.1, behind a one-time token in the printed address; nothing leaves your machine unless you turn on stock search, Claude or Mirelo for a project. No dependencies and no build step. Projects live in `~/.video-monk/ui/projects`.
 
 ## What's new

@@ -96,7 +96,7 @@ export async function reviewLoop(stage, artifact, ctx, { ledger, maxRounds = 3, 
 // Optional observers for a UI: onEvent({type, stage, ...}) reports progress; gate(stageName, artifact, info) is awaited when a stage is approved (or
 // escalated) and returns { approved: true, patch? } to continue (patch is merged into the artifact, e.g. a new manifest file) or
 // { approved: false, findings } to send human findings back to the stage's producer; signal (AbortSignal) cancels between stages.
-export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), maxRounds = 3, maxReroutes = 3, log = () => {}, onEvent = () => {}, gate = null, signal = null }) {
+export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), maxRounds = 3, maxReroutes = 3, log = () => {}, onEvent = () => {}, gate = null, signal = null, restored = {} }) {
   const names = stages.map(s => s.name);
   const artifacts = {};
   ctx = { ...ctx, artifacts };
@@ -106,6 +106,14 @@ export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), max
   while (i < stages.length) {
     const stage = stages[i];
     if (signal?.aborted) return { status: 'cancelled', artifacts, ledger, stoppedAt: stage.name };
+    // A stage approved in an earlier run comes back from its checkpoint: no work, no review, no approval question.
+    if (restored[stage.name] && !keep.has(stage.name)) {
+      artifacts[stage.name] = { ...restored[stage.name], restored: true };
+      log(`Stage ${i + 1}/${stages.length}: ${stage.name} (restored from the earlier run)`);
+      onEvent({ type: 'stage-restored', stage: stage.name, artifact: artifacts[stage.name] });
+      i++;
+      continue;
+    }
     log(`Stage ${i + 1}/${stages.length}: ${stage.name}`);
     onEvent({ type: 'stage-start', stage: stage.name, index: i, total: stages.length, rerun: keep.has(stage.name) });
     if (!keep.has(stage.name)) { artifacts[stage.name] = await stage.produce(ctx); onEvent({ type: 'stage-produced', stage: stage.name, artifact: artifacts[stage.name] }); }
@@ -123,6 +131,11 @@ export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), max
         const owner = names[earliest];
         const findings = byOwner.get(owner);
         const target = stages[earliest];
+        // Feedback for a stage that was restored (not produced in this run) cannot be applied: its working data is not kept.
+        if (artifacts[owner]?.restored) {
+          await ledger.record({ kind: 'escalate', stage: owner, rounds: 0, findings });
+          return { status: 'needs-human', artifacts, ledger, stoppedAt: stage.name, reason: `${stage.name} sent feedback to ${owner}, which was restored from an earlier run and cannot be revised; start a new run` };
+        }
         await ledger.record({ kind: 'reroute', stage: owner, from: stage.name, findings });
         log(`  feedback from ${stage.name} sent back to ${owner}`);
         const revised = await target.revise(artifacts[owner], findings, { ...ctx, round: 0 });
@@ -151,6 +164,7 @@ export async function runPipeline({ stages, ctx = {}, ledger = new Ledger(), max
     } else if (stuck) {
       return { status: 'needs-human', artifacts, ledger, stoppedAt: stage.name };
     }
+    onEvent({ type: 'stage-done', stage: stage.name, artifact: artifacts[stage.name] });
     i++;
   }
   return { status: 'approved', artifacts, ledger };

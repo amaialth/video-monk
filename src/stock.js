@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import os from 'node:os';
 import { readFile, writeFile } from 'node:fs/promises';
 import { exists, readJson, writeJson } from './core.js';
+import { tryDb } from './db.js';
 
 const terms = 'https://www.pexels.com/license/';
 const maxBytes = 250 * 1024 * 1024;
@@ -176,7 +177,10 @@ export async function searchPixabay(query, output, allowSearch, fetcher = fetch,
   try { const c = JSON.parse(await readFile(cacheFile, 'utf8')); if (now - c.at < CACHE_MS) { data = c.data; cached = true; } } catch { /* no cache */ }
   if (!data) {
     url.searchParams.set('key', key);
+    const pdb = await tryDb();
+    if (pdb && pdb.usageSince('pixabay', Date.now() - 60e3).calls >= 95) throw new Error('Pixabay allows 100 requests a minute and 95 were used in the last minute (counted across all projects); wait a minute.');
     const response = await fetcher(url, { redirect: 'error', signal: AbortSignal.timeout(30000) });
+    pdb?.addUsage('pixabay', 1, { note: 'search' });
     const remaining = Number(response.headers?.get?.('x-ratelimit-remaining'));
     if (response.status === 429) throw new Error(`Pixabay rate limit reached (100 requests per minute); retry in ${response.headers?.get?.('x-ratelimit-reset') || 60} s.`);
     if (!response.ok) throw new Error(`Pixabay search failed (HTTP ${response.status}); response body withheld.`);
@@ -318,7 +322,13 @@ export async function searchUnsplash(query, output, allowSearch, fetcher = fetch
   let data = null, cached = false, rateRemaining = null;
   try { const c = JSON.parse(await readFile(cacheFile, 'utf8')); if (now - c.at < CACHE_MS) { data = c.data; cached = true; } } catch { /* no cache */ }
   if (!data) {
+    // Demo keys allow 50 requests an hour. The count is kept in the local database, so it holds across projects and restarts.
+    const db = await tryDb();
+    const limit = Number(process.env.UNSPLASH_HOURLY_LIMIT) || 50;
+    const used = db ? db.usageSince('unsplash', now - 3600e3).calls : 0;
+    if (used >= limit - 2) throw new Error(`Unsplash allows ${limit} requests an hour on a demo key and ${used} were used in the last hour (counted across all projects); try again later.`);
     const response = await fetcher(url, { headers: { Authorization: `Client-ID ${key}`, 'Accept-Version': 'v1' }, redirect: 'error', signal: AbortSignal.timeout(30000) });
+    db?.addUsage('unsplash', 1, { note: 'search' });
     const remaining = Number(response.headers?.get?.('x-ratelimit-remaining'));
     rateRemaining = Number.isFinite(remaining) ? remaining : null;
     if (response.status === 401) throw new Error('Unsplash rejected the access key (HTTP 401); check UNSPLASH_ACCESS_KEY.');
@@ -371,6 +381,7 @@ export async function downloadUnsplash(catalog, id, fileId, output, { allowDownl
     const apiKey = key || await envKey('UNSPLASH_ACCESS_KEY');
     if (!apiKey) throw new Error('Set UNSPLASH_ACCESS_KEY (environment or .env): Unsplash must be notified of each download.');
     const notify = await fetcher(unsplashTrackUrl(candidate.downloadLocation), { headers: { Authorization: `Client-ID ${apiKey}`, 'Accept-Version': 'v1' }, redirect: 'error', signal: AbortSignal.timeout(30000) });
+    (await tryDb())?.addUsage('unsplash', 1, { note: 'download notification' });
     if (!notify.ok) throw new Error(`Unsplash download notification failed (HTTP ${notify.status}); the photo was not saved.`);
     tracked = true;
     const response = await fetcher(url, { redirect: 'follow', signal: AbortSignal.timeout(120000) });

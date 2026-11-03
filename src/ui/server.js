@@ -9,6 +9,7 @@ import { exists } from '../core.js';
 import { Library } from '../library.js';
 import { QUESTIONS, resolveBrief } from '../brief.js';
 import { Store, validId } from './store.js';
+import { dbPath } from '../db.js';
 import { Runner, plannedSteps, normalizeOptions, STEPS } from './runner.js';
 import { environment } from './env.js';
 import { roots, list as listDir, probeMedia, thumbnail, MEDIA_EXT } from './fsbrowse.js';
@@ -54,9 +55,14 @@ async function serveFile(req, res, file, { cache = false } = {}) {
   createReadStream(file).pipe(res);
 }
 
+// Only these settings are stored from the browser (a closed list, so nothing else can be written).
+const pickSettings = body => Object.fromEntries(['theme', 'defaultOptions', 'lastFolder', 'dismissedTips'].filter(k => body[k] !== undefined).map(k => [k, body[k]]));
+// A preset never carries the rights attestation or a one-off footage path: those are decided per project.
+const stripPrivate = options => { const { rightsConfirmed, wordsFile, shortFrom, shortTo, ...rest } = options || {}; return rest; };
 const inside = (root, target) => { const rel = path.relative(root, target); return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel)); };
 
-export async function startServer({ port = 4173, host = '127.0.0.1', store = new Store(), runner = null, token = randomBytes(18).toString('hex'), previews = new Previews(), log = () => {} } = {}) {
+export async function startServer({ port = 4173, host = '127.0.0.1', store = null, runner = null, token = randomBytes(18).toString('hex'), previews = new Previews(), log = () => {} } = {}) {
+  store ||= await Store.open();
   runner ||= new Runner(store);
   await runner.recover();
   const library = () => Library.open();
@@ -144,14 +150,17 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = new
     const options = body.options || {};
     const name = String(body.name || path.basename(media.name, path.extname(media.name))).slice(0, 120);
     normalizeOptions(options);
+    store.db.touchMedia({ path: media.path, name: media.name, duration: media.duration });
     const project = await store.create({ name, media, options, steps: Object.fromEntries(plannedSteps({ ...options, gates: { final: true, ...(options.gates || {}) } }).map(s => [s, { status: 'pending', label: STEPS[s] }])) });
     if (body.start) await runner.start(project.id);
     return store.get(project.id);
   });
   on('POST', '/api/projects/import', async ({ body }) => importProject(body));
   on('GET', '/api/projects/:id', async ({ params }) => projectView(await store.get(params.id)));
-  on('DELETE', '/api/projects/:id', async ({ params }) => { const p = await store.get(params.id); if (runner.isActive(p.id)) throw err('Cancel the run first', 409); await rm(store.dir(p.id), { recursive: true, force: true }); return { ok: true }; });
+  on('DELETE', '/api/projects/:id', async ({ params }) => { const p = await store.get(params.id); if (runner.isActive(p.id)) throw err('Cancel the run first', 409); await store.remove(p.id); return { ok: true }; });
   on('POST', '/api/projects/:id/start', async ({ params }) => runner.start(params.id));
+  on('POST', '/api/projects/:id/resume', async ({ params }) => runner.resume(params.id));
+  on('GET', '/api/projects/:id/runs', async ({ params }) => { await store.get(params.id); return { runs: store.runs(params.id), checkpoints: Object.fromEntries(Object.entries(store.checkpoints(params.id)).map(([k, v]) => [k, v.at])) }; });
   on('POST', '/api/projects/:id/cancel', async ({ params }) => { runner.cancel(params.id); return { ok: true }; });
   on('POST', '/api/projects/:id/duplicate', async ({ params }) => { const p = await store.get(params.id); return store.create({ name: `${p.name} (again)`, media: p.media, options: p.options, steps: {} }); });
   on('POST', '/api/projects/:id/gates/:gate', async ({ params, body }) => { await runner.resolveGate(params.id, params.gate, body); return { ok: true }; });
@@ -178,6 +187,24 @@ export async function startServer({ port = 4173, host = '127.0.0.1', store = new
     const entries = lib.search(query.get('q') || '', { kind: query.get('kind') || null, limit: 120 }).map(r => r.entry || r);
     return { enabled: true, root: lib.root, entries: entries.map(({ id, kind, name, description, tags, rights, attribution, uses, bytes, createdAt, meta }) => ({ id, kind, name, description, tags, rights, attribution, uses, bytes, createdAt, template: meta?.template, width: meta?.width, height: meta?.height })), stats: lib.stats() };
   });
+
+  // ---- things remembered between projects (all in the local database)
+  on('GET', '/api/db', async () => ({ ...store.db.info(), file: store.db.file, usage: usageSummary(), schemaTarget: store.db.version }));
+  on('GET', '/api/settings', async () => store.db.getKv('ui-settings', {}));
+  on('POST', '/api/settings', async ({ body }) => { const next = { ...store.db.getKv('ui-settings', {}), ...pickSettings(body) }; store.db.setKv('ui-settings', next); return next; });
+  on('GET', '/api/presets', async () => store.db.presets());
+  on('POST', '/api/presets', async ({ body }) => { normalizeOptions({ ...body.options, rightsConfirmed: undefined }); try { return store.db.savePreset(body.name, stripPrivate(body.options)); } catch (error) { throw err(error.message, 400); } });
+  on('DELETE', '/api/presets/:pid', async ({ params }) => ({ deleted: store.db.deletePreset(Number(params.pid)) }));
+  on('GET', '/api/terms', async () => ({ terms: store.db.terms(), glossary: store.db.glossaryText() }));
+  on('POST', '/api/terms/toggle', async ({ body }) => ({ changed: store.db.setTermEnabled(String(body.heard), String(body.term), body.enabled !== false) }));
+  on('POST', '/api/terms/delete', async ({ body }) => ({ deleted: store.db.deleteTerm(String(body.heard), String(body.term)) }));
+  on('GET', '/api/recent', async () => { const list = store.db.recentMedia(8); const live = []; for (const r of list) { if (await exists(r.path)) live.push(r); else store.db.forgetMedia(r.path); } return live; });
+  on('GET', '/api/approvals', async () => store.approvalHistory(300));
+
+  const usageSummary = () => {
+    const now = Date.now();
+    return { unsplashHour: store.db.usageSince('unsplash', now - 3600e3), pixabayMinute: store.db.usageSince('pixabay', now - 60e3), mireloCredits30d: store.db.usageSince('mirelo', now - 30 * 86400e3) };
+  };
 
   const authorized = req => {
     const cookie = /(?:^|;\s*)vm_token=([a-f0-9]+)/.exec(req.headers.cookie || '')?.[1] || req.headers['x-vm-token'];
