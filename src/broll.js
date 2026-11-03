@@ -85,8 +85,12 @@ export function chooseCandidate(candidates, { needSeconds, targetWidth = 1920, q
   return best;
 }
 
-export async function fetchPlan(plan, { dir, manifest, search, download, library = null, execute, fetcher = fetch, provider = 'pixabay', max = 8, log = () => {}, only = null } = {}) {
-  const { searchStock, downloadStock } = await import('./stock.js');
+export async function fetchPlan(plan, { dir, manifest, search, download, library = null, execute, fetcher = fetch, provider = 'pixabay', imageProvider = null, type = 'video', max = 8, log = () => {}, only = null } = {}) {
+  const { searchStock, downloadStock, pickProvider } = await import('./stock.js');
+  if (!['video', 'image', 'any'].includes(type)) fail('--type must be video, image or any');
+  // Sources tried in order for each query: videos first when asked for any, then photos (Unsplash when its key is set).
+  const photoProvider = imageProvider || (provider === 'unsplash' ? 'unsplash' : pickProvider('auto', process.env, 'image'));
+  const sources = type === 'video' ? [{ provider, type: 'video' }] : type === 'image' ? [{ provider: photoProvider, type: 'image' }] : [{ provider, type: 'video' }, { provider: photoProvider, type: 'image' }];
   const { run } = await import('./core.js');
   const exec = execute || run;
   const { mkdir } = await import('node:fs/promises');
@@ -96,25 +100,27 @@ export async function fetchPlan(plan, { dir, manifest, search, download, library
   for (const m of plan.moments.filter(x => !only || only.includes(x.id)).slice(0, max)) {
     const entry = { id: m.id, at: m.at, duration: m.duration, query: m.query, drop: false };
     let chosen = null;
-    for (const q of [m.query, ...(m.alternatives || [])].filter((x, i, a) => x && a.indexOf(x) === i).slice(0, 3)) {
-      const catalogFile = path.join(dir, `${m.id}-${q.replace(/[^a-z0-9]+/gi, '-').slice(0, 30)}.json`);
-      if (await exists(catalogFile)) await (await import('node:fs/promises')).rm(catalogFile);
-      try {
-        const found = await searchStock(q, catalogFile, search, fetcher, { provider, type: 'video', orientation: portrait ? 'portrait' : 'landscape' });
-        const pick = chooseCandidate(found.candidates, { needSeconds: m.duration, targetWidth: Math.max(manifest.width, manifest.height) >= 1920 ? 1920 : 1280, query: q });
-        if (pick) { chosen = { ...pick, catalogFile, query: q }; break; }
-      } catch (error) { entry.error = error.message; break; }
+    outer: for (const q of [m.query, ...(m.alternatives || [])].filter((x, i, a) => x && a.indexOf(x) === i).slice(0, 3)) {
+      for (const source of sources) {
+        const catalogFile = path.join(dir, `${m.id}-${source.type}-${q.replace(/[^a-z0-9]+/gi, '-').slice(0, 30)}.json`);
+        if (await exists(catalogFile)) await (await import('node:fs/promises')).rm(catalogFile);
+        try {
+          const found = await searchStock(q, catalogFile, search, fetcher, { provider: source.provider, type: source.type, orientation: portrait ? 'portrait' : 'landscape' });
+          const pick = chooseCandidate(found.candidates, { needSeconds: m.duration, targetWidth: Math.max(manifest.width, manifest.height) >= 1920 ? 1920 : 1280, query: q });
+          if (pick) { chosen = { ...pick, catalogFile, query: q, source }; break outer; }
+        } catch (error) { entry.error = error.message; break outer; }
+      }
     }
     if (!chosen) { entry.status = entry.error ? 'error' : 'no-result'; entry.drop = true; placements.push(entry); log(`  ${m.id}: ${entry.status}${entry.error ? ` (${entry.error})` : ''}`); continue; }
     const out = path.join(dir, m.id);
     if (await exists(out)) await (await import('node:fs/promises')).rm(out, { recursive: true, force: true });
     await downloadStock(chosen.catalogFile, chosen.candidate.id, chosen.file.id, out, download, fetcher);
     const preview = path.join(dir, `${m.id}.png`);
-    try { await exec(process.env.VIDEO_MONK_FFMPEG || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-ss', '1', '-i', path.join(out, 'stock.mp4'), '-frames:v', '1', '-vf', 'scale=640:-2', preview]); entry.preview = path.relative(dir, preview); } catch { /* preview is optional */ }
-    Object.assign(entry, { status: 'downloaded', query: chosen.query, assetDir: path.relative(dir, out), creator: chosen.candidate.creator, sourceUrl: chosen.candidate.sourceUrl,
-      size: `${chosen.file.width}x${chosen.file.height}`, clipSeconds: chosen.candidate.duration });
+    try { await exec(process.env.VIDEO_MONK_FFMPEG || 'ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', ...(chosen.source.type === 'video' ? ['-ss', '1'] : []), '-i', path.join(out, chosen.source.type === 'video' ? 'stock.mp4' : 'stock.jpg'), '-frames:v', '1', '-vf', 'scale=640:-2', preview]); entry.preview = path.relative(dir, preview); } catch { /* preview is optional */ }
+    Object.assign(entry, { status: 'downloaded', query: chosen.query, source: `${chosen.source.provider} ${chosen.source.type}`, assetDir: path.relative(dir, out), creator: chosen.candidate.creator, sourceUrl: chosen.candidate.sourceUrl,
+      size: `${chosen.file.width}x${chosen.file.height}`, ...(chosen.candidate.duration ? { clipSeconds: chosen.candidate.duration } : {}) });
     placements.push(entry);
-    log(`  ${m.id}: ${chosen.query} -> pixabay-${chosen.candidate.id} (${entry.size}, ${entry.clipSeconds}s)`);
+    log(`  ${m.id}: ${chosen.query} -> ${entry.source} ${chosen.candidate.id} (${entry.size}${entry.clipSeconds ? `, ${entry.clipSeconds}s` : ''})`);
   }
   const file = path.join(dir, 'placements.json');
   await writeJson(file, { version: 1, note: 'Look at each preview PNG. Set "drop": true to skip a placement, or change "at" / "duration", then run broll-apply.', placements });

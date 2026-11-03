@@ -135,3 +135,7 @@ For Claude Code agents the Mirelo MCP server is registered in `.mcp.json` (token
 ## Optional: Pixabay B-roll
 
 `PIXABAY_API_KEY` in the environment or a `.env` file (git ignores `.env`; see `.env.example`). Used by `stock-search` (`--provider auto` picks Pixabay when the key is set) and only with `--allow-search`; downloads need `--allow-download --rights-confirmed`. See [B-roll](./broll.md).
+
+## Optional: Unsplash photos
+
+`UNSPLASH_ACCESS_KEY` in the environment or a `.env` file (git ignores `.env`; see `.env.example`). Photos only. Used by `stock-search --provider unsplash --type image` and by `broll-fetch` when it falls back to a photo, only with `--allow-search`; downloads need `--allow-download --rights-confirmed`. Optional `UNSPLASH_APP_NAME` is the name used in credit-link `utm_source` (your registered app name). `UNSPLASH_APP_ID` and `UNSPLASH_SECRET_KEY` are not used. Demo apps are limited to 50 API requests an hour; see [B-roll](./broll.md).

@@ -1,7 +1,19 @@
-# B-roll from Pixabay (and Pexels)
+# B-roll from Pixabay, Unsplash and Pexels
 
 B-roll is picture that covers the speaker while the voice carries on: a place, an object, a process, a metaphor. It is used where a concrete subject is
 named and no graphic already explains it. It is not a substitute for the explainer graphics.
+
+## Sources
+
+| Source | Gives | Key | Notes |
+|---|---|---|---|
+| Pixabay | videos and photos | `PIXABAY_API_KEY` | free, no credit required (we record it anyway); photos only up to 1280 px; 100 requests/min; 24-hour cache |
+| Unsplash | **photos only, no video** | `UNSPLASH_ACCESS_KEY` | high-resolution originals (resized to 1920 or 2560 wide), the best photo quality; demo apps get **50 requests an hour** (production 1000), so searches are cached and kept few |
+| Pexels | videos | `PEXELS_API_KEY` | credit recorded |
+
+`--provider auto` picks Pixabay (or Pexels) for video and Unsplash for photos when its key is set. Use video for full-frame B-roll and Unsplash photos for stills, panels and slow zooms: `stock-search --provider unsplash --type image`. `broll-fetch --type any` (the default) tries video first and falls back to a photo.
+
+Unsplash rules the toolkit follows for you: photos are fetched from `images.unsplash.com` with the `ixid` parameter kept; Unsplash is told about each chosen photo (the download notification, required by its API terms, and the photo is not saved if that fails); the photographer and Unsplash are credited with profile links carrying `utm_source` and `utm_medium=referral` (set `UNSPLASH_APP_NAME` to your registered app name, default `video-monk`); and a photo already in the library is reused without a second notification. Do not sell unaltered photos; the Unsplash app name must not contain "Unsplash". The secret key (`UNSPLASH_SECRET_KEY`) is not needed for search or download and is never read.
 
 ## Planning is a standing step
 
@@ -36,7 +48,7 @@ Moments are never planned in the first 5 s or last 5 s, over a graphic, or close
    The API allows 100 requests a minute and requires a 24-hour cache, which the toolkit does; a repeated search makes no request. Keep to a handful of searches per video: it is for a person's search, not bulk collection.
    AI-generated and low-quality results are left out unless you pass `--include-ai`; if you include them, tell the user, since synthetic footage may need a label on the platform.
 4. **Choose.** The catalog lists each file's size. Pick the smallest file at least as wide as the video (1080p needs 1920 wide; for 9:16 pick a portrait clip, or use landscape with `fit blur`). The names (`large`, `medium`, `small`, `tiny`) vary per clip: choose by the listed dimensions, not the name.
-   Pixabay photos are at most 1280 px wide: fine for a panel or a short slow zoom, soft at full-frame 1080p. Prefer video for full-frame B-roll.
+   Pixabay photos are at most 1280 px wide: fine for a panel or a short slow zoom, soft at full-frame 1080p. Unsplash photos are sharp at full frame (use the `w1920` file for 1080p). Prefer video for motion, photos for a held still with a slow zoom.
 5. **Look before you place.** Download the smallest file or take its frame and view it: `ffmpeg -ss 1 -i stock.mp4 -frames:v 1 frame.png`, then read the PNG. Reject clips with faces, logos, watermarks or text, and anything that does not show what the line says.
 6. **Get approval, then download.** `--rights-confirmed` is the user's statement that they accept the licence for the selected asset, so ask before running it, once for the batch with the list of clips, creators and the licence link.
    `video-monk stock-fetch --catalog cands.json --id <id> --file-id <file> --output <new folder> --allow-download --rights-confirmed`
@@ -48,8 +60,9 @@ Moments are never planned in the first 5 s or last 5 s, over a graphic, or close
 ## Rights and credits
 
 Pixabay Content License (https://pixabay.com/service/license-summary/): free to use, attribution not required but appreciated; do not sell unaltered copies; check identifiable people, brands and logos.
+Unsplash License (https://unsplash.com/license): free for commercial use; credit is required by the Unsplash API terms. The credit lines are written into `CREDITS.txt` and the `YOUTUBE.md` credits; paste them into the video description.
 The toolkit still records creator, source page and licence for every clip: they appear in `CREDITS.txt` and in the `YOUTUBE.md` credits. Search results shown to a user must credit Pixabay, and the catalog does. Availability is not proof of suitability.
 
 ## Limits
 
-No semantic ranking: a result can match the words and miss the meaning, which is why you look at it. No audio from stock. Images are 1280 px at most without Pixabay's full API access. `stock-fetch` downloads one selected file at a time by design.
+No semantic ranking: a result can match the words and miss the meaning, which is why you look at it. No audio from stock. Pixabay images are 1280 px at most without its full API access; Unsplash has no video and its demo tier is 50 requests an hour. `stock-fetch` downloads one selected file at a time by design.

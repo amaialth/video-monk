@@ -215,7 +215,7 @@ Run `video-monk --help` for every option.
 | `production-review` | Validate a v1/v2 manifest; `--approve-plan` records approval of its fingerprint |
 | `production-build` | Render the approved timeline (`--quality draft` for fast iterations) |
 | `production-verify` | Re-verify any exported file against the manifest's targets |
-| `stock-search` / `stock-fetch` | Opt-in Pixabay (or Pexels) B-roll candidates and a selected download with attribution |
+| `stock-search` / `stock-fetch` | Opt-in B-roll candidates and a selected download with attribution: Pixabay (video and photos), Unsplash (photos), Pexels (video) |
 | `broll-plan` / `broll-fetch` / `broll-apply` | Plan where B-roll is needed, fetch and preview a clip per moment, then place the ones you keep |
 | `broll-add` | Lay a downloaded clip or photo over a stretch of the timeline, continuous across the speech cuts |
 | `catalog` / `fetch` / `analyze` / `style` | Reference-channel editing study (metadata, sampled frames, optional LLM style notes) |

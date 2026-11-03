@@ -130,6 +130,7 @@ footer { max-width: 1120px; margin: 0 auto; padding: 24px 16px 56px; color: var(
       <li><b>Sound effects.</b> Original sounds synthesised with FFmpeg and placed quietly on graphics (<code>--sfx subtle|full</code>, <code>video-monk sfx</code>), or generated with Mirelo from a prompt (<code>--sfx-engine mirelo --allow-mirelo</code>, your <code>MIRELO_API_KEY</code>, a credit budget, reused from the library, falls back to the built-in sound). <code>sfx --audition</code> writes a listening page.</li>
       <li><b>Pixabay B-roll.</b> <code>stock-search</code> finds clips and photos with your <code>PIXABAY_API_KEY</code> (24-hour cache, AI-generated and low-quality results left out); <code>stock-fetch</code> downloads one with its credit and licence; <code>broll-add</code> lays it over the picture across the speech cuts.</li>
       <li><b>B-roll is planned, not remembered.</b> Every storyboard run writes <code>BROLL-PLAN.md</code>: where a concrete subject is spoken with nothing on screen, and long speaker-only stretches, with draft queries. <code>broll-fetch</code> downloads a clip and a preview per moment; <code>broll-apply</code> places the ones you keep.</li>
+      <li><b>Unsplash photos.</b> Sharp stills for B-roll with the Unsplash terms handled for you: the download is reported, the photographer is credited, and nothing is saved if that fails. Photos only; demo apps get 50 requests an hour.</li>
       <li><b>No repeated words on screen.</b> A top-bar strip that repeats the burned-in captions is not drawn, and the reviewer flags any that remain.</li>
       <li><b>Several designs per key moment.</b> <code>--variants 3</code> drafts alternatives (structure, typographic, points), renders and audits each, applies the best and keeps all for you to switch.</li>
       <li><b>Pace <code>relaxed</code></b> for interviews and vlogs.</li>
@@ -734,7 +735,7 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
     <tr><td><code>production-review</code></td><td>Validate a manifest and optionally record approval of its fingerprint.</td></tr>
     <tr><td><code>production-build</code></td><td>Render the approved timeline (<code>--quality draft</code>, <code>--keep-work</code>, <code>--concurrency</code>).</td></tr>
     <tr><td><code>production-verify</code></td><td>Technical checks on any exported file against the manifest and loudness targets.</td></tr>
-    <tr><td><code>stock-search</code>, <code>stock-fetch</code></td><td>Opt-in Pixabay (video or photo) or Pexels candidates, filtered for AI-generated and low-quality results and cached 24 hours; a selected download with attribution, indexed in the asset library.</td></tr>
+    <tr><td><code>stock-search</code>, <code>stock-fetch</code></td><td>Opt-in Pixabay (video or photo), Unsplash (photos, sharp at full frame, credit and download notification built in) or Pexels candidates, filtered for AI-generated and low-quality results and cached 24 hours; a selected download with attribution, indexed in the asset library.</td></tr>
     <tr><td><code>broll-plan</code>, <code>broll-fetch</code>, <code>broll-apply</code></td><td>Plan where B-roll is needed (offline), search/download/preview a clip per moment, then place the clips you keep.</td></tr>
     <tr><td><code>broll-add</code></td><td>Place a downloaded clip or photo over a stretch of the timeline, running continuously across the speech cuts.</td></tr>
     <tr><td><code>catalog</code>, <code>fetch</code>, <code>analyze</code>, <code>style</code></td><td>Reference-channel study: metadata, sampled frames, optional LLM style notes.</td></tr>
@@ -743,7 +744,7 @@ video-monk auto --media talk.mp4 --output talk-v2 --transcribe --engine claude \
     <tr><td><code>doctor</code></td><td>Check required tools and FFmpeg filters, and report which optional tools are present.</td></tr>
   </table></div>
   <h3>Environment overrides</h3>
-  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>VIDEO_MONK_LIBRARY</code> (library folder, or <code>off</code>), <code>PEXELS_API_KEY</code> (stock search only), <code>MIRELO_API_KEY</code> (Mirelo sound effects only, with <code>--allow-mirelo</code>), <code>PIXABAY_API_KEY</code> (Pixabay B-roll only, with <code>--allow-search</code>).</p>
+  <p><code>VIDEO_MONK_FFMPEG</code>, <code>VIDEO_MONK_FFPROBE</code>, <code>VIDEO_MONK_CHROME</code>, <code>VIDEO_MONK_WHISPER</code>, <code>VIDEO_MONK_WHISPER_MODEL</code>, <code>VIDEO_MONK_HYPERFRAMES</code>, <code>VIDEO_MONK_LIBRARY</code> (library folder, or <code>off</code>), <code>PEXELS_API_KEY</code> (stock search only), <code>MIRELO_API_KEY</code> (Mirelo sound effects only, with <code>--allow-mirelo</code>), <code>PIXABAY_API_KEY</code> (Pixabay B-roll only, with <code>--allow-search</code>), <code>UNSPLASH_ACCESS_KEY</code> (Unsplash photos only, with <code>--allow-search</code>; <code>UNSPLASH_APP_NAME</code> optional).</p>
 </section>
 
 <section id="claude">

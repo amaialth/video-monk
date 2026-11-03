@@ -62,6 +62,9 @@ Mirelo's terms apply (free plan non-commercial use; paid plan for commercial rel
 Pixabay API (pixabay.com/api/docs): used only with `--allow-search` and your own `PIXABAY_API_KEY`; the query is sent to Pixabay. Downloaded files stay under the Pixabay Content License
 (https://pixabay.com/service/license-summary/), which the toolkit records per file with the creator and source page. Responses are cached for 24 hours as the API terms require.
 
+Unsplash API (unsplash.com/documentation): used only with `--allow-search` and your own `UNSPLASH_ACCESS_KEY`; the query is sent to Unsplash and each chosen photo is reported through its
+download endpoint, as the API terms require. Photos stay under the Unsplash License (https://unsplash.com/license); the photographer and Unsplash are credited with utm links. Unsplash has no video endpoint.
+
 ## Dev and runtime tools (not bundled)
 
 FFmpeg, Google Chrome / Chromium, whisper.cpp and its models, and the Claude Code CLI are separate programs under

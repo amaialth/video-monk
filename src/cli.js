@@ -131,11 +131,12 @@ REFERENCE STUDY AND RESOLVE HANDOFF
                     --output <new verification.json> --target-lufs=<number>
                     --max-true-peak=<number> [--approve-playback]
   stock-search --query <words> --output <new candidates.json> --allow-search
-               [--provider auto|pixabay|pexels (auto: Pixabay when PIXABAY_API_KEY is set)] [--type video|image (Pixabay)]
+               [--provider auto|pixabay|pexels|unsplash] [--type video|image]
+               (auto: videos from Pixabay, else Pexels; photos from Unsplash when UNSPLASH_ACCESS_KEY is set, else Pixabay. Unsplash has photos only)
                [--orientation landscape|portrait|any] [--include-ai] [--min-width <px>]
   broll-plan --manifest <production.json> --output <new plan.json> [--density off|light|medium|heavy] [--content talking-head|screen|explainer|interview]
              Decide where B-roll is needed (concrete subjects with no graphic on screen, and long speaker-only stretches) with draft search queries; offline
-  broll-fetch --plan <plan.json> --manifest <production.json> --output <new folder> --allow-search --allow-download --rights-confirmed [--max 6] [--only b01,b03]
+  broll-fetch --plan <plan.json> --manifest <production.json> --output <new folder> --allow-search --allow-download --rights-confirmed [--type video|image|any (default any: video first, then photos)] [--provider auto|pixabay|pexels|unsplash] [--max 6] [--only b01,b03]
              Search, choose, download and preview a clip for each moment; writes placements.json (set "drop": true on any you reject)
   broll-apply --manifest <production.json> --placements <placements.json> --output <new manifest in the same folder> [--fit cover|contain|blur]
   broll-add  --manifest <production.json> --output <new manifest in the same folder> --asset-dir <stock-fetch folder>
@@ -172,7 +173,7 @@ const definitions = {
   'production-verify': { manifest: 'string', media: 'string', output: 'string', 'target-lufs': 'string', 'max-true-peak': 'string', 'approve-playback': 'boolean' },
   'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean', provider: 'string', type: 'string', orientation: 'string', 'include-ai': 'boolean', 'min-width': 'string' },
   'broll-plan': { manifest: 'string', output: 'string', density: 'string', content: 'string' },
-  'broll-fetch': { plan: 'string', manifest: 'string', output: 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', 'rights-confirmed': 'boolean', provider: 'string', max: 'string', only: 'string' },
+  'broll-fetch': { plan: 'string', manifest: 'string', output: 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', 'rights-confirmed': 'boolean', provider: 'string', type: 'string', max: 'string', only: 'string' },
   'broll-apply': { manifest: 'string', placements: 'string', output: 'string', fit: 'string' },
   'broll-add': { manifest: 'string', output: 'string', 'asset-dir': 'string', at: 'string', duration: 'string', 'in-start': 'string', fit: 'string' },
   'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' },
@@ -618,7 +619,7 @@ export async function main(args) {
     }
     case 'stock-search': {
       const { pickProvider } = await import('./stock.js');
-      const provider = pickProvider(opts.provider || 'auto');
+      const provider = pickProvider(opts.provider || 'auto', process.env, opts.type || 'video');
       const result = await searchStock(required(opts, 'query'), required(opts, 'output'), opts['allow-search'], fetch,
         { provider, type: opts.type, orientation: opts.orientation, includeAi: opts['include-ai'], minWidth: opts['min-width'] ? Number(opts['min-width']) : undefined });
       console.log(`${result.provider}${result.fromCache ? ' (cached, no request made)' : ''}: ${result.candidates.length} ${result.type || 'video'} candidates, not approved. Review source pages, license and credit before selection.`);
@@ -649,7 +650,7 @@ export async function main(args) {
       if (!opts['allow-search'] || !opts['allow-download'] || !opts['rights-confirmed']) throw new Error('Fetching B-roll sends queries to the stock site and downloads files: add --allow-search --allow-download --rights-confirmed (your acceptance of the licence for the selected clips)');
       const { pickProvider } = await import('./stock.js');
       const result = await fetchPlan(plan, { dir: path.resolve(required(opts, 'output')), manifest, search: true, download: { allowDownload: true, rightsConfirmed: true, library: await Library.open() },
-        library: await Library.open(), provider: pickProvider(opts.provider || 'auto'), max: opts.max ? Number(opts.max) : 8, only: opts.only ? opts.only.split(',') : null, log: message => console.error(message) });
+        library: await Library.open(), provider: pickProvider(opts.provider === 'unsplash' ? 'auto' : (opts.provider || 'auto'), process.env, 'video'), imageProvider: opts.provider === 'unsplash' ? 'unsplash' : undefined, type: opts.type || 'any', max: opts.max ? Number(opts.max) : 8, only: opts.only ? opts.only.split(',') : null, log: message => console.error(message) });
       const got = result.placements.filter(p => p.status === 'downloaded').length;
       console.log(`${got} of ${result.placements.length} clip(s) downloaded with previews. Look at each PNG, set "drop": true on any that do not fit, then broll-apply.\nPlacements: ${result.file}`);
       break;

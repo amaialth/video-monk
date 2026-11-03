@@ -99,7 +99,7 @@ export async function storyboardManifest(manifestFile, outputFile, options = {},
       try {
         if (!options.allowSearch || !options.allowDownload || !options.rightsConfirmed) throw new Error('fetching B-roll needs --allow-search, --allow-download and --rights-confirmed');
         const dir = path.join(path.dirname(output), 'broll');
-        const fetched = await fetchPlan(plan, { dir, manifest: applied, search: true, download: { allowDownload: true, rightsConfirmed: true, library }, library, execute, provider: options.stockProvider || 'pixabay', max: options.brollMax ?? 6, log: options.log });
+        const fetched = await fetchPlan(plan, { dir, manifest: applied, search: true, download: { allowDownload: true, rightsConfirmed: true, library }, library, execute, provider: options.stockProvider || 'pixabay', type: options.brollType || 'any', max: options.brollMax ?? 6, log: options.log });
         const results = await placeAll(applied, path.dirname(output), JSON.parse(await readFile(fetched.file, 'utf8')), dir);
         broll.placed = results.filter(r => !r.skipped).length;
         brollWarnings.push(...results.filter(r => r.skipped).map(r => `B-roll ${r.id} skipped: ${r.skipped}`), ...results.flatMap(r => r.warnings || []));
