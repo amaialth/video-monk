@@ -292,3 +292,10 @@ test('the direction Claude proposes is made safe: real voice, ranges, lists; fai
   const broken = await recommendDirection(script, {}, { voices, modelId: 'eleven_v4', execute: async () => { throw new Error('offline'); } });
   assert.equal(broken.by, 'default'); assert.equal(broken.voiceId, 'voiceAAAAAA');
 });
+
+test('the ambient bed is generated locally and the shorts option can turn it off', async () => {
+  const { shortOptions } = await import('../src/shorts.js');
+  assert.equal(shortOptions({}).bed, true);
+  assert.equal(shortOptions({ bed: 'off' }).bed, false);
+  assert.equal(shortOptions({ bed: false }).bed, false);
+});

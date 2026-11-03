@@ -10,6 +10,8 @@ import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import { run, exists, writeJson } from './core.js';
 import { launchChrome, browsePage } from './chrome.js';
+import { listLibs } from './libs.js';
+import { hook3dHtml } from './scene3d.js';
 
 const fail = message => { throw new Error(`Visuals: ${message}`); };
 const slug = text => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'item';
@@ -244,6 +246,12 @@ export async function researchVisuals({ script, source = '', dir, allowLlm = fal
       logos: p.entities.map(e => { const l = logos.get(e.domain); return { name: e.name, domain: e.domain, status: l ? (l.ok ? 'fetched' : 'failed') : (allowBrowse ? 'skipped' : 'not-visited'), file: l?.ok ? l.file : null, provenance: l?.ok ? l.provenance : null, reason: l && !l.ok ? l.reason : null, approved: false }; }),
       broll: p.broll ? { ...(found.find(f => f.beat === p.beat) || { query: p.broll.query, status: allowStock ? 'no-result' : 'not-searched' }), approved: false } : null });
   }
+  // a true 3D hook scene is offered when the opening beat has a logo and three.js is installed in the vault
+  const first = result.beats.find(b => b.beat === 1 && b.logos.some(l => l.status === 'fetched'));
+  if (first) {
+    const three = (await listLibs().catch(() => [])).some(l => l.id === 'three');
+    result.scene3d = { beat: 1, kind: 'hook', entity: first.logos.find(l => l.status === 'fetched').name, available: three, approved: false, ...(three ? {} : { reason: 'three.js is not installed: video-monk libs --add three --allow-download' }) };
+  }
   await writeJson(path.join(dir, 'visuals.json'), result);
   return result;
 }
@@ -256,6 +264,7 @@ export function approveVisuals(visuals, { beats = null } = {}) {
     for (const l of b.logos) l.approved = l.status === 'fetched';
     if (b.broll) b.broll.approved = b.broll.status === 'downloaded';
   }
+  if (visuals.scene3d && (!beats || beats.includes(visuals.scene3d.beat))) visuals.scene3d.approved = Boolean(visuals.scene3d.available);
   return visuals;
 }
 
@@ -332,6 +341,21 @@ export async function applyVisuals(manifest, dir, visuals, base = dir) {
         void saved;
       } catch (error) { warnings.push(`B-roll for beat ${entry.beat} was skipped: ${String(error.message).replace(/^B-roll: /, '')}`); }
     }
+    const s3 = visuals.scene3d;
+    if (s3?.approved && s3.beat === entry.beat && okLogos.length && original) {
+      try {
+        const p3 = original.props || {};
+        const folder = path.join(dir, 'scenes', `hook3d-beat-${entry.beat}`);
+        await mkdir(folder, { recursive: true });
+        await writeFile(path.join(folder, 'logo0.png'), await readFile(path.join(base, okLogos[0].file)));
+        await writeFile(path.join(folder, 'index.html'), hook3dHtml({ kicker: p3.kicker || p3.eyebrow || '', title: p3.title || p3.text || okLogos[0].name, subtitle: p3.subtitle || '', logo: 'logo0.png', logoTone: okLogos[0].provenance?.tone, theme: manifest.theme?.preset || 'night', seconds: scene.duration }));
+        scene.graphic = { html: path.join('scenes', `hook3d-beat-${entry.beat}`, 'index.html') };
+        const credit = `${okLogos[0].name} logo from ${okLogos[0].provenance?.pageUrl || okLogos[0].domain} (retrieved ${String(okLogos[0].provenance?.retrievedAt || '').slice(0, 10)}); ${okLogos[0].provenance?.rights || ''}`;
+        manifest.notes = `${manifest.notes || ''} ${credit}`.trim();
+        notes.push(`beat ${entry.beat}: 3D hook scene (three.js) with the ${okLogos[0].name} logo`);
+        continue;
+      } catch (error) { warnings.push(`the 3D hook scene for beat ${entry.beat} was skipped: ${error.message}`); }
+    }
     if (okLogos.length) {
       const folder = path.join(dir, 'scenes', `logo-beat-${entry.beat}`);
       await mkdir(folder, { recursive: true });
@@ -348,4 +372,25 @@ export async function applyVisuals(manifest, dir, visuals, base = dir) {
     }
   }
   return { notes, warnings };
+}
+
+// A logo from a file you point to (for example the brand's own press or branding page), in place of the one found on the home page. The same checks apply: https only, a
+// public address, an image type, a size limit; it is redrawn as a clean transparent PNG, and the record says exactly where it came from.
+export async function addLogoFromUrl(visuals, name, url, { base, fetcher = fetch } = {}) {
+  const u = new URL(url);
+  const img = await downloadImage(u.href, u.hostname, fetcher);
+  const browser = await launchChrome();
+  const work = await (await import('node:fs/promises')).mkdtemp(path.join(os.tmpdir(), 'video-monk-logo-'));
+  try {
+    await mkdir(path.join(base, 'logos'), { recursive: true });
+    const file = path.join('logos', `${slug(name)}.png`);
+    const tone = await toTransparentPng(browser, img, path.join(base, file), work);
+    const provenance = { entity: name, domain: u.hostname, pageUrl: u.href, assetUrl: u.href, method: 'a logo file chosen by the user', retrievedAt: new Date().toISOString(), tone,
+      rights: `${name} and its logo are trademarks of their owner. Shown only to identify ${name} in an editorial explainer; no endorsement is implied. Check the brand's usage guidelines before publishing.` };
+    await writeJson(path.join(base, 'logos', `${slug(name)}-source.json`), provenance).catch(() => {});
+    let n = 0;
+    for (const b of visuals.beats) for (const l of b.logos) if (l.name.toLowerCase() === name.toLowerCase()) { Object.assign(l, { status: 'fetched', file, provenance, reason: null, approved: false }); n++; }
+    if (!n) fail(`no logo named ${name} in the candidates`);
+    return n;
+  } finally { await browser.close(); await rm(work, { recursive: true, force: true }); }
 }

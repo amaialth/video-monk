@@ -101,3 +101,33 @@ test('the badge page is a pure function of time with a dark plate for light logo
   assert.match(logoBadgeHtml([{ name: 'A', file: 'a.png' }], 4, { compact: true }), /flex-end/);
   assert.doesNotMatch(normal, /Math\.random|Date\.now|setInterval|requestAnimationFrame/);
 });
+
+test('the 3D hook scene is built from the logo and the scene\'s own words, and is a pure function of time', async t => {
+  const { hook3dHtml, parseEmphasis } = await import('../src/scene3d.js');
+  assert.deepEqual(parseEmphasis('Perplexity dropped *MCP*'), [{ text: 'Perplexity dropped ', accent: false }, { text: 'MCP', accent: true }]);
+  const html = hook3dHtml({ kicker: 'Agents', title: 'Perplexity dropped *MCP*', subtitle: 'Back to APIs', logo: 'logo0.png', logoTone: 'light', theme: 'night', seconds: 6.2 });
+  assert.match(html, /<vm-lib name="three">/);
+  assert.match(html, /<vm-asset name="logo" src="logo0\.png">/);
+  assert.match(html, /window\.__seek/);
+  assert.match(html, /LOGO_TONE = 'light'/);
+  assert.doesNotMatch(html, /Math\.random|Date\.now|requestAnimationFrame|setInterval/, 'nothing runs on its own clock');
+  assert.ok(!hook3dHtml({ title: '</script><script>alert(1)</script>', logo: 'a.png' }).includes('</script><script>alert(1)'), 'text cannot close the script tag');
+
+  const dir = await temporary(t);
+  await mkdir(path.join(dir, 'logos'), { recursive: true });
+  await writeFile(path.join(dir, 'logos', 'p.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64'));
+  const manifest = { fps: 30, width: 1080, height: 1920, theme: { preset: 'night' }, assets: [], scenes: [{ id: 'beat-1', kind: 'graphic', purpose: 'p', duration: 6, graphic: { template: 'title', props: { kicker: 'Agents', title: 'Perplexity dropped *MCP*', subtitle: 'Back to APIs' } } }] };
+  const logo = { name: 'Perplexity', domain: 'perplexity.ai', status: 'fetched', file: 'logos/p.png', approved: true, provenance: { tone: 'dark', pageUrl: 'https://www.perplexity.ai/', retrievedAt: '2026-11-03T00:00:00Z', rights: 'TM.' } };
+  const notApproved = await applyVisuals(JSON.parse(JSON.stringify(manifest)), dir, { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: { beat: 1, approved: false, available: true } });
+  assert.ok(notApproved.notes.every(n => !/3D hook/.test(n)), 'an unapproved 3D scene is not used');
+  const m2 = JSON.parse(JSON.stringify(manifest));
+  const done = await applyVisuals(m2, dir, { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: { beat: 1, approved: true, available: true } });
+  assert.match(done.notes.join(' '), /3D hook scene/);
+  assert.equal(m2.scenes[0].graphic.html, path.join('scenes', 'hook3d-beat-1', 'index.html'));
+  assert.equal(m2.scenes[0].overlays, undefined, 'the logo is on the 3D card, so there is no second badge');
+  assert.match(await readFile(path.join(dir, 'scenes', 'hook3d-beat-1', 'index.html'), 'utf8'), /Perplexity dropped \*MCP\*/);
+  // approving everything also approves the 3D scene, but only when three.js is installed
+  const v = { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: { beat: 1, available: false, approved: false } };
+  approveVisuals(v); assert.equal(v.scene3d.approved, false);
+  v.scene3d.available = true; approveVisuals(v); assert.equal(v.scene3d.approved, true);
+});

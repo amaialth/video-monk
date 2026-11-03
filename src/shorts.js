@@ -30,7 +30,7 @@ export function shortOptions(raw = {}) {
   const length = Number(raw.length ?? 45);
   if (!LENGTHS.includes(length)) fail(`length must be one of ${LENGTHS.join(', ')} seconds`);
   const o = {
-    length, audioTags: raw.audioTags === 'v4' ? 'v4' : Boolean(raw.audioTags), tone: pick(raw.tone, TONES, 'tone', 'friendly'), audience: pick(raw.audience, AUDIENCES, 'audience', 'general'),
+    bed: raw.bed === false || raw.bed === 'off' ? false : true, length, audioTags: raw.audioTags === 'v4' ? 'v4' : Boolean(raw.audioTags), tone: pick(raw.tone, TONES, 'tone', 'friendly'), audience: pick(raw.audience, AUDIENCES, 'audience', 'general'),
     language: String(raw.language || 'en'), theme: pick(raw.theme, ['night', 'paper'], 'theme', 'night'), calm: Boolean(raw.calm), onTwos: Boolean(raw.onTwos),
     captions: pick(raw.captions, CAPTION_STYLES, 'captions', 'highlight'), sfx: pick(raw.sfx, ['off', 'subtle', 'full'], 'sfx', 'subtle'),
     current: pick(raw.current, ['left', 'right', 'up', 'down'], 'current', 'up'), cta: raw.cta ? String(raw.cta).slice(0, 80) : null, topic: raw.topic ? String(raw.topic).slice(0, 80) : null
@@ -166,7 +166,7 @@ export const DIRECTION_SCHEMA = { type: 'object', additionalProperties: false, r
   properties: { voiceId: { type: 'string' }, stability: { type: 'number' }, similarity: { type: 'number' }, captions: { type: 'string', enum: CAPTION_STYLES }, theme: { type: 'string', enum: ['night', 'paper'] },
     sfx: { type: 'string', enum: ['off', 'subtle', 'full'] }, calm: { type: 'boolean' }, onTwos: { type: 'boolean' }, current: { type: 'string', enum: ['left', 'right', 'up', 'down'] },
     reasons: { type: 'object', additionalProperties: false, required: ['voice', 'delivery', 'captions', 'look', 'motion'], properties: { voice: { type: 'string' }, delivery: { type: 'string' }, captions: { type: 'string' }, look: { type: 'string' }, motion: { type: 'string' } } } } };
-export const DIRECTION_KEYS = ['captions', 'theme', 'sfx', 'calm', 'onTwos', 'current'];
+export const DIRECTION_KEYS = ['captions', 'theme', 'sfx', 'calm', 'onTwos', 'current', 'bed'];
 const clamp = (n, lo, hi, fallback) => (Number.isFinite(Number(n)) ? Math.min(hi, Math.max(lo, Math.round(Number(n) * 100) / 100)) : fallback);
 
 // Make any proposal safe: a voice that exists, settings in range, options from the lists. Anything wrong falls back to the default, never to an error.
@@ -183,7 +183,7 @@ export function normalizeDirection(raw = {}, { voices = [], options = {}, modelI
   const settings = { stability: clamp(raw.stability ?? raw.voiceSettings?.stability, 0, 1, 0.4), similarity_boost: clamp(raw.similarity ?? raw.voiceSettings?.similarity_boost, 0, 1, 0.75) };
   const r = raw.reasons || {};
   const text = k => (typeof r[k] === 'string' ? r[k].replace(/\s+/g, ' ').trim().slice(0, 200) : '');
-  return { by, modelId, voiceId, voiceName: voice?.name || raw.voiceName || '', voiceSettings: expressiveSettings(modelId, settings), captions: base.captions, theme: base.theme, sfx: base.sfx, calm: Boolean(base.calm), onTwos: Boolean(base.onTwos), current: base.current,
+  return { by, modelId, voiceId, voiceName: voice?.name || raw.voiceName || '', voiceSettings: expressiveSettings(modelId, settings), captions: base.captions, theme: base.theme, sfx: base.sfx, calm: Boolean(base.calm), onTwos: Boolean(base.onTwos), current: base.current, bed: base.bed !== false,
     reasons: { voice: text('voice'), delivery: text('delivery'), captions: text('captions'), look: text('look'), motion: text('motion') } };
 }
 
@@ -277,6 +277,18 @@ export async function generateNarration(script, { dir, voiceId, modelId = DEFAUL
   return { narration, words, layout, files: pieces.map(p => path.relative(dir, p.file)), totalSeconds: total, characters: chars, recorded: pieces.filter(p => !p.cached).length, cached: pieces.filter(p => p.cached).length };
 }
 
+// An original ambient bed, made here with FFmpeg (a slow minor-add9 pad with a gentle tremolo): no third-party audio, so no licence to check. It sits under the voice and is ducked by it.
+export async function makeBed(file, seconds, execute = run) {
+  await mkdir(path.dirname(file), { recursive: true });
+  const d = Math.ceil(seconds + 4);
+  const tones = [110, 164.81, 220, 261.63, 329.63];
+  const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y'];
+  for (const f of tones) args.push('-f', 'lavfi', '-i', `sine=frequency=${f}:sample_rate=44100:duration=${d}`);
+  args.push('-filter_complex', `${tones.map((_, i) => `[${i}]`).join('')}amix=inputs=${tones.length}:normalize=0,lowpass=f=1100,tremolo=f=0.18:d=0.45,volume=2.8,alimiter=limit=0.8,afade=t=in:d=2.5,afade=t=out:st=${d - 3.5}:d=3.5,aformat=channel_layouts=stereo[out]`, '-map', '[out]', file);
+  await execute('ffmpeg', args);
+  return file;
+}
+
 // The plan: graphic scenes timed to the narration (via the standalone-video planner), plus narration, captions and the voice's licence note.
 export async function planShort(script, audio, dir, rawOptions, { source = '', provider = {}, visuals = null, visualsBase = null } = {}) {
   const options = shortOptions(rawOptions);
@@ -284,6 +296,7 @@ export async function planShort(script, audio, dir, rawOptions, { source = '', p
   const brief = { type: 'explainer', title: script.title, aspect: '9:16', current: options.current, theme: { preset: options.theme, ...(options.calm ? { calm: true } : {}), ...(options.onTwos ? { onTwos: true } : {}) },
     beats: script.beats.map((b, i) => ({ say: stripTags(b.say).slice(0, 200), show: b.show, props: b.props, seconds: audio.layout[i].seconds, ...(b.label ? { label: b.label } : {}) })) };
   if (options.music) brief.music = options.music;
+  else if (options.bed) { await makeBed(path.join(dir, 'music', 'bed.wav'), audio.totalSeconds, audio.execute || run); brief.music = { file: 'music/bed.wav', rights: 'Original ambient bed generated by Video Monk with FFmpeg; no third-party audio.', attribution: 'Video Monk generated', gainDb: -17 }; }
   await writeJson(path.join(dir, 'brief.json'), brief);
   // facts: each number on screen is one the source gives, so the fact list is the source sentences they appear in
   const shown = new Set();
@@ -296,6 +309,8 @@ export async function planShort(script, audio, dir, rawOptions, { source = '', p
   const manifest = JSON.parse(await readFile(planned.output, 'utf8'));
   manifest.assets.push({ id: 'narration', path: path.relative(dir, audio.narration), kind: 'audio', approved: true, rights: ELEVEN_RIGHTS, attribution: `ElevenLabs text to speech${provider.voiceName ? `, voice ${provider.voiceName}` : ''}` });
   manifest.audio = { ...(manifest.audio || {}), narration: { asset: 'narration', gainDb: 0, start: 0 }, ducking: { enabled: true, amountDb: 14 } };
+  // effects that can be heard: the built-in sounds are quiet, so lift them to sit clearly under the voice
+  if (manifest.audio?.sfx) manifest.audio.sfx = manifest.audio.sfx.map(e => ({ ...e, gainDb: Math.min(-5, (e.gainDb ?? -17) + 9) }));
   manifest.captions = { words: 'words.timeline.json', style: options.captions, position: 'lower' };
   manifest.delivery = { ...(manifest.delivery || {}), target: 'web' };
   let visualNotes = { notes: [], warnings: [] };

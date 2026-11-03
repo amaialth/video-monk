@@ -177,6 +177,7 @@ export function registerShorts(on, { store, serveFile, HANDLED, err, deps = {} }
     const v = await readVisuals(file).catch(() => null);
     if (!v) throw err('Look for pictures first');
     for (const a of Array.isArray(body.approvals) ? body.approvals.slice(0, 50) : []) {
+      if (a.kind === 'scene3d') { if (v.scene3d) v.scene3d.approved = a.approved === true && v.scene3d.available === true; continue; }
       const beat = v.beats.find(b => b.beat === a.beat); if (!beat) continue;
       if (a.kind === 'logo' && beat.logos[a.index]) beat.logos[a.index].approved = a.approved === true && beat.logos[a.index].status === 'fetched';
       if (a.kind === 'broll' && beat.broll) beat.broll.approved = a.approved === true && beat.broll.status === 'downloaded';

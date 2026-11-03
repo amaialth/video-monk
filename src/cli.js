@@ -25,7 +25,7 @@ import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive 
 import { cutdownManifest, ASPECTS } from './cutdown.js';
 import { catalogData, catalogEntry, importBlock, importAll, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
 import { focusManifest, detectActivity } from './focus.js';
-import { researchVisuals, readVisuals, approveVisuals } from './visuals.js';
+import { researchVisuals, readVisuals, approveVisuals, addLogoFromUrl } from './visuals.js';
 import { makeShort, readSource, LENGTHS, TONES, AUDIENCES, CAPTION_STYLES } from './shorts.js';
 import { elevenConfig, listVoices, listModels } from './elevenlabs.js';
 import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
@@ -248,8 +248,8 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
-  'short-visuals': { script: 'string', source: 'string', output: 'string', 'allow-llm': 'boolean', 'allow-browse': 'boolean', 'allow-stock': 'boolean', 'allow-stock-download': 'boolean', 'rights-confirmed': 'boolean', model: 'string', approve: 'string', visuals: 'string' },
-  short: { check: 'boolean', visuals: 'string', voices: 'boolean', models: 'boolean', search: 'string', source: 'string', concept: 'string', output: 'string', script: 'string', 'script-only': 'boolean', 'allow-llm': 'boolean', model: 'string', length: 'string', tone: 'string', audience: 'string', language: 'string', theme: 'string', calm: 'boolean', 'on-twos': 'boolean', captions: 'string', sfx: 'string', current: 'string', cta: 'string', topic: 'string', music: 'string', 'music-rights': 'string', 'music-attribution': 'string', voice: 'string', auto: 'boolean', 'eleven-model': 'string', stability: 'string', similarity: 'string', style: 'string', speed: 'string', seed: 'string', 'allow-eleven': 'boolean', 'max-chars': 'string', build: 'boolean', 'approve-plan': 'boolean', quality: 'string' },
+  'short-visuals': { script: 'string', source: 'string', output: 'string', 'allow-llm': 'boolean', 'allow-browse': 'boolean', 'allow-stock': 'boolean', 'allow-stock-download': 'boolean', 'rights-confirmed': 'boolean', model: 'string', approve: 'string', visuals: 'string', logo: 'string' },
+  short: { check: 'boolean', visuals: 'string', voices: 'boolean', models: 'boolean', search: 'string', source: 'string', concept: 'string', output: 'string', script: 'string', 'script-only': 'boolean', 'allow-llm': 'boolean', model: 'string', length: 'string', tone: 'string', audience: 'string', language: 'string', theme: 'string', calm: 'boolean', 'on-twos': 'boolean', captions: 'string', sfx: 'string', current: 'string', cta: 'string', topic: 'string', music: 'string', 'music-rights': 'string', 'music-attribution': 'string', voice: 'string', auto: 'boolean', bed: 'string', 'eleven-model': 'string', stability: 'string', similarity: 'string', style: 'string', speed: 'string', seed: 'string', 'allow-eleven': 'boolean', 'max-chars': 'string', build: 'boolean', 'approve-plan': 'boolean', quality: 'string' },
   focus: { detect: 'string', max: 'string', 'min-gap': 'string', sensitivity: 'string', from: 'string', seconds: 'string', manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
   auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
@@ -657,11 +657,22 @@ export async function main(args) {
     }
     case 'short-visuals': {
       // The visual researcher: finds the logos (with a browser, from each brand's own site) and B-roll (stock) that a short's script calls for. Candidates only; approve what to use.
+      if (opts.logo !== undefined) {
+        // --logo "Google=https://www.google.com/images/branding/googlelogo/2x/googlelogo_color_272x92dp.png": use that file as the brand's logo
+        const file = path.resolve(required(opts, 'visuals'));
+        const [name, ...rest] = String(opts.logo).split('=');
+        const v = await readVisuals(file);
+        await addLogoFromUrl(v, name.trim(), rest.join('=').trim(), { base: path.dirname(file) });
+        await (await import('node:fs/promises')).writeFile(file, `${JSON.stringify(v, null, 2)}\n`);
+        console.log(`${name.trim()} logo replaced (not approved yet): check logos/ then  video-monk short-visuals --visuals ${file} --approve all`);
+        break;
+      }
       if (opts.approve !== undefined) {
         const file = path.resolve(required(opts, 'visuals'));
         const v = await readVisuals(file);
         approveVisuals(v, { beats: opts.approve === 'all' ? null : String(opts.approve).split(',').map(Number).filter(Number.isInteger) });
         await (await import('node:fs/promises')).writeFile(file, `${JSON.stringify(v, null, 2)}\n`);
+        if (v.scene3d) console.log(`3D hook scene (beat ${v.scene3d.beat}): ${v.scene3d.approved ? 'approved' : v.scene3d.available ? 'not approved' : v.scene3d.reason}`);
         console.log(v.beats.map(b => `beat ${b.beat}: ${[...b.logos.map(l => `${l.name} logo ${l.approved ? 'approved' : l.status}`), b.broll ? `footage ${b.broll.approved ? 'approved' : b.broll.status}` : null].filter(Boolean).join(', ')}`).join('\n'));
         break;
       }
@@ -685,9 +696,9 @@ export async function main(args) {
       const settings = {};
       for (const [flag, key] of [['stability', 'stability'], ['similarity', 'similarity_boost'], ['style', 'style'], ['speed', 'speed']]) if (num(flag) !== undefined) settings[key] = num(flag);
       const r = await makeShort({ source: opts.source ? await readSource(opts.source) : opts.concept || '', kind: opts.source ? 'text' : 'concept', dir: required(opts, 'output'), scriptFile: opts.script, scriptOnly: opts['script-only'], allowLlm: opts['allow-llm'], model: opts.model,
-        options: { length: opts.length, tone: opts.tone, audience: opts.audience, language: opts.language, theme: opts.theme, calm: opts.calm, onTwos: opts['on-twos'], captions: opts.captions, sfx: opts.sfx, current: opts.current, cta: opts.cta, topic: opts.topic,
+        options: { length: opts.length, tone: opts.tone, audience: opts.audience, language: opts.language, theme: opts.theme, calm: opts.calm, onTwos: opts['on-twos'], bed: opts.bed, captions: opts.captions, sfx: opts.sfx, current: opts.current, cta: opts.cta, topic: opts.topic,
           ...(opts.music ? { music: { file: opts.music, rights: opts['music-rights'], attribution: opts['music-attribution'] } } : {}) },
-        visualsFile: opts.visuals, voiceId: opts.voice, auto: opts.auto, explicit: Object.entries({ captions: opts.captions, theme: opts.theme, sfx: opts.sfx, calm: opts.calm, onTwos: opts['on-twos'], current: opts.current }).filter(([, v]) => v !== undefined).map(([k]) => k), elevenModel: opts['eleven-model'], voiceSettings: Object.keys(settings).length ? settings : undefined, seed: num('seed'), allowEleven: opts['allow-eleven'], maxChars: num('max-chars'), build: opts.build, approvePlan: opts['approve-plan'], quality: opts.quality === 'final' ? 'final' : 'draft', log: m => console.error(m) });
+        visualsFile: opts.visuals, voiceId: opts.voice, auto: opts.auto, explicit: Object.entries({ bed: opts.bed, captions: opts.captions, theme: opts.theme, sfx: opts.sfx, calm: opts.calm, onTwos: opts['on-twos'], current: opts.current }).filter(([, v]) => v !== undefined).map(([k]) => k), elevenModel: opts['eleven-model'], voiceSettings: Object.keys(settings).length ? settings : undefined, seed: num('seed'), allowEleven: opts['allow-eleven'], maxChars: num('max-chars'), build: opts.build, approvePlan: opts['approve-plan'], quality: opts.quality === 'final' ? 'final' : 'draft', log: m => console.error(m) });
       if (r.stage === 'script') console.log(`Script written: ${r.scriptPath}\n  ${r.script.beats.length} beats, about ${r.seconds} s spoken, ${r.characters} characters (about ${r.credits} ElevenLabs credits at the standard rate).${r.warnings.map(w => `\n  warning: ${w}`).join('')}\nRead SCRIPT.md, edit script.json if you like, then run again with --script ${r.scriptPath} --output <a new folder> --allow-eleven to record it.`);
       else if (r.stage === 'plan') console.log(`Short planned: ${r.plan}\n  ${r.script.beats.length} beats, ${r.seconds} s, ${r.characters} characters narrated (${r.recorded} recorded now, ${r.cached} already recorded).${r.warnings.map(w => `\n  warning: ${w}`).join('')}\nNext: read PLAN.md and play audio/, then  video-monk production-review --manifest ${r.plan} --output ${path.join(r.dir, 'review.json')} --approve-plan  and production-build, or run this again with --build --approve-plan.`);
       else console.log(`${r.status}: ${r.video}. Watch it end to end before publishing.`);
