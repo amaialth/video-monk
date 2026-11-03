@@ -131,3 +131,7 @@ or model accuracy. The native FFmpeg production tests are a separate validation.
 `MIRELO_API_KEY` in the environment or a `.env` file (git ignores `.env`; copy `.env.example`). Used only with `--allow-mirelo`. Check with `video-monk sfx --credits`. See [sound effects](./sound-effects.md).
 
 For Claude Code agents the Mirelo MCP server is registered in `.mcp.json` (token from the environment). Start Claude Code with the variable set: `set -a; . ./.env; set +a; claude`, then check `/mcp`.
+
+## Optional: Pixabay B-roll
+
+`PIXABAY_API_KEY` in the environment or a `.env` file (git ignores `.env`; see `.env.example`). Used by `stock-search` (`--provider auto` picks Pixabay when the key is set) and only with `--allow-search`; downloads need `--allow-download --rights-confirmed`. See [B-roll](./broll.md).

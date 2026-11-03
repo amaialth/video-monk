@@ -3,3 +3,4 @@ import os from 'node:os';
 import path from 'node:path';
 import { mkdtempSync } from 'node:fs';
 if (!process.env.VIDEO_MONK_LIBRARY_KEEP) process.env.VIDEO_MONK_LIBRARY = mkdtempSync(path.join(os.tmpdir(), 'video-monk-test-library-'));
+if (!process.env.VIDEO_MONK_CACHE_KEEP) process.env.VIDEO_MONK_CACHE = mkdtempSync(path.join(os.tmpdir(), 'video-monk-test-cache-'));

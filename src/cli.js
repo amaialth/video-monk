@@ -9,6 +9,7 @@ import { complete, parseModelJson, styleContent } from './llm.js';
 import { PLAN_SCHEMA, validateInventory, validatePlan, captionsSrt, resolveXml, requireXmlRates } from './plan.js';
 import { reviewProduction, buildProduction, verifyProduction } from './production.js';
 import { searchStock, downloadStock } from './stock.js';
+import { addBroll } from './broll.js';
 import { transcribeParakeet, renderHyperframes } from './external-tools.js';
 import { transcribeWhisper, downloadModel, findWhisper, findModel, MODELS, MODEL_DIR } from './transcribe.js';
 import { autocut, analyzeFootage, FORMATS } from './autocut.js';
@@ -126,6 +127,11 @@ REFERENCE STUDY AND RESOLVE HANDOFF
                     --output <new verification.json> --target-lufs=<number>
                     --max-true-peak=<number> [--approve-playback]
   stock-search --query <words> --output <new candidates.json> --allow-search
+               [--provider auto|pixabay|pexels (auto: Pixabay when PIXABAY_API_KEY is set)] [--type video|image (Pixabay)]
+               [--orientation landscape|portrait|any] [--include-ai] [--min-width <px>]
+  broll-add  --manifest <production.json> --output <new manifest in the same folder> --asset-dir <stock-fetch folder>
+             --at <timeline seconds> --duration <seconds> [--in-start <s>] [--fit cover|contain|blur]
+             Lay a downloaded clip or image over the picture from --at, running continuously across the speech cuts
   stock-fetch --catalog <candidates.json> --id <video ID> --file-id <file ID>
               --output <new folder> --allow-download --rights-confirmed
   animate    --project <HyperFrames project> --composition <relative HTML>
@@ -155,7 +161,8 @@ const definitions = {
   'production-build': { manifest: 'string', review: 'string', output: 'string', 'allow-render': 'boolean', finishing: 'string',
     quality: 'string', 'keep-work': 'boolean', concurrency: 'string' },
   'production-verify': { manifest: 'string', media: 'string', output: 'string', 'target-lufs': 'string', 'max-true-peak': 'string', 'approve-playback': 'boolean' },
-  'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean' },
+  'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean', provider: 'string', type: 'string', orientation: 'string', 'include-ai': 'boolean', 'min-width': 'string' },
+  'broll-add': { manifest: 'string', output: 'string', 'asset-dir': 'string', at: 'string', duration: 'string', 'in-start': 'string', fit: 'string' },
   'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' },
   transcribe: { media: 'string', output: 'string', 'allow-transcribe': 'boolean', 'allow-tool-network': 'boolean',
     engine: 'string', model: 'string', language: 'string', 'asr-prompt': 'string' },
@@ -591,14 +598,24 @@ export async function main(args) {
       break;
     }
     case 'stock-search': {
-      const result = await searchStock(required(opts, 'query'), required(opts, 'output'), opts['allow-search']);
-      console.log(`Pexels: ${result.candidates.length} candidates, not approved. Review source pages, license and credit before selection.`);
+      const { pickProvider } = await import('./stock.js');
+      const provider = pickProvider(opts.provider || 'auto');
+      const result = await searchStock(required(opts, 'query'), required(opts, 'output'), opts['allow-search'], fetch,
+        { provider, type: opts.type, orientation: opts.orientation, includeAi: opts['include-ai'], minWidth: opts['min-width'] ? Number(opts['min-width']) : undefined });
+      console.log(`${result.provider}${result.fromCache ? ' (cached, no request made)' : ''}: ${result.candidates.length} ${result.type || 'video'} candidates, not approved. Review source pages, license and credit before selection.`);
+      if (result.rateLimitRemaining !== undefined) console.log(`  rate limit: ${result.rateLimitRemaining} requests left this minute`);
       break;
     }
     case 'stock-fetch': {
       await downloadStock(required(opts, 'catalog'), required(opts, 'id'), required(opts, 'file-id'),
-        path.resolve(required(opts, 'output')), { allowDownload: opts['allow-download'], rightsConfirmed: opts['rights-confirmed'] });
+        path.resolve(required(opts, 'output')), { allowDownload: opts['allow-download'], rightsConfirmed: opts['rights-confirmed'], library: await Library.open() });
       console.log('Selected stock asset downloaded with attribution/provenance. Inspect the clip before production approval.');
+      break;
+    }
+    case 'broll-add': {
+      const num = key => (opts[key] === undefined ? undefined : Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })());
+      const result = await addBroll(required(opts, 'manifest'), required(opts, 'output'), { assetDir: required(opts, 'asset-dir'), at: num('at'), duration: num('duration'), inStart: num('in-start'), fit: opts.fit });
+      console.log(`B-roll ${result.asset} placed from ${result.window.from}s to ${result.window.to}s across ${result.scenes} cut(s) (fit ${result.fit}): ${result.output}${result.warnings.length ? `\n${result.warnings.map(w => `  warning: ${w}`).join('\n')}` : ''}\nNext: production-review, then production-build.`);
       break;
     }
     case 'production-review': {

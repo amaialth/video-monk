@@ -59,6 +59,9 @@ were reviewed as references. No code or text from either is used; the toolkit's 
 Mirelo (mirelo.ai) text-to-sound-effect API: used only with `--allow-mirelo` and your own `MIRELO_API_KEY`. The prompt is sent to Mirelo and credits are spent under your account.
 Mirelo's terms apply (free plan non-commercial use; paid plan for commercial release). No Mirelo code or branding is bundled. Generated files are recorded in the asset library with that note.
 
+Pixabay API (pixabay.com/api/docs): used only with `--allow-search` and your own `PIXABAY_API_KEY`; the query is sent to Pixabay. Downloaded files stay under the Pixabay Content License
+(https://pixabay.com/service/license-summary/), which the toolkit records per file with the creator and source page. Responses are cached for 24 hours as the API terms require.
+
 ## Dev and runtime tools (not bundled)
 
 FFmpeg, Google Chrome / Chromium, whisper.cpp and its models, and the Claude Code CLI are separate programs under

@@ -14,3 +14,4 @@ Find primary sources; record URL, retrieval date, exact claim/quote, limitations
 and contradictions. Search results and stock imagery aren't identity/fact proof.
 No downloads, account changes, uploads, private sessions or operational demos.
 Return an attributed evidence/asset-candidate ledger and unresolved questions.
+For B-roll, supply leads only: moments, 2-4 word English queries and what to avoid (faces, logos, text). Searching and downloading stock is done by the editor with `stock-search` (Pixabay or Pexels) after the user approves.
