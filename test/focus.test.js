@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { run, writeJson, readJson } from '../src/core.js';
-import { focusScenes, focusManifest } from '../src/focus.js';
+import { focusScenes, focusManifest, findActivity, detectActivity } from '../src/focus.js';
 import { focusExpressions } from '../src/build.js';
 import { loadTimeline } from '../src/timeline.js';
 
@@ -88,4 +88,39 @@ test('ffmpeg really zooms onto the target, eases in and out, and returns to the 
   assert.ok(peak.area > start.area * 3.5, 'about 2x linear zoom');
   assert.ok(mid.area > start.area * 1.5 && mid.area < peak.area, 'eased, not a jump');
   assert.ok(Math.abs(back.cx - 384) < 2 && Math.abs(back.area - start.area) < 20, 'back to the full picture');
+});
+
+test('findActivity proposes small local changes after a quiet stretch and ignores whole-screen changes (pure frames)', () => {
+  const W = 64, H = 36, px = W * H, frames = new Uint8Array(px * 60);   // 12 s at 5 fps, all black
+  const box = (f, x0, y0, v) => { for (let y = y0; y < y0 + 4; y++) for (let x = x0; x < x0 + 5; x++) frames[f * px + y * W + x] = v; };
+  for (let f = 10; f < 60; f++) box(f, 44, 14, 255);              // appears at frame 10 (2 s) at about (0.7, 0.4) and stays
+  for (let f = 30; f < 60; f++) box(f, 12, 28, 255);              // appears at frame 30 (6 s) at about (0.2, 0.8)
+  for (let f = 45; f < 60; f++) for (let i = 0; i < px; i++) frames[f * px + i] = Math.max(frames[f * px + i], 200);   // whole screen lights up at 9 s: not a candidate
+  const found = findActivity(frames, { width: W, height: H, fps: 5, minGap: 2 });
+  assert.deepEqual(found.map(c => c.at), [2, 6]);
+  assert.ok(Math.abs(found[0].x - 0.7) < 0.06 && Math.abs(found[0].y - 0.4) < 0.08, JSON.stringify(found[0]));
+  assert.ok(Math.abs(found[1].x - 0.2) < 0.06 && Math.abs(found[1].y - 0.8) < 0.08, JSON.stringify(found[1]));
+  assert.deepEqual(findActivity(new Uint8Array(px * 40), { width: W, height: H }), [], 'nothing moves, nothing proposed');
+  assert.equal(findActivity(frames, { width: W, height: H, fps: 5, max: 1 }).length, 1);
+  assert.equal(findActivity(frames, { width: W, height: H, fps: 5, minGap: 5 }).length, 1, 'min-gap keeps the stronger of two close moments');
+});
+
+test('detectActivity reads a real recording and writes a reviewable file that focus accepts', { skip: ffmpegOk ? false : 'needs ffmpeg' }, async t => {
+  const dir = await temporary(t);
+  const vf = 'drawbox=x=428:y=129:w=40:h=30:color=white:t=fill:enable=gte(t\\,2),drawbox=x=108:y=274:w=40:h=30:color=white:t=fill:enable=gte(t\\,6),drawbox=x=0:y=0:w=640:h=360:color=gray:t=fill:enable=between(t\\,10\\,10.4)';
+  await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-f', 'lavfi', '-i', `color=c=black:s=640x360:r=30:d=14,${vf}`, '-f', 'lavfi', '-i', 'sine=d=14', '-shortest', '-pix_fmt', 'yuv420p', path.join(dir, 'rec.mp4')]);
+  const r = await detectActivity(path.join(dir, 'rec.mp4'), path.join(dir, 'clicks.json'), { minGap: 2 });
+  const data = await readJson(path.join(dir, 'clicks.json'));
+  assert.match(data.note, /not recorded clicks/);
+  assert.equal(r.clicks, data.clicks.length);
+  const near = (at, x, y) => data.clicks.some(c => Math.abs(c.at - at) < 0.6 && Math.abs(c.x - x) < 0.08 && Math.abs(c.y - y) < 0.1);
+  assert.ok(near(2, 0.7, 0.4), JSON.stringify(data.clicks));
+  assert.ok(near(6, 0.2, 0.8), JSON.stringify(data.clicks));
+  assert.ok(!data.clicks.some(c => Math.abs(c.at - 10) < 0.5), 'the whole-screen flash is not a candidate');
+  await assert.rejects(detectActivity(path.join(dir, 'rec.mp4'), path.join(dir, 'clicks.json')), /already exists/);
+  await assert.rejects(detectActivity(path.join(dir, 'nope.mp4'), path.join(dir, 'c2.json')), /not found/);
+  // the file goes straight into focus
+  await writeJson(path.join(dir, 'p.json'), { version: 2, title: 'R', fps: 30, width: 640, height: 360, assets: [{ id: 'rec', path: 'rec.mp4', kind: 'video', approved: true, rights: 'Own', attribution: 'Me' }], scenes: [{ id: 's1', kind: 'video', asset: 'rec', in: 0, duration: 14, fit: 'cover', audio: {}, purpose: 'demo' }] });
+  const f = await focusManifest(path.join(dir, 'p.json'), path.join(dir, 'clicks.json'), path.join(dir, 'p.focus.json'));
+  assert.ok(f.points >= 2);
 });

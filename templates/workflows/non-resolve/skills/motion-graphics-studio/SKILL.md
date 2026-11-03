@@ -40,6 +40,7 @@ Everything the toolkit renders is already code: templates are pure functions of 
 - `theme.onTwos` (manifest theme, or in `brand.json`): hold every pose for two frames, the stepped hand-made look. `theme.calm`: no overshoot. `--style bytemonk`: calm, diagram-first.
 - `video-monk facts-check --manifest M --facts facts.json`: every number on screen is in the approved, sourced list.
 - `video-monk cutdown --aspect 9:16` and `--fit blur`: reels from any horizontal piece. Vertical captions and lower thirds already sit above the bottom ~26% that the apps cover.
+- `video-monk focus --detect rec.mp4 --output clicks.json`, then `video-monk focus --manifest M --clicks clicks.json --output M2`: auto-zoom on a screen recording. The first step proposes moments from screen activity (not recorded clicks; review them), the second adds the zoom to each video scene.
 - `video-monk motion-video --brief B --output DIR [--facts F]`: a standalone piece from beats; checks beat count, last-beat hold, facts and writes the manifest.
 - `video-monk libs --add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download`: opt-in, integrity-checked, never bundled. `<vm-lib>` and `<vm-asset>` in a custom graphic.
 - `video-monk graphic --template T --props P --output x.png|.mp4|.mov`: one graphic for review or reuse (the asset library caches every render).

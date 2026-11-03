@@ -2,7 +2,7 @@
 // add a `focus` motion to each video scene so the picture eases in on that spot, holds, and eases out. Output is a NEW manifest; nothing is rendered.
 // Positions are fractions of the picture as the viewer sees it (x 0 = left, y 0 = top), not of the source file.
 import path from 'node:path';
-import { exists, readJson, writeJson } from './core.js';
+import { exists, readJson, writeJson, run } from './core.js';
 import { FOCUS_POINTS_MAX } from './timeline.js';
 
 const fail = message => { throw new Error(`Focus: ${message}`); };
@@ -47,4 +47,41 @@ export async function focusManifest(manifestFile, clicksFile, outputFile, option
   if (!result.report.points) fail('no click falls inside a video scene (times are seconds in the source recording)');
   await writeJson(output, result.manifest);
   return { output, ...result.report };
+}
+
+// ---- finding the moments: no input is recorded; the recording itself is looked at.
+// The picture is sampled small (64x36, 5 per second) and compared with the one before. A moment is proposed where a SMALL part of the screen starts to change
+// after a quiet stretch (a menu opens, a field fills, a number updates, a button reacts), centred on what changed. Whole-screen changes (a cut, a scroll, a
+// slide change) are ignored. These are proposals about screen activity, not real clicks: review them before using them.
+export function findActivity(frames, { width = 64, height = 36, fps = 5, sensitivity = 1, minGap = 3, max = 12, from = 0 } = {}) {
+  const px = width * height, count = Math.floor(frames.length / px);
+  const lo = 0.002 / sensitivity, hi = 0.22, quiet = lo * 0.4, threshold = Math.round(22 / Math.max(0.25, sensitivity));
+  const found = [];
+  let prevChange = 0;
+  for (let f = 1; f < count; f++) {
+    let n = 0, sx = 0, sy = 0;
+    for (let i = 0; i < px; i++) {
+      if (Math.abs(frames[f * px + i] - frames[(f - 1) * px + i]) > threshold) { n++; sx += i % width; sy += Math.floor(i / width); }
+    }
+    const share = n / px;
+    if (share >= lo && share <= hi && prevChange < quiet) found.push({ at: from + f / fps, x: (sx / n + 0.5) / width, y: (sy / n + 0.5) / height, strength: share });
+    prevChange = share > hi ? 1 : share;                                   // a whole-screen change counts as busy: the quiet stretch starts after it
+  }
+  // keep the strongest proposal in every min-gap window, then the strongest `max` overall, in time order
+  const kept = [];
+  for (const c of [...found].sort((a, b) => b.strength - a.strength)) if (kept.every(k => Math.abs(k.at - c.at) >= minGap)) kept.push(c);
+  return kept.sort((a, b) => b.strength - a.strength).slice(0, max).sort((a, b) => a.at - b.at)
+    .map(c => ({ at: Math.round(c.at * 100) / 100, x: Math.round(c.x * 1000) / 1000, y: Math.round(c.y * 1000) / 1000, strength: Math.round(c.strength * 1000) / 1000 }));
+}
+
+export async function detectActivity(media, outputFile, options = {}) {
+  const input = path.resolve(media), output = path.resolve(outputFile);
+  if (!(await exists(input))) fail(`recording not found: ${input}`);
+  if (await exists(output)) fail(`output already exists: ${output}`);
+  const width = 64, height = 36, fps = 5, from = options.from ?? 0;
+  const args = ['-v', 'error', '-nostdin', ...(from ? ['-ss', String(from)] : []), ...(options.seconds ? ['-t', String(options.seconds)] : []), '-i', input, '-an', '-vf', `fps=${fps},scale=${width}:${height}:flags=area,format=gray`, '-f', 'rawvideo', '-'];
+  const { stdout } = await run('ffmpeg', args, { encoding: 'buffer', maxBuffer: 2 * 1024 * 1024 * 1024, timeout: 3600_000 });
+  const clicks = findActivity(stdout, { width, height, fps, from, sensitivity: options.sensitivity ?? 1, minGap: options.minGap ?? 3, max: options.max ?? 12 });
+  await writeJson(output, { note: 'Proposed from screen activity in the recording (not recorded clicks). Review each one, delete what does not matter, then run: video-monk focus --manifest ... --clicks this-file --output ...', recording: path.basename(input), clicks });
+  return { output, clicks: clicks.length, seconds: Math.floor(stdout.length / (width * height)) / fps };
 }

@@ -24,7 +24,7 @@ import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
 import { catalogData, catalogEntry, importBlock, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
-import { focusManifest } from './focus.js';
+import { focusManifest, detectActivity } from './focus.js';
 import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
@@ -77,6 +77,8 @@ AUTOMATED EDITING
              checks beat count, length, a 3 s hold on the last beat and facts-first numbers, then writes production.json with transitions, music and subtle SFX.
              Builds nothing: review the plan, then production-review --approve-plan and production-build.
   focus      --manifest <production.json> --clicks <clicks.json> --output <new manifest in the same folder> [--amount 0.5] [--hold 1.4] [--ramp 0.5] [--asset id] [--replace]
+             focus --detect <recording> --output <new clicks.json> [--max 12] [--min-gap 3] [--sensitivity 1] [--from s --seconds s]: propose the moments from screen activity
+             (small parts of the screen that start to change after a quiet stretch); these are proposals, not recorded clicks: review them.
              Auto-zoom on a screen recording: clicks.json is { "clicks": [{ "at": 12.4, "x": 0.31, "y": 0.62 }] } (seconds in the source; x, y as fractions of the picture).
              Each video scene gets a "focus" motion: the picture eases in on the spot, holds, eases out. Nothing is rendered.
   cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
@@ -234,7 +236,7 @@ const definitions = {
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
-  focus: { manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
+  focus: { detect: 'string', max: 'string', 'min-gap': 'string', sensitivity: 'string', from: 'string', seconds: 'string', manifest: 'string', clicks: 'string', output: 'string', amount: 'string', hold: 'string', ramp: 'string', asset: 'string', replace: 'boolean' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
   auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
@@ -627,6 +629,12 @@ export async function main(args) {
       break;
     }
     case 'focus': {
+      if (opts.detect) {
+        const n = key => (opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })()));
+        const r = await detectActivity(opts.detect, required(opts, 'output'), { max: n('max'), minGap: n('min-gap'), sensitivity: n('sensitivity'), from: n('from'), seconds: n('seconds') });
+        console.log(`Found ${r.clicks} candidate moment(s) in ${Math.round(r.seconds)} s of the recording.\nFile: ${r.output}\nThese come from screen activity, not recorded clicks: open the file, delete what does not matter, then:\n  video-monk focus --manifest <production.json> --clicks ${r.output} --output <new manifest in the same folder>`);
+        break;
+      }
       const num = key => (opts[key] === undefined ? undefined : (Number.isFinite(Number(opts[key])) ? Number(opts[key]) : (() => { throw new Error(`--${key} must be a number`); })()));
       const r = await focusManifest(required(opts, 'manifest'), required(opts, 'clicks'), required(opts, 'output'), { amount: num('amount'), hold: num('hold'), ramp: num('ramp'), asset: opts.asset, replace: opts.replace });
       console.log(`Focus: ${r.points} zoom point(s) in ${r.scenes} scene(s)${r.dropped ? `, ${r.dropped} dropped (too close to the one before)` : ''}.${r.skipped.map(x => `\n  skipped: ${x}`).join('')}\nManifest: ${r.output}\nNext: production-review --approve-plan, then production-build.`);
