@@ -73,15 +73,23 @@ export function findActivity(frames, { width = 128, height = 72, fps = 5, sensit
     let candidate = null;
     if (curShare > hi) {
       // whole-screen change: a dimmed backdrop (most pixels one way, a compact region the other) is a modal opening; anything else is a cut or a scroll
-      const major = pos >= neg ? 1 : 2, minor = major === 1 ? 2 : 1, maj = Math.max(pos, neg) / px, mnr = Math.min(pos, neg) / px;
-      if (maj > 0.5 && mnr >= lo && mnr <= 0.4) {
+      // The dialog fades in over a few frames, and its fill only differs from the backdrop once that is partly dimmed. So the brightened region is measured
+      // on the best of the first three frame pairs. A dimming is "darker pixels far outnumber brighter ones" (a cut or a scroll changes both about equally).
+      let lm = null, major = 1, minor = 2, maj = 0, mnr = 0;
+      for (let k = 0; k < 3 && f + k < count; k++) {
+        const m = new Uint8Array(px); let a = 0, b = 0;
+        for (let i = 0; i < px; i++) { const d = frames[(f + k) * px + i] - frames[(f + k - 1) * px + i]; if (d > T) { m[i] = 1; a++; } else if (d < -T) { m[i] = 2; b++; } }
+        const mj = a >= b ? 1 : 2, majShare = Math.max(a, b) / px, minShare = Math.min(a, b) / px;
+        if (majShare > 0.3 && minShare <= 0.3 * majShare && minShare >= lo && minShare <= 0.4 && minShare > mnr) { lm = m; major = mj; minor = mj === 1 ? 2 : 1; maj = majShare; mnr = minShare; }
+      }
+      if (lm) {
         const cnt = new Int32Array(GW * GH), csx = new Float64Array(GW * GH), csy = new Float64Array(GW * GH);
-        for (let i = 0; i < px; i++) if (cur[i] === minor) { const x = i % width, y = Math.floor(i / width), c = cellOf(x, y); cnt[c]++; csx[c] += x; csy[c] += y; }
+        for (let i = 0; i < px; i++) if (lm[i] === minor) { const x = i % width, y = Math.floor(i / width), c = cellOf(x, y); cnt[c]++; csx[c] += x; csy[c] += y; }
         // a modal is ONE dominant compact region; two comparable far-apart blobs (a flash that overwrote two things) are not
         const dense = []; let total = 0; for (let c = 0; c < cnt.length; c++) if (cnt[c] >= 3) { dense.push(c); total += cnt[c]; }
         const seen = new Set(); let best = null;
-        for (const c of dense) { if (seen.has(c)) continue; const g = { n: 0, x: 0, y: 0 }, stack = [c]; seen.add(c); while (stack.length) { const a = stack.pop(); g.n += cnt[a]; g.x += csx[a]; g.y += csy[a]; for (const b of dense) if (!seen.has(b) && Math.abs((a % GW) - (b % GW)) <= 1 && Math.abs(Math.floor(a / GW) - Math.floor(b / GW)) <= 1) { seen.add(b); stack.push(b); } } if (!best || g.n > best.n) best = g; }
-        if (best && best.n >= 0.6 * total) candidate = { f, x: (best.x / best.n + 0.5) / width, y: (best.y / best.n + 0.5) / height, strength: mnr };
+        for (const c of dense) { if (seen.has(c)) continue; const g = { n: 0, x: 0, y: 0, x0: GW, x1: -1, y0: GH, y1: -1 }, stack = [c]; seen.add(c); while (stack.length) { const a = stack.pop(); g.n += cnt[a]; g.x += csx[a]; g.y += csy[a]; g.x0 = Math.min(g.x0, a % GW); g.x1 = Math.max(g.x1, a % GW); g.y0 = Math.min(g.y0, Math.floor(a / GW)); g.y1 = Math.max(g.y1, Math.floor(a / GW)); for (const b of dense) if (!seen.has(b) && Math.abs((a % GW) - (b % GW)) <= 1 && Math.abs(Math.floor(a / GW) - Math.floor(b / GW)) <= 1) { seen.add(b); stack.push(b); } } if (!best || g.n > best.n) best = g; }
+        if (best && best.n >= 0.6 * total) candidate = { f, x: ((best.x0 + best.x1 + 1) / 2) / GW, y: ((best.y0 + best.y1 + 1) / 2) / GH, strength: Math.max(mnr, curShare * 0.25) };   // the centre of the dialog's extent, not of its text; a dimmed screen outranks the small change that caused it
       }
       active = true; calm = 0;
     } else {

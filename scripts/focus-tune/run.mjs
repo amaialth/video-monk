@@ -10,19 +10,21 @@ import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { run } from '../../src/core.js';
 import { findActivity } from '../../src/focus.js';
-import { findSyncFlash, FLASH_AT } from './align.mjs';
+import { locateSyncFlash, FLASH_AT } from './align.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const argv = process.argv.slice(2), align = argv.includes('--align'), [mediaArg, truthArg] = argv.filter(a => !a.startsWith('--'));
+const argv = process.argv.slice(2), align = argv.includes('--align'), detailAt = argv.includes('--detail') ? Number(argv[argv.indexOf('--detail') + 1]) : null;
+const [mediaArg, truthArg] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1] === '--detail'));
 const truth = JSON.parse(await readFile(truthArg || path.join(here, 'truth.json'), 'utf8'));
 
 async function frames(media) {
   const { stdout } = await run('ffmpeg', ['-v', 'error', '-nostdin', '-i', media, '-an', '-vf', 'fps=5,scale=128:72:flags=area,format=gray', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 2 ** 31 - 1 });
   return stdout;
 }
-let offset = 0;                                   // recording time minus page time, from the sync flash (0 for the simulation)
+let offset = 0, page = { x: 0, y: 0, w: 1, h: 1 };   // recording time minus page time, and where the page sits in the frame, both from the sync flash (identity for the simulation)
+const inPage = c => ({ ...c, at: c.at - offset, x: +((c.x - page.x) / page.w).toFixed(3), y: +((c.y - page.y) / page.h).toFixed(3) });
 function score(found) {
-  found = found.map(c => ({ ...c, at: c.at - offset })).filter(c => c.at >= 0.4 && c.at <= 25);   // only the scripted window counts (not what was on screen before Start or after Done)
+  found = found.map(inPage).filter(c => c.at >= 0.4 && c.at <= 25);   // only the scripted window counts (not what was on screen before Start or after Done)
   const win = (e, c) => c.at >= e.at - 0.5 && c.at <= e.at + 0.9;
   const hit = truth.events.filter(e => found.some(c => win(e, c) && Math.hypot(c.x - e.x, c.y - e.y) < (align ? 0.3 : 0.22))).length;
   const neutral = found.filter(c => (truth.neutral || []).some(n => win(n, c)));
@@ -30,20 +32,29 @@ function score(found) {
   const false_ = found.filter(c => !matched.includes(c) && !neutral.includes(c));
   return `found ${String(found.length).padEnd(3)} hit ${hit}/${truth.events.length}  false ${false_.length}${false_.length ? ' at ' + JSON.stringify(false_.map(c => c.at)) : ''}`;
 }
+// Per-event view: which scripted events were found (and where), which were missed, and what else was proposed.
+function detail(found) {
+  found = found.map(inPage).filter(c => c.at >= 0.4 && c.at <= 25);
+  const win = (e, c) => c.at >= e.at - 0.5 && c.at <= e.at + 0.9;
+  console.log(`\n  per event at sensitivity ${detailAt}:`);
+  for (const e of truth.events) { const c = found.find(c => win(e, c)); console.log(`    ${c ? 'found  ' : 'MISSED '} ${e.name.padEnd(16)} expected ${e.at.toFixed(1)} s (${e.x}, ${e.y})${c ? `  got ${c.at.toFixed(1)} s (${c.x}, ${c.y}) strength ${(c.strength * 100).toFixed(2)}%` : ''}`); }
+  for (const c of found.filter(c => !truth.events.some(e => win(e, c)))) { const n = (truth.neutral || []).find(n => win(n, c)); console.log(`    ${n ? 'neutral' : 'FALSE  '} ${(n ? n.name : 'not in the script').padEnd(16)} at ${c.at.toFixed(1)} s (${c.x}, ${c.y}) strength ${(c.strength * 100).toFixed(2)}%`); }
+}
 async function sweep(label, media) {
   const data = await frames(media);
   console.log(`\n${label}`);
   for (const sensitivity of [0.6, 0.8, 1, 1.3, 1.7, 2.2]) console.log(`  sensitivity ${String(sensitivity).padEnd(4)} ${score(findActivity(data, { width: 128, height: 72, sensitivity, minGap: 2, max: 50 }))}`);
+  if (detailAt !== null) detail(findActivity(data, { width: 128, height: 72, sensitivity: detailAt, minGap: 2, max: 50 }));
 }
 
 if (mediaArg) {
   const media = path.resolve(mediaArg);
   if (align) {
-    const { stdout } = await run('ffmpeg', ['-v', 'error', '-nostdin', '-i', media, '-an', '-vf', 'fps=10,scale=16:9:flags=area', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 2 ** 31 - 1 });
-    const flash = findSyncFlash(stdout);
+    const { stdout } = await run('ffmpeg', ['-v', 'error', '-nostdin', '-i', media, '-an', '-vf', 'fps=10,scale=128:72:flags=area', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], { encoding: 'buffer', maxBuffer: 2 ** 31 - 1 });
+    const flash = locateSyncFlash(stdout, { width: 128, height: 72, fps: 10, share: 0.15 });
     if (flash === null) { console.error('The magenta sync flash was not found. Start recording before you press Start on the page, and capture the whole page.'); process.exit(1); }
-    offset = flash - FLASH_AT;
-    console.log(`Sync flash found at ${flash.toFixed(1)} s in the recording: the script started ${offset.toFixed(1)} s in.`);
+    offset = flash.t - FLASH_AT; page = flash.rect;
+    console.log(`Sync flash found at ${flash.t.toFixed(1)} s in the recording: the script started ${offset.toFixed(1)} s in. The page fills ${(page.w * 100).toFixed(0)}% x ${(page.h * 100).toFixed(0)}% of the frame, starting at (${(page.x * 100).toFixed(0)}%, ${(page.y * 100).toFixed(0)}%).`);
   }
   await sweep(mediaArg, media);
 }

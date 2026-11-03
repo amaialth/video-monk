@@ -173,3 +173,18 @@ test('the live session page carries the flash at the agreed time and the real-ti
   assert.match(html, /Do not click or type/);
   assert.doesNotMatch(html, /https?:\/\/(?!www\.w3)/, 'no network references');
 });
+
+test('a white dialog over a light page, fading in while the backdrop dims, is found at the dialog centre (not at a scrap of its text)', () => {
+  // modelled on a real OBS capture: the first frame pair is 56% darker with only a scrap (0.3%) brighter; the second is ~48% darker and ~9% brighter (the dialog fill)
+  const W = 128, H = 72, px = W * H, n = 40, frames = new Uint8Array(px * n);
+  const rect = (f, x0, y0, w, h, v) => { for (let y = y0; y < y0 + h; y++) for (let x = x0; x < x0 + w; x++) frames[f * px + y * W + x] = v; };
+  const backdrop = (f, edge, dark, light) => { for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) frames[f * px + y * W + x] = x < edge ? dark : light; };
+  for (let f = 0; f < 15; f++) frames.fill(215, f * px, (f + 1) * px);                       // a light page
+  backdrop(15, 72, 165, 215); rect(15, 44, 27, 8, 4, 255);                                    // 3.0 s: 56% of the screen dims, a scrap of the dialog title shows
+  backdrop(16, 120, 165, 215); rect(16, 44, 26, 40, 20, 255);                                 // the dialog (x 44..83, y 26..45) is white; more of the screen has dimmed
+  for (let f = 17; f < n; f++) { frames.fill(125, f * px, (f + 1) * px); rect(f, 44, 26, 40, 20, 255); }
+  const found = findActivity(frames, { width: W, height: H, fps: 5 });                         // all defaults
+  const dialog = found.find(c => Math.abs(c.at - 3) < 0.6);
+  assert.ok(dialog, JSON.stringify(found));
+  assert.ok(Math.abs(dialog.x - 0.5) < 0.1 && Math.abs(dialog.y - 0.5) < 0.12, 'at the dialog centre: ' + JSON.stringify(dialog));
+});
