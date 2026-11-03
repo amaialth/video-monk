@@ -23,6 +23,7 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
+import { catalogData, catalogEntry, importBlock, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
 import { motionVideo, reviewBrief, readBrief, libsNeeded, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
@@ -35,6 +36,11 @@ const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  catalog    [--list [--group G] [--status adapt|have|defer|skip] [--top] [--search text]] [--info <name>] [--imported]
+             [--import <block> --allow-download [--vars '{"name":"Ada"}'] [--transparent true|false]] [--remove <block>]
+             The captured HyperFrames catalog (448 items, Apache-2.0). --import downloads one standalone block once (fixed commit, github.com only), swaps its GSAP
+             for the library vault, inlines its fonts and adds a seek bridge so it plays offline; it refuses blocks that cannot (video, nested compositions, other libraries).
+             Use it with a motion-video beat: { "catalog": "<block>", "vars": {...}, "seconds": 5 }. It is third-party code: read it first.
   libs       [--list] [--supported] [--add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download [--version 1.2.3] [--with A,B]] [--remove <id>]
              3D and animation libraries for custom motion graphics. Downloaded once from the npm registry (integrity-checked) into ~/.video-monk/libs and
              used offline through <vm-lib name="three"></vm-lib> in a custom graphic. Nothing is bundled; each keeps its licence
@@ -215,6 +221,7 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
+  catalog: { list: 'boolean', info: 'string', import: 'string', imported: 'boolean', remove: 'string', 'allow-download': 'boolean', vars: 'string', transparent: 'string', group: 'string', status: 'string', top: 'boolean', search: 'string' },
   libs: { list: 'boolean', add: 'string', remove: 'string', 'allow-download': 'boolean', version: 'string', with: 'string', supported: 'boolean' },
   brand: { output: 'string', name: 'string', background: 'string', surface: 'string', text: 'string', muted: 'string', accent: 'string', preset: 'string', font: 'string', logo: 'string', feel: 'string', never: 'string', 'on-twos': 'boolean', calm: 'boolean', rights: 'string', attribution: 'string' },
   'facts-check': { manifest: 'string', facts: 'string' },
@@ -492,6 +499,25 @@ export async function main(args) {
       try { await (await import('./timeline.js')).loadTimeline(output); } catch (error) { await (await import('node:fs/promises')).rm(output, { force: true }); throw new Error(`The manifest with sound effects is invalid (${error.message}); nothing was written`); }
       console.log(`${placed.events.length} sound effect(s) placed (${mode}, ${engine}${session ? `, ${placed.credits} credits spent` : ''}): ${output}`);
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
+      break;
+    }
+    case 'catalog': {
+      if (opts.import) {
+        const vars = opts.vars ? JSON.parse(opts.vars) : {};
+        const r = await importBlock(opts.import, { allowDownload: opts['allow-download'], vars, transparent: opts.transparent === undefined ? undefined : opts.transparent === 'true' });
+        console.log(`Imported ${r.name} (${r.license}${r.author ? `, ${r.author}` : ''}) into ${r.dir}\n  ${r.width || '?'}x${r.height || '?'}, ${r.duration || '?'} s; needs the gsap library${r.needs.plugins.length ? ` with ${r.needs.plugins.join(', ')}` : ''} (video-monk libs --add gsap --allow-download)${r.warnings.map(w => `\n  warning: ${w}`).join('')}\n  ${r.transparent ? 'transparent page: use it as an overlay { "html": "…/index.html", "start": 1, "duration": 4 } or a scene' : 'opaque page: use it as a scene'}\n  variables: ${r.variables.map(v => v.id).join(', ') || 'none'}\n  use: motion-video beat { "catalog": "${r.name}", "seconds": ${Math.ceil(r.duration || 5)} }, or video-monk graphic --html ${r.file} --output x.png --at 2`);
+        break;
+      }
+      if (opts.remove) { console.log(`Removed ${await removeImported(opts.remove)} imported item(s) named ${opts.remove}`); break; }
+      if (opts.imported) { const l = await listImported(); console.log(l.length ? l.map(i => `${i.name.padEnd(28)} ${i.width || '?'}x${i.height || '?'} ${i.duration || '?'}s  ${i.license}`).join('\n') : 'Nothing imported yet.'); break; }
+      if (opts.info) {
+        const e = await catalogEntry(opts.info);
+        console.log(`${e.title} (${e.name})\n  ${e.type}, ${e.group}, status: ${e.status}${e.top ? ', build next' : ''}\n  ${e.note || ''}\n  needs: ${(e.needs || []).join(', ') || 'nothing special'}\n  ${e.description || ''}\n  ${e.url}\n  licence: ${e.license} (commit ${CATALOG_COMMIT.slice(0, 7)})`);
+        break;
+      }
+      const q = (opts.search || '').toLowerCase();
+      const hits = (await catalogData()).items.filter(i => (!opts.group || i.group.toLowerCase() === opts.group.toLowerCase()) && (!opts.status || i.status === opts.status) && (!opts.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')}`.toLowerCase().includes(q)));
+      console.log(hits.map(i => `${i.name.padEnd(34)} ${i.type.padEnd(9)} ${i.status.padEnd(6)} ${i.group}${i.top ? '  *' : ''}`).join('\n') + `\n\n${hits.length} item(s). * = build next. Import a block with: video-monk catalog --import <name> --allow-download`);
       break;
     }
     case 'libs': {

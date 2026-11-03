@@ -132,3 +132,30 @@ test('the captured HyperFrames catalog is served read-only with statuses, groups
   assert.match(json.source, /hyperframes\.heygen\.com/);
   assert.equal((await call('POST', '/api/motion/catalog', {})).status, 404);
 });
+
+test('catalog blocks: import needs confirmation and refuses components and unknown names; imported blocks appear in the studio and can be planned as beats', async t => {
+  const home = await temporary(t);
+  const { call } = await app(t, home);
+  assert.equal((await call('POST', '/api/catalog/import', { name: 'lt-clean-bar' })).status, 400);
+  const comp = await call('POST', '/api/catalog/import', { name: 'confetti', confirm: true });
+  assert.equal(comp.status, 400);
+  assert.match(comp.json.error, /component/);
+  assert.match((await call('POST', '/api/catalog/import', { name: 'nope', confirm: true })).json.error, /not in the catalog inventory/);
+  assert.equal((await call('GET', '/api/motion/catalog-preview?name=lt-test')).status, 404);
+  assert.equal((await call('POST', '/api/catalog/remove', { name: 'lt-test' })).json.removed, 0);
+  // an imported block (written by hand here) and the gsap library
+  const d = path.join(home, 'catalog', 'lt-test'); await mkdir(d, { recursive: true });
+  await writeFile(path.join(d, 'index.html'), '<head><script>window.__vmVariables = {};</script></head><body>x</body>');
+  await writeFile(path.join(d, 'item.json'), JSON.stringify({ name: 'lt-test', title: 'Lower Third', license: 'Apache-2.0', width: 1920, height: 1080, duration: 4.8, variables: [{ id: 'name', label: 'Name', default: 'Ada' }], vars: {}, needs: { gsap: true, plugins: [] } }));
+  const motion = await call('GET', '/api/motion');
+  assert.deepEqual(motion.json.imported.map(i => i.name), ['lt-test']);
+  assert.deepEqual((await call('GET', '/api/motion/catalog')).json.imported, ['lt-test']);
+  assert.equal((await call('GET', '/api/motion/catalog-preview?name=lt-test')).status, 409); // gsap not installed yet
+  const lib = path.join(home, 'libs', 'gsap@1.0.0'); await mkdir(lib, { recursive: true });
+  await writeFile(path.join(lib, 'lib.json'), JSON.stringify({ id: 'gsap', version: '1.0.0', addedAt: '2026-11-01T00:00:00Z' }));
+  const b = { type: 'opener', title: 'C', beats: [{ catalog: 'lt-test', vars: { name: 'Grace' }, seconds: 5 }, { show: 'title', props: { title: 'Done' }, seconds: 4 }] };
+  const ok = await call('POST', '/api/motion/video', { brief: b, output: path.join(home, 'plan'), sfx: 'off' });
+  assert.equal(ok.status, 200, JSON.stringify(ok.json));
+  assert.match(await readFile(path.join(home, 'plan', 'scenes', 'lt-test', 'index.html'), 'utf8'), /"name":"Grace"/);
+  assert.equal((await call('POST', '/api/catalog/remove', { name: 'lt-test' })).json.removed, 1);
+});

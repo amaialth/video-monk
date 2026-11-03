@@ -8,6 +8,7 @@ import { EFFECTS } from '../motion/effects.js';
 import { EXAMPLES } from '../motion/examples.js';
 import { TYPES, reviewBrief, motionVideo, libsNeeded } from '../motionvideo.js';
 import { LIBS, NOT_SUPPORTED, addLib, listLibs, removeLib } from '../libs.js';
+import { importBlock, listImported, removeImported, findImported } from '../catalog.js';
 
 const STARTERS = new URL('../../assets/motion-starters/', import.meta.url).pathname;
 const CATALOG = new URL('../../assets/hyperframes-catalog.json', import.meta.url).pathname;
@@ -37,6 +38,7 @@ export function registerMotion(on, { previews, serveFile, HANDLED }) {
       templates: catalog,
       types: Object.fromEntries(Object.entries(TYPES).map(([k, v]) => [k, { beats: v.beats, seconds: v.seconds, hold: v.hold, hook: v.hook, about: v.about }])),
       starters: await starters(),
+      imported: (await listImported()).map(i => ({ name: i.name, title: i.title, width: i.width, height: i.height, duration: i.duration, license: i.license, variables: i.variables, needs: i.needs })),
       libs: Object.entries(LIBS).map(([id, d]) => ({ id, license: d.license, use: d.use, kind: d.kind, installed: installed.filter(l => l.id === id).map(l => ({ version: l.version, addedAt: l.addedAt })) })),
       unsupported: NOT_SUPPORTED
     };
@@ -75,7 +77,36 @@ export function registerMotion(on, { previews, serveFile, HANDLED }) {
   // The captured HyperFrames catalog (read-only data; see references/hyperframes-catalog.md).
   on('GET', '/api/motion/catalog', async () => {
     catalogCache ||= JSON.parse(await readFile(CATALOG, 'utf8'));
-    return catalogCache;
+    return { ...catalogCache, imported: (await listImported()).map(i => i.name) };
+  });
+
+  // Import one standalone block (a one-time download from a fixed commit of github.com/heygen-com/hyperframes; needs confirm: true).
+  const importing = new Set();
+  on('POST', '/api/catalog/import', async ({ body }) => {
+    const name = String(body.name || '');
+    if (body.confirm !== true) throw err('Confirm the download first');
+    if (importing.has(name)) throw err('That block is already importing', 409);
+    importing.add(name);
+    try {
+      const r = await importBlock(name, { allowDownload: true, vars: body.vars && typeof body.vars === 'object' ? body.vars : {} });
+      return { name: r.name, title: r.title, license: r.license, width: r.width, height: r.height, duration: r.duration, variables: r.variables, needs: r.needs, warnings: r.warnings };
+    } catch (error) { throw err(String(error.message).replace(/^Catalog: /, '')); } finally { importing.delete(name); }
+  });
+  on('POST', '/api/catalog/remove', async ({ body }) => {
+    try { return { removed: await removeImported(String(body.name || '')) }; } catch (error) { throw err(String(error.message).replace(/^Catalog: /, '')); }
+  });
+  // A still of an imported block at its own size (blocks are laid out in fixed pixels), shown scaled in the page.
+  on('GET', '/api/motion/catalog-preview', async ({ req, res, query }) => {
+    let item;
+    try { item = await findImported(String(query.get('name') || '')); } catch (error) { throw err(String(error.message).replace(/^Catalog: /, ''), 404); }
+    const libs = await listLibs();
+    if (!libs.some(l => l.id === 'gsap')) throw err('Install gsap first (Libraries tab). It is downloaded once, then works offline.', 409);
+    const at = Number(query.get('at') ?? 2);
+    if (!Number.isFinite(at) || at < 0 || at > 60) throw err('at must be from 0 to 60 seconds');
+    const file = path.join(item.dir, 'index.html');
+    const stamp = `${(await stat(file)).mtimeMs}|${libs.map(l => `${l.id}@${l.version}`).sort().join(',')}`;
+    try { await serveFile(req, res, await previews.still({ html: file, stamp, at, duration: Math.max(6, at + 1), width: item.width || 1920, height: item.height || 1080 }), { cache: true }); } catch (error) { if (error.status) throw error; throw err(`The preview failed: ${String(error.message).slice(0, 200)}`, 500); }
+    return HANDLED;
   });
 
   on('POST', '/api/motion/brief/check', async ({ body }) => {

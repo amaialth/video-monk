@@ -18,7 +18,7 @@ export async function renderMotion(view, ctx, tab = 'templates') {
   const track = u => { urls.push(u); return u; };
   if (tab === 'templates') templatesTab(body, data, track);
   else if (tab === 'video') videoTab(body, data);
-  else if (tab === 'catalog') await catalogTab(body);
+  else if (tab === 'catalog') await catalogTab(body, track);
   else libsTab(body, data, track, () => renderMotion(view, ctx, 'libs'));
   return () => urls.forEach(u => URL.revokeObjectURL(u));
 }
@@ -107,11 +107,20 @@ function videoTab(body, data) {
       h('div', { class: 'grid g2 mt-s' },
         h('label', { class: 'field' }, h('span', {}, 'What is said or meant'), h('input', { class: 'input', value: b.say || '', oninput: e => { b.say = e.target.value; } })),
         h('div', { class: 'grid g2' },
-          h('label', { class: 'field' }, h('span', {}, 'Template or 3D scene'), h('select', { class: 'select', onchange: e => { const v = e.target.value; if (v.startsWith('starter:')) { b.starter = v.slice(8); delete b.show; b.props = undefined; b.assets = {}; } else { b.show = v; delete b.starter; delete b.assets; b.props = exampleOf(v); } draw(); } },
+          h('label', { class: 'field' }, h('span', {}, 'Template or 3D scene'), h('select', { class: 'select', onchange: e => { const v = e.target.value; if (v.startsWith('catalog:')) { b.catalog = v.slice(8); delete b.show; delete b.starter; delete b.assets; b.props = undefined; b.vars = {}; const c = data.imported.find(x => x.name === b.catalog); if (c?.duration) b.seconds = Math.ceil(c.duration); } else if (v.startsWith('starter:')) { b.starter = v.slice(8); delete b.show; delete b.catalog; delete b.vars; b.props = undefined; b.assets = {}; } else { b.show = v; delete b.starter; delete b.catalog; delete b.vars; delete b.assets; b.props = exampleOf(v); } draw(); } },
             h('optgroup', { label: 'Templates and effects' }, usable.map(t => h('option', { value: t.name, selected: t.name === b.show }, t.name))),
-            h('optgroup', { label: '3D and library scenes' }, data.starters.map(st => h('option', { value: `starter:${st.name}`, selected: st.name === b.starter }, st.name))))),
+            data.imported?.length ? h('optgroup', { label: 'Imported catalog blocks' }, data.imported.map(c => h('option', { value: `catalog:${c.name}`, selected: c.name === b.catalog }, c.title || c.name))) : null,
+            h('optgroup', { label: '3D and library scenes' }, data.starters.map(st => h('option', { value: `starter:${st.name}`, selected: st.name === b.starter && !b.catalog }, st.name))))),
           h('label', { class: 'field' }, h('span', {}, 'Seconds'), h('input', { class: 'input', type: 'number', min: 1.5, max: 20, step: 0.5, value: b.seconds, oninput: e => { b.seconds = Number(e.target.value); } })))),
-      b.starter ? starterBody(b) : h('label', { class: 'field mt-s' }, h('span', {}, 'Props (JSON)'), propsBox));
+      b.catalog ? catalogBody(b) : b.starter ? starterBody(b) : h('label', { class: 'field mt-s' }, h('span', {}, 'Props (JSON)'), propsBox));
+  };
+  const catalogBody = b => {
+    const c = data.imported.find(x => x.name === b.catalog);
+    const gsap = data.libs.find(l => l.id === 'gsap')?.installed.length > 0;
+    return h('div', { class: 'mt-s' },
+      h('div', { class: 'muted small' }, `${c?.title || b.catalog}: a HyperFrames catalog block (${c?.license || 'Apache-2.0'}), ${c?.width || '?'}x${c?.height || '?'}, ${c?.duration || '?'} s. It is copied into the plan folder with its licence header.`),
+      h('div', { class: 'row wrap mt-s' }, h('span', { class: `chip ${gsap ? 'good' : 'warn'}` }, gsap ? 'gsap installed' : 'gsap: install it on the Libraries tab first')),
+      (c?.variables || []).slice(0, 12).map(v => h('label', { class: 'field mt-s' }, h('span', {}, `${v.label || v.id} (${v.id})`), h('input', { class: 'input', value: (b.vars || {})[v.id] ?? '', placeholder: String(v.default ?? ''), oninput: e => { b.vars = { ...(b.vars || {}) }; if (e.target.value === '') delete b.vars[v.id]; else b.vars[v.id] = e.target.value; } }))));
   };
   const starterBody = b => {
     const info = data.starters.find(x => x.name === b.starter);
@@ -122,7 +131,7 @@ function videoTab(body, data) {
       (info?.assets || []).map(name => h('label', { class: 'field mt-s' }, h('span', {}, `Your file for ${name} (full path)`), h('input', { class: 'input', value: (b.assets || {})[name] || '', placeholder: `/Users/you/${name}`, oninput: e => { b.assets = { ...(b.assets || {}), [name]: e.target.value }; } }))));
   };
   const brief = () => {
-    const out = { type: state.type, title: state.title || 'Untitled', aspect: state.aspect, current: state.current, beats: state.beats.map(b => (b.starter ? { say: b.say || undefined, starter: b.starter, seconds: b.seconds, assets: b.assets && Object.keys(b.assets).length ? b.assets : undefined } : { say: b.say || undefined, show: b.show, props: b.props, seconds: b.seconds })) };
+    const out = { type: state.type, title: state.title || 'Untitled', aspect: state.aspect, current: state.current, beats: state.beats.map(b => (b.catalog ? { say: b.say || undefined, catalog: b.catalog, vars: b.vars && Object.keys(b.vars).length ? b.vars : undefined, seconds: b.seconds } : b.starter ? { say: b.say || undefined, starter: b.starter, seconds: b.seconds, assets: b.assets && Object.keys(b.assets).length ? b.assets : undefined } : { say: b.say || undefined, show: b.show, props: b.props, seconds: b.seconds })) };
     if (state.music.file) out.music = { ...state.music, gainDb: Number(state.music.gainDb) };
     return out;
   };
@@ -183,12 +192,31 @@ function libsTab(body, data, track, reload) {
 
 // ---------------------------------------------------------------- catalog
 const STATUS_TEXT = { have: ['Built in', 'good'], adapt: ['Portable (untested)', ''], defer: ['Needs WebGPU', 'warn'], skip: ['Skipped', ''] };
-async function catalogTab(body) {
+async function catalogTab(body, track) {
   const cat = await api.get('/api/motion/catalog');
   const f = { q: '', group: '', status: '', top: false, limit: 60 };
   const groups = [...new Set(cat.items.map(i => i.group))].sort();
   const list = h('div', { class: 'col', style: { gap: '8px' } });
   const count = h('div', { class: 'muted small' });
+  const imported = new Set(cat.imported || []);
+  const importRow = i => {
+    if (i.type !== 'block' || i.status === 'skip' || i.status === 'defer') return null;
+    const img = h('img', { alt: '', style: { width: '100%', maxWidth: '520px', borderRadius: '10px', display: 'none', marginTop: '10px', background: 'var(--bg2)' } });
+    const msg = h('div', { class: 'small muted mt-s' });
+    const row = h('div', { class: 'mt-s' });
+    const draw1 = () => mount(row, h('div', { class: 'row', style: { gap: '8px' } },
+      imported.has(i.name) ? [
+        h('span', { class: 'chip good' }, 'Imported'),
+        h('button', { class: 'btn ghost sm', onclick: async ev => { ev.target.disabled = true; msg.textContent = 'Rendering…'; try { img.src = track(await api.still(`/api/motion/catalog-preview?name=${encodeURIComponent(i.name)}&at=2`)); img.style.display = 'block'; msg.textContent = ''; } catch (e) { msg.textContent = e.message; } ev.target.disabled = false; } }, icon('eye', 14), 'Preview'),
+        h('button', { class: 'btn ghost sm', onclick: async () => { if (!confirm(`Remove ${i.name} from this computer?`)) return; try { await api.post('/api/catalog/remove', { name: i.name }); imported.delete(i.name); img.style.display = 'none'; draw1(); } catch (e) { toast(e.message, 'bad'); } } }, icon('trash', 14), 'Remove')]
+      : h('button', { class: 'btn sm', onclick: async ev => {
+        if (!confirm(`Import ${i.title} (${i.name})?\n\nThis downloads the block once from github.com/heygen-com/hyperframes (a fixed commit, Apache-2.0), swaps its GSAP for your local copy, embeds its fonts and checks it can run offline. It needs the gsap library (Libraries tab).\n\nIt is third-party code. It runs only inside the offline renderer, but read it before you publish a video that uses it.`)) return;
+        ev.target.disabled = true; msg.textContent = 'Downloading…';
+        try { const r = await api.post('/api/catalog/import', { name: i.name, confirm: true }); imported.add(i.name); toast(`${r.title} imported`, 'good'); msg.textContent = (r.warnings || []).join(' '); draw1(); } catch (e) { msg.textContent = e.message; ev.target.disabled = false; } } }, icon('download', 14), 'Import'),
+      i.type === 'block' ? null : null), img, msg);
+    draw1();
+    return row;
+  };
   const draw = () => {
     const q = f.q.toLowerCase();
     const hits = cat.items.filter(i => (!f.group || i.group === f.group) && (!f.status || i.status === f.status) && (!f.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')} ${i.description || ''}`.toLowerCase().includes(q)));
@@ -196,11 +224,12 @@ async function catalogTab(body) {
     mount(list, hits.slice(0, f.limit).map(i => h('div', { class: 'card pad' },
       h('div', { class: 'row between' }, h('div', {}, h('b', {}, i.title), ' ', h('span', { class: 'faint small mono' }, i.name)), h('div', { class: 'row' }, i.top ? h('span', { class: 'chip good' }, 'build next') : null, h('span', { class: `chip ${STATUS_TEXT[i.status][1]}` }, STATUS_TEXT[i.status][0]), h('span', { class: 'chip' }, i.group))),
       h('div', { class: 'muted small mt-s' }, i.why || i.description || ''),
-      h('div', { class: 'row wrap mt-s small faint' }, (i.needs || []).map(n => h('span', { class: 'chip' }, n)), i.ours ? h('span', {}, `Built in as ${i.ours}`) : h('span', {}, i.note), h('a', { href: i.url, target: '_blank', rel: 'noopener noreferrer', style: { marginLeft: 'auto' } }, 'Catalog page ', icon('external', 12))))),
+      importRow(i),
+      h('div', { class: 'row wrap mt-s small faint' }, (i.needs || []).map(n => h('span', { class: 'chip' }, n)), i.ours ? h('span', {}, i.status === 'have' ? `Built in as ${i.ours}` : `A new style for the ${i.ours} template`) : h('span', {}, i.note), h('a', { href: i.url, target: '_blank', rel: 'noopener noreferrer', style: { marginLeft: 'auto' } }, 'Catalog page ', icon('external', 12))))),
       hits.length > f.limit ? h('button', { class: 'btn ghost', onclick: () => { f.limit += 60; draw(); } }, `Show more (${hits.length - f.limit} left)`) : null);
   };
   mount(body,
-    h('div', { class: 'hint' }, icon('info', 18), 'The HyperFrames catalog (HeyGen, Apache-2.0), captured by reading its open-source registry. Nothing here is bundled or run. "Build next" marks the highest-value gaps; see references/hyperframes-catalog.md for what porting an item takes.'),
+    h('div', { class: 'hint' }, icon('info', 18), 'The HyperFrames catalog (HeyGen, Apache-2.0). Nothing is bundled: Import downloads one standalone block, once, after you confirm, and plays it offline. It is third-party code, so read it before you publish. "Build next" marks the highest-value gaps; see references/hyperframes-catalog.md.'),
     h('div', { class: 'row wrap mt', style: { gap: '10px' } },
       h('input', { class: 'input', placeholder: 'Search names, tags, descriptions', style: { maxWidth: '320px' }, oninput: e => { f.q = e.target.value; f.limit = 60; draw(); } }),
       h('select', { class: 'select', style: { maxWidth: '230px' }, onchange: e => { f.group = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'All groups'), groups.map(g => h('option', { value: g }, g))),

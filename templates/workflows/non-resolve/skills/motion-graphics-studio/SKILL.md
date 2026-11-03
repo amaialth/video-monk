@@ -23,7 +23,7 @@ Everything the toolkit renders is already code: templates are pure functions of 
 | Make it feel physical and calm (springs, depth, type, restraint) | [Apple-style motion audit](./references/apple-motion-audit.md) |
 | A component from a gallery (21st.dev and similar) | [donor components](./references/donor-components.md): the copy is yours to make and license-check; nothing is bundled |
 | Beats that feel like separate slides (seams, direction of travel) | [scene seams](./references/scene-seams.md): one current, matched exits and entries, `"current"` in the brief |
-| What else exists (a caption style, a transition, a 3D effect we do not have yet) | [HyperFrames catalog](./references/hyperframes-catalog.md): all 448 catalog items inventoried with status and a build-next list; also the Motion studio's Catalog tab |
+| What else exists (a caption style, a transition, a 3D effect we do not have yet) | [HyperFrames catalog](./references/hyperframes-catalog.md): all 448 catalog items inventoried; `video-monk catalog --import <block> --allow-download` plays a standalone block offline (scene beat or overlay); also the Motion studio's Catalog tab |
 | "It feels cheap" | [polish](./references/polish.md): ranked audit, one fix at a time |
 
 ## Always

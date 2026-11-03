@@ -1,7 +1,7 @@
 # HyperFrames catalog, captured for Video Monk
 
 The HyperFrames catalog (https://hyperframes.heygen.com/catalog, by HeyGen, Apache License 2.0) lists 448 reusable scenes, transitions, captions, overlays, effects and components. All 448 are inventoried in `assets/hyperframes-catalog.json` (inside the installed package: name, group, what it needs, status, link) and browsable in the web app's Motion studio, Catalog tab.
-It was captured by **reading** the open-source registry (github.com/heygen-com/hyperframes, commit 47ddded). **Nothing from it was run or rendered**, and none of its code is bundled. Every statement about portability below comes from reading the code and is untested.
+It was captured by **reading** the open-source registry (github.com/heygen-com/hyperframes, commit 47ddded). The inventory was made by reading, and none of its code is bundled. The importer was then built and tested on real blocks (see below); portability statements for items not yet imported remain from reading only.
 
 ## What the catalog is, and what it takes to use an item
 
@@ -159,9 +159,30 @@ Names link to the catalog page. The full list with needs, sizes and licences is 
 
 **Also portable:** [vfx-text-cursor](https://hyperframes.heygen.com/catalog/blocks/vfx-text-cursor), [cursor-context-menu](https://hyperframes.heygen.com/catalog/components/cursor-context-menu), [cursor-drag-drop](https://hyperframes.heygen.com/catalog/components/cursor-drag-drop), [cursor-glyph-trail](https://hyperframes.heygen.com/catalog/components/cursor-glyph-trail), [cursor-marquee-select](https://hyperframes.heygen.com/catalog/components/cursor-marquee-select), [cursor-text-select](https://hyperframes.heygen.com/catalog/components/cursor-text-select), [dart-cursor](https://hyperframes.heygen.com/catalog/components/dart-cursor), [magnetic-cursor](https://hyperframes.heygen.com/catalog/components/magnetic-cursor), [multiplayer-cursors](https://hyperframes.heygen.com/catalog/components/multiplayer-cursors), [press-ripple](https://hyperframes.heygen.com/catalog/components/press-ripple), [touch-indicator](https://hyperframes.heygen.com/catalog/components/touch-indicator)
 
+## Using a catalog block: `video-monk catalog --import`
+
+Standalone **blocks** can be imported and played offline. This was built, and tested end to end on real blocks (`lt-clean-bar`, `data-chart`); components (paste-in fragments) cannot be imported and are rebuilt as templates.
+
+```
+video-monk libs --add gsap --allow-download                # once: the block's animation library
+video-monk catalog --list --status adapt --group "Lower thirds"
+video-monk catalog --import lt-clean-bar --allow-download  # once per block: a fixed commit of github.com/heygen-com/hyperframes, Apache-2.0
+video-monk catalog --import data-chart --allow-download --vars '{"title":"..."}'   # blocks that declare variables take them here
+```
+
+What the importer does: downloads the block's files from **one fixed commit on raw.githubusercontent.com** (no other host, 40 MB limit); swaps the GSAP script for the library vault; embeds Google Fonts (latin subset) as data; adds a small bridge (`__hyperframes.getVariables()`, `assetUrl()`, and a `__seek(t)` that seeks every timeline the block registered and holds the last frame); keeps the Apache-2.0 header; and caches it under `~/.video-monk/catalog/<name>/`.
+It **refuses** a block that cannot run offline: it plays video or audio, mounts nested compositions, loads data at run time, needs WebGPU, loads a library other than GSAP (three.js, D3 and others), loads remote images, or needs a GSAP plugin not in the vault. Skipped items (brand imitations) are refused too.
+
+Using an imported block:
+- **As a scene** in a standalone video: `{ "say": "...", "catalog": "data-chart", "vars": { }, "seconds": 12 }`. The block is copied into the plan's `scenes/` folder with its licence header, and `PLAN.md` lists it under *Catalog items*. The plan warns when the beat is longer than the block (it holds its last frame) or when its size differs from the video's.
+- **As an overlay** on a recording: overlays accept `{ "html": "scenes/lt-clean-bar/index.html", "start": 2, "duration": 4.8 }`. Blocks tagged as overlays (lower thirds and similar) are imported with a **transparent page** so the picture shows through; use `--transparent true|false` to override.
+- In the web app: Motion studio, Catalog tab, **Import** (with a confirmation), **Preview** and **Remove**; imported blocks appear in the Standalone video beat menu with their variables.
+
+It is third-party code. It runs only inside the offline renderer, but read it before you publish a video that uses it, and read the facts in it yourself: text inside an imported block is not covered by `facts-check`.
+
 ## How to use this
 
 1. Check the built-in templates and the ten effects first (`video-monk templates`); a `have` entry names the template.
-2. For a recommended gap, build a new template in our own code, or ask for it to be added. A scene that needs three.js or GSAP can already be a `starter` beat via the library vault.
-3. If you port an item yourself, keep its Apache-2.0 notice, replace CDN scripts with `<vm-lib>`, embed fonts, add the `__seek` bridge, and look at a rendered still before using it. Read the item as data first; do not run code you have not read.
+2. For a standalone block, import it as above. For a component or a recommended gap, build a new template in our own code, or ask for it to be added. A scene that needs three.js can already be a `starter` beat via the library vault.
+3. If you port a component yourself, keep its Apache-2.0 notice, replace CDN scripts with `<vm-lib>`, embed fonts, add the `__seek` bridge, and look at a rendered still first. Read the item as data before you run it.
 4. For brand-imitating looks, use your own product's interface, not another company's.

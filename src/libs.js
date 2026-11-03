@@ -20,7 +20,7 @@ export const LIBS = {
     addons: ['loaders/GLTFLoader.js', 'postprocessing/EffectComposer.js', 'postprocessing/RenderPass.js', 'postprocessing/UnrealBloomPass.js', 'postprocessing/OutputPass.js', 'postprocessing/ShaderPass.js', 'environments/RoomEnvironment.js', 'geometries/RoundedBoxGeometry.js'],
     use: '3D scenes, product turntables, title sequences, particle fields. glTF models, bloom, PBR lighting' },
   gsap: { npm: 'gsap', kind: 'umd', license: "GSAP Standard 'no charge' licence (https://gsap.com/standard-license): free to use; not OSI open source", files: ['dist/gsap.min.js'], global: 'gsap',
-    optional: { MotionPathPlugin: 'dist/MotionPathPlugin.min.js', Flip: 'dist/Flip.min.js', MorphSVGPlugin: 'dist/MorphSVGPlugin.min.js', SplitText: 'dist/SplitText.min.js', DrawSVGPlugin: 'dist/DrawSVGPlugin.min.js' },
+    optional: { CustomEase: 'dist/CustomEase.min.js', MotionPathPlugin: 'dist/MotionPathPlugin.min.js', Flip: 'dist/Flip.min.js', MorphSVGPlugin: 'dist/MorphSVGPlugin.min.js', SplitText: 'dist/SplitText.min.js', DrawSVGPlugin: 'dist/DrawSVGPlugin.min.js' },
     use: 'timelines you can seek exactly: gsap.timeline({ paused: true }).seek(t). DOM, SVG and canvas' },
   animejs: { npm: 'animejs', kind: 'umd', license: 'MIT', files: ['dist/bundles/anime.umd.min.js'], global: 'anime', use: 'timelines and springs for DOM, SVG and canvas: timeline.seek(ms)' },
   'lottie-web': { npm: 'lottie-web', kind: 'umd', license: 'MIT', files: ['build/player/lottie.min.js'], global: 'lottie', use: 'play After Effects animations exported as Lottie JSON, frame exact: goToAndStop(frame, true)' },
