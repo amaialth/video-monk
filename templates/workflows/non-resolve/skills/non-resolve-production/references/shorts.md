@@ -37,7 +37,9 @@ Each step that sends text out or spends money has its own switch: `--allow-llm` 
 
 ## How the audio and video fit together
 
-Each beat is recorded on its own, with the neighbouring beats' text as context so the delivery stays continuous. ElevenLabs returns character timings, which become the caption words. Recordings are **cached by content** (voice, model, settings and text): editing one beat re-records that beat and its two neighbours; re-running the same script costs nothing.
+Each beat is recorded on its own, with the neighbouring beats' text as context so the delivery stays continuous (not sent to `eleven_v3`, where support is unconfirmed).
+
+**Eleven v4 and v3** (`--eleven-model eleven_v4`, the recommended default, or `eleven_v3`; or `ELEVENLABS_MODEL_ID`): both read audio tags in square brackets as delivery directions, so the narration sounds live. v4 takes descriptive voice tags, e.g. `[Warm, conversational] Why does this work?`, `[Lowering the voice, serious]`, `[Brief pause]`; v3 takes `[curious]`, `[excited]`, `[whispers]`, `[sighs]`, `[pauses]`, `[sarcastic]`. The scripter opens the hook with a tag and gives most beats one (two at most), varies them, and uses `...` for a beat of thought and one CAPITALISED word per beat for emphasis. Tags are removed from captions and word counts. Not supported: SSML `<break>` (refused), sound-effect tags, tags with other models (refused: they would be spoken aloud), neighbouring-beat text (not sent), v4 style and speed (dropped). Default stability is 0.4 for a livelier delivery. Limits: 10,000 characters per request on v4, 5,000 on v3. Captions sit at the `lower` position (above the platform buttons, below the graphics).
 Scenes are as long as their narration plus a short lead and gap (the last beat is held at least 3 s), transitions all travel one direction (`--current`, default up for vertical), and the narration is one track placed on the timeline with music ducking under it.
 Optional music needs a licence and attribution (`--music file --music-rights ... --music-attribution ...`).
 

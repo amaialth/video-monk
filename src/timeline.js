@@ -258,7 +258,7 @@ export async function loadTimeline(file, execute = run) {
     words = cleanCaptionWords(words, fixes || {});
     check(words.length > 0, 'captions have no words left after cleaning');
     check(opt(m.captions.style, v => ['kinetic', 'karaoke', 'phrase', 'plain', 'highlight', 'pill', 'slam', 'wipe', 'weight'].includes(v)), 'captions.style must be kinetic, karaoke, phrase, plain, highlight, pill, slam, wipe or weight');
-    check(opt(m.captions.position, v => ['bottom', 'center', 'top'].includes(v)), 'captions.position must be bottom, center or top');
+    check(opt(m.captions.position, v => ['bottom', 'lower', 'center', 'top'].includes(v)), 'captions.position must be bottom, lower, center or top');
     check(opt(m.captions.maxWords, v => Number.isInteger(v) && v >= 1 && v <= 16), 'captions.maxWords must be 1-16');
     check(opt(m.captions.maxChars, v => Number.isInteger(v) && v >= 8 && v <= 80), 'captions.maxChars must be 8-80');
     check(opt(m.captions.burnIn, v => typeof v === 'boolean'), 'captions.burnIn must be boolean');

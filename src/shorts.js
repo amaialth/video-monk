@@ -29,7 +29,7 @@ export function shortOptions(raw = {}) {
   const length = Number(raw.length ?? 45);
   if (!LENGTHS.includes(length)) fail(`length must be one of ${LENGTHS.join(', ')} seconds`);
   const o = {
-    length, tone: pick(raw.tone, TONES, 'tone', 'friendly'), audience: pick(raw.audience, AUDIENCES, 'audience', 'general'),
+    length, audioTags: raw.audioTags === 'v4' ? 'v4' : Boolean(raw.audioTags), tone: pick(raw.tone, TONES, 'tone', 'friendly'), audience: pick(raw.audience, AUDIENCES, 'audience', 'general'),
     language: String(raw.language || 'en'), theme: pick(raw.theme, ['night', 'paper'], 'theme', 'night'), calm: Boolean(raw.calm), onTwos: Boolean(raw.onTwos),
     captions: pick(raw.captions, CAPTION_STYLES, 'captions', 'highlight'), sfx: pick(raw.sfx, ['off', 'subtle', 'full'], 'sfx', 'subtle'),
     current: pick(raw.current, ['left', 'right', 'up', 'down'], 'current', 'up'), cta: raw.cta ? String(raw.cta).slice(0, 80) : null, topic: raw.topic ? String(raw.topic).slice(0, 80) : null
@@ -44,8 +44,21 @@ export function shortOptions(raw = {}) {
 
 export const wordBudget = length => Math.round(length * WORDS_PER_SECOND);
 // Numbers a listener would hear as numbers: standalone digits, not the 2 in H2O or the 5 in 5G.
-const spokenNumbers = text => (String(text).match(/(?<![\w.,]|[A-Za-z]-)\d[\d,]*(?:\.\d+)?(?![\w])/g) || []).map(n => n.replace(/,/g, '').replace(/^0+(?=\d)/, ''));
-const countWords = text => String(text).trim().split(/\s+/).filter(Boolean).length;
+// Eleven v3 audio tags such as [whispers] or [curious]: delivery directions, not spoken words.
+export const AUDIO_TAG = /\[[^\]\n]{1,60}\]/g;
+export const isV3 = modelId => /^eleven_v3/.test(String(modelId || ''));
+export const isV4 = modelId => /^eleven_v4/.test(String(modelId || ''));
+// v3 and v4 read audio tags and take no neighbouring-beat text, SSML or (v4) style/speed. Lower stability gives them a livelier, more varied delivery.
+export const isExpressive = modelId => isV3(modelId) || isV4(modelId);
+export function expressiveSettings(modelId, given) {
+  if (!isExpressive(modelId)) return given;
+  const base = { stability: 0.4, similarity_boost: 0.75, ...(given || {}) };
+  if (isV4(modelId)) { delete base.style; delete base.speed; delete base.use_speaker_boost; }
+  return base;
+}
+const stripTags = text => String(text).replace(AUDIO_TAG, ' ').replace(/\s+/g, ' ').trim();
+const spokenNumbers = text => (stripTags(text).match(/(?<![\w.,]|[A-Za-z]-)\d[\d,]*(?:\.\d+)?(?![\w])/g) || []).map(n => n.replace(/,/g, '').replace(/^0+(?=\d)/, ''));
+const countWords = text => stripTags(text).split(/\s+/).filter(Boolean).length;
 
 export const SCRIPT_SCHEMA = {
   type: 'object',
@@ -81,7 +94,7 @@ Rules:
 - About ${budget} spoken words in total (between ${Math.round(budget * 0.8)} and ${Math.round(budget * 1.2)}), in 6 to 9 beats of 10 to 30 words each.
 - Beat 1 is the hook: a question or surprising true claim of at most 14 words, shown big. The last beat is the takeaway${options.cta ? ` followed by this call to action: "${options.cta}"` : ''}.
 - One idea per beat; each beat answers what the one before raised. Plain spoken sentences, no stage directions, no emoji, no markdown.
-- Teach, do not sell. Explain terms the first time they appear.
+${options.audioTags ? `- The voice is Eleven ${options.audioTags === 'v4' ? 'v4' : 'v3'} and reads audio tags in square brackets as delivery directions, so the narration should sound LIVE, like a person explaining something they find interesting, not a reader. Open the hook with a tag and give most beats one (two at most), placed right before the words it shapes. ${options.audioTags === 'v4' ? 'Describe the voice, not the picture: [Warm, conversational, curious], [Quick, excited], [Lowering the voice, serious], [Brief pause], [Wry, faint amusement], [Calm, reassuring].' : 'Use only: [curious], [excited], [whispers], [sighs], [pauses], [sarcastic].'} Tags must describe something you can HEAR; never sound effects ([applause], [gunshot]) or actions. Vary them: do not repeat one tag in consecutive beats. Short sentences, contractions, "..." for a beat of thought, one CAPITALISED word per beat for emphasis at most. No SSML break tags. Write numbers and abbreviations out as they are spoken. Tags are never shown on screen and never counted as words.\n` : '- Do not use square brackets or audio tags in the narration.\n'}- Teach, do not sell. Explain terms the first time they appear.
 - NEVER invent facts. Every number, date, name and claim must come from the source${kind === 'concept' ? ' (a concept has few: use no statistics at all unless the concept states them)' : ''}. A number may appear in "props" only if it appears in the source text.
 - Vary the templates: do not use the same template twice in a row. Use at most one chart or table. Keep every text prop short enough to read on a phone (titles under 40 characters, list items under 40 characters).
 - "show" must be exactly one of these templates, and "props" must follow its listed props:
@@ -103,6 +116,10 @@ export function validateScript(script, source, options) {
     const where = `beat ${i + 1}`;
     if (typeof b?.say !== 'string' || !b.say.trim()) { errors.push(`${where}: say (the narration) is required`); return; }
     if (b.say.length > 420) errors.push(`${where}: the narration is ${b.say.length} characters (at most 420)`);
+    const tags = b.say.match(AUDIO_TAG) || [];
+    if (tags.length && !options.audioTags) errors.push(`${where}: audio tags like ${tags[0]} are only for Eleven v3 and v4; remove them or record with --eleven-model eleven_v4`);
+    else if (tags.length > 2) warnings.push(`${where}: ${tags.length} audio tags; one or two read best`);
+    if (/<break\b/i.test(b.say)) errors.push(`${where}: Eleven v3 and v4 do not support SSML break tags; use "..." instead`);
     const w = countWords(b.say); words += w;
     if (w > 45) errors.push(`${where}: ${w} words is too long for one beat (at most 45)`);
     if (i === 0 && w > 20) warnings.push('beat 1 is the hook: keep it to about 14 words');
@@ -171,7 +188,7 @@ export async function generateNarration(script, { dir, voiceId, modelId = DEFAUL
   const todo = [];
   const pieces = [];
   for (const [i, b] of script.beats.entries()) {
-    const opts = { text: b.say, voiceId, modelId, voiceSettings, languageCode, seed, previousText: script.beats[i - 1]?.say, nextText: script.beats[i + 1]?.say, env, cwd, fetcher, sleep, cacheDir, db, projectId };
+    const opts = { text: b.say, voiceId, modelId, voiceSettings, languageCode, seed, previousText: isExpressive(modelId) ? undefined : script.beats[i - 1]?.say, nextText: isExpressive(modelId) ? undefined : script.beats[i + 1]?.say, env, cwd, fetcher, sleep, cacheDir, db, projectId };
     // a recording that already exists costs nothing; a new one needs permission to spend credits
     if (allowSpend) { const r = await synthesizeCached(opts); pieces.push({ i, ...r }); onBeat(i + 1, r.cached); continue; }
     const hit = await cachedSpeech(opts);
@@ -200,7 +217,7 @@ export async function planShort(script, audio, dir, rawOptions, { source = '', p
   const options = shortOptions(rawOptions);
   await mkdir(dir, { recursive: true });
   const brief = { type: 'explainer', title: script.title, aspect: '9:16', current: options.current, theme: { preset: options.theme, ...(options.calm ? { calm: true } : {}), ...(options.onTwos ? { onTwos: true } : {}) },
-    beats: script.beats.map((b, i) => ({ say: b.say.slice(0, 200), show: b.show, props: b.props, seconds: audio.layout[i].seconds, ...(b.label ? { label: b.label } : {}) })) };
+    beats: script.beats.map((b, i) => ({ say: stripTags(b.say).slice(0, 200), show: b.show, props: b.props, seconds: audio.layout[i].seconds, ...(b.label ? { label: b.label } : {}) })) };
   if (options.music) brief.music = options.music;
   await writeJson(path.join(dir, 'brief.json'), brief);
   // facts: each number on screen is one the source gives, so the fact list is the source sentences they appear in
@@ -214,7 +231,7 @@ export async function planShort(script, audio, dir, rawOptions, { source = '', p
   const manifest = JSON.parse(await readFile(planned.output, 'utf8'));
   manifest.assets.push({ id: 'narration', path: path.relative(dir, audio.narration), kind: 'audio', approved: true, rights: ELEVEN_RIGHTS, attribution: `ElevenLabs text to speech${provider.voiceName ? `, voice ${provider.voiceName}` : ''}` });
   manifest.audio = { ...(manifest.audio || {}), narration: { asset: 'narration', gainDb: 0, start: 0 }, ducking: { enabled: true, amountDb: 14 } };
-  manifest.captions = { words: 'words.timeline.json', style: options.captions, position: 'bottom' };
+  manifest.captions = { words: 'words.timeline.json', style: options.captions, position: 'lower' };
   manifest.delivery = { ...(manifest.delivery || {}), target: 'web' };
   manifest.notes = `${manifest.notes || ''} Educational short: script by Claude from the supplied text, narration by ElevenLabs${provider.voiceId ? ` (voice ${provider.voiceId}, model ${provider.modelId})` : ''}.`.trim();
   await writeFile(planned.output, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -239,6 +256,8 @@ export async function makeShort({ source = '', kind = 'text', dir, options: rawO
   voiceId = null, elevenModel = null, voiceSettings, seed, allowEleven = false, maxChars = 8000, build = false, approvePlan = false, quality = 'draft', db = null, projectId = null,
   env = process.env, cwd = process.cwd(), fetcher = fetch, execute = run, log = () => {} } = {}) {
   const options = shortOptions(rawOptions);
+  const pickedModel = elevenModel || (await elevenConfig(env, cwd)).modelId;
+  options.audioTags = isV4(pickedModel) ? 'v4' : isV3(pickedModel);
   const out = path.resolve(dir);
   if (await exists(path.join(out, 'production.json'))) fail('that folder already holds a plan; choose a new folder');
   await mkdir(out, { recursive: true });
@@ -269,7 +288,7 @@ export async function makeShort({ source = '', kind = 'text', dir, options: rawO
   if (!voice) fail('choose a voice: pass a voice id, or set ELEVENLABS_VOICE_ID');
   const modelId = elevenModel || cfg.modelId;
   log(`Recording ${script.beats.length} beats with ElevenLabs (${est.characters} characters)…`);
-  const audio = await generateNarration(script, { dir: out, voiceId: voice, modelId, voiceSettings, languageCode: options.language === 'en' ? undefined : options.language, seed, allowSpend: allowEleven, maxChars, db, projectId, env, cwd, fetcher, execute,
+  const audio = await generateNarration(script, { dir: out, voiceId: voice, modelId, voiceSettings: expressiveSettings(modelId, voiceSettings), languageCode: options.language === 'en' ? undefined : options.language, seed, allowSpend: allowEleven, maxChars, db, projectId, env, cwd, fetcher, execute,
     onBeat: (n, cached) => log(`  beat ${n}: ${cached ? 'already recorded' : 'recorded'}`) });
   // 3. the plan
   log('Planning the video…');

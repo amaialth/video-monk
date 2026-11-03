@@ -130,3 +130,9 @@ test('audio is cached by content: the same request is not sent or counted twice,
   assert.equal((await readdir(dir)).filter(x => x.endsWith('.mp3')).length, 3);
   for (const file of await readdir(dir)) assert.ok(!(await readFile(path.join(dir, file))).includes(SECRET), 'the key is not in any cached file');
 });
+
+test('v3 audio tags never become caption words', () => {
+  const text = 'Hi [whispers, softly] there [pauses] you';
+  const alignment = { characters: [...text], character_start_times_seconds: [...text].map((_, i) => i / 10), character_end_times_seconds: [...text].map((_, i) => (i + 1) / 10) };
+  assert.deepEqual(wordsFromAlignment(alignment).map(w => w.text), ['Hi', 'there', 'you']);
+});

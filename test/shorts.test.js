@@ -169,7 +169,7 @@ test('the plan is a vertical graphic-scene video with narration, ducked music, c
   assert.deepEqual(m.scenes.map(s => s.duration), audio.layout.map(l => l.seconds));
   assert.deepEqual(m.audio.narration, { asset: 'narration', gainDb: 0, start: 0 });
   assert.equal(m.audio.ducking.enabled, true);
-  assert.deepEqual(m.captions, { words: 'words.timeline.json', style: 'pill', position: 'bottom' });
+  assert.deepEqual(m.captions, { words: 'words.timeline.json', style: 'pill', position: 'lower' });
   assert.equal(m.theme.preset, 'paper');
   const narration = m.assets.find(a => a.id === 'narration');
   assert.match(narration.rights, /Commercial use needs a paid ElevenLabs plan/);
@@ -251,4 +251,25 @@ test('a source file is read as text, with HTML reduced to its words and size and
   await assert.rejects(readSource(path.join(dir, 'a.pdf')), /must be \.md, \.txt or \.html/);
   await writeFile(path.join(dir, 'big.txt'), 'x'.repeat(200_001));
   await assert.rejects(readSource(path.join(dir, 'big.txt')), /larger than 200 KB/);
+});
+
+test('audio tags are v3 only, never counted as words or numbers, and break tags are refused', async () => {
+  const { validateScript, isV3, shortOptions } = await import('../src/shorts.js');
+  assert.equal(isV3('eleven_v3'), true);
+  assert.equal(isV3('eleven_multilingual_v2'), false);
+  const make = say => ({ title: 'T', beats: [{ say, show: 'title', props: { title: 'Hello' } }] });
+  const base = shortOptions({});
+  assert.ok(validateScript(make('[curious] Why does this work?'), 'x', base).errors.some(e => /only for Eleven v3/.test(e)));
+  assert.ok(!validateScript(make('[curious] Why does this work?'), 'x', { ...base, audioTags: true }).errors.some(e => /audio tags/.test(e)));
+  assert.ok(validateScript(make('Wait <break time="1s"/> now'), 'x', { ...base, audioTags: true }).errors.some(e => /break tags/.test(e)));
+});
+
+test('the audio-tag flag survives option normalisation and shows up in the prompt (v4 asks for descriptive tags)', async () => {
+  const { shortOptions, scriptPrompt, expressiveSettings } = await import('../src/shorts.js');
+  assert.equal(shortOptions({ audioTags: 'v4' }).audioTags, 'v4');
+  assert.match(scriptPrompt('src', shortOptions({ audioTags: 'v4' })), /Describe the voice, not the picture/);
+  assert.match(scriptPrompt('src', shortOptions({ audioTags: true })), /Use only: \[curious\]/);
+  assert.match(scriptPrompt('src', shortOptions({})), /Do not use square brackets/);
+  assert.deepEqual(expressiveSettings('eleven_v4', { style: 0.3, speed: 1.1 }), { stability: 0.4, similarity_boost: 0.75 });
+  assert.equal(expressiveSettings('eleven_multilingual_v2', undefined), undefined);
 });

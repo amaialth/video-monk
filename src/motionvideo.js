@@ -82,8 +82,8 @@ export function reviewBrief(brief) {
   });
   const last = beats[beats.length - 1];
   if (last && last.seconds < type.hold) errors.push(`the last beat must hold at least ${type.hold} s so the closing line can be read; it has ${last.seconds} s`);
-  if (!errors.length && total < type.seconds[0]) warnings.push(`a ${brief.type} runs ${type.seconds[0]}-${type.seconds[1]} s; this one is ${total} s`);
-  if (total > type.seconds[1]) warnings.push(`a ${brief.type} runs ${type.seconds[0]}-${type.seconds[1]} s; this one is ${total} s`);
+  if (!errors.length && total < type.seconds[0]) warnings.push(`a ${brief.type} runs ${type.seconds[0]}-${type.seconds[1]} s; this one is ${Math.round(total * 10) / 10} s`);
+  if (total > type.seconds[1]) warnings.push(`a ${brief.type} runs ${type.seconds[0]}-${type.seconds[1]} s; this one is ${Math.round(total * 10) / 10} s`);
   for (let i = 1; i < templates.length; i++) if (templates[i] === templates[i - 1] && templates[i] !== 'html') warnings.push(`beats ${i} and ${i + 1} use the same template (${templates[i]}); vary the layouts`);
   if (!beats[0]?.say && !beats[0]?.props?.title && !beats[0]?.props?.text) warnings.push(`${type.hook}: beat 1 has no say or title`);
   if (brief.current !== undefined && !CURRENTS.includes(brief.current)) errors.push(`current must be one of ${CURRENTS.join(', ')}`);

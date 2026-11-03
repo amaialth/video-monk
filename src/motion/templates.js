@@ -766,7 +766,7 @@ export const TEMPLATES = {
       const pos = props.position || 'bottom';
       const style = props.style || 'kinetic';
       const wrap = VM.el('div', { style: { position: 'absolute', left: (ctx.w * 0.06) + 'px', right: (ctx.w * 0.06) + 'px', display: 'flex', justifyContent: 'center',
-        [pos === 'top' ? 'top' : 'bottom']: (pos === 'center' ? ctx.h * 0.42 : ctx.h * (ctx.portrait ? 0.27 : 0.075)) + 'px' } }, root); // vertical: keep clear of the bottom ~26% that Reels, Shorts and TikTok cover with their own buttons
+        [pos === 'top' ? 'top' : 'bottom']: (pos === 'center' ? ctx.h * 0.42 : pos === 'lower' ? ctx.h * (ctx.portrait ? 0.17 : 0.05) : ctx.h * (ctx.portrait ? 0.27 : 0.075)) + 'px' } }, root); // vertical: keep clear of the bottom ~26% that Reels, Shorts and TikTok cover with their own buttons
       const shadow = ctx.theme.text.toLowerCase() === '#0b0b0b' ? '0 0.05em 0.14em rgba(255,255,255,0.85)' : '0 0.06em 0.18em rgba(0,0,0,0.9), 0 0 0.06em rgba(0,0,0,0.9)';
       const darkBox = style === 'phrase' || style === 'pill';
       const box = VM.el('div', { style: { textAlign: 'center', fontWeight: '800', fontSize: (ctx.u * (ctx.portrait ? 6 : 4.6) * (style === 'slam' ? 1.9 : 1)) + 'px', lineHeight: '1.22',

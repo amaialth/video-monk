@@ -82,8 +82,11 @@ export async function listModels({ env = process.env, cwd = process.cwd(), fetch
 export function wordsFromAlignment(alignment, offset = 0) {
   const chars = alignment?.characters || [], starts = alignment?.character_start_times_seconds || [], ends = alignment?.character_end_times_seconds || [];
   const words = [];
-  let cur = null;
+  let cur = null, tag = false;
   for (let i = 0; i < chars.length; i++) {
+    // Eleven v3 audio tags ([whispers]) are directions, not words: they never become caption text.
+    if (chars[i] === '[') { tag = true; if (cur) { words.push(cur); cur = null; } continue; }
+    if (tag) { if (chars[i] === ']') tag = false; continue; }
     if (/\s/.test(chars[i])) { if (cur) { words.push(cur); cur = null; } continue; }
     if (!cur) cur = { text: '', start: starts[i] + offset, end: ends[i] + offset };
     cur.text += chars[i]; cur.end = ends[i] + offset;
