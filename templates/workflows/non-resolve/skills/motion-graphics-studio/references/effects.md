@@ -25,6 +25,7 @@ The list and its grouping follow the motion-effects skill of the MIT [motion-gra
 | 16 | Particle logo | close on the mark | `particle-text` for a word; custom HTML with the user's logo file for a mark |
 
 Thirteen of the sixteen are now built in (`video-monk templates` lists them with their props). The ten new ones are `button-player`, `search-results`, `card-workspace`, `tabs-panels`, `chart-morph`, `spring-stack`, `dock`, `perspective-layers`, `glass-focus` and `particle-text`; masked and elastic type are `kinetic-text`. Dashboard zoom, text to layout and image reveal stay custom HTML (they depend on the user's own screenshot, image or layout).
+More built-in pieces (from the [catalog review](./hyperframes-catalog.md)): `annotate` (hand-drawn circle, underline, arrow, marker, bracket over a region), `code-diff`, `code-focus`, `bar-chart-race`, `confetti`, `success-check`; lower thirds take `style` (clean-bar, bold-block, accent-underline, soft-pill, side-rule); `kinetic-text` takes `reveal` scramble or tracking; backgrounds mesh, aurora and dots; caption styles highlight, pill, slam, wipe and weight (`captions.style` in the manifest).
 For 3D and library-driven effects see [3D and animation libraries](./3d-and-animation-libraries.md).
 
 Where a built-in template covers the idea, use it: it is deterministic, themed, grounded and cached. Build custom HTML only for what no template does.
