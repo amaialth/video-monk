@@ -70,22 +70,25 @@ export async function addBroll(manifestFile, outputFile, options = {}) {
 // ---- executing a plan: search -> choose -> download -> preview -> placements.json, then apply ----
 const words = text => String(text).toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(w => w.length > 2);
 
-export function chooseCandidate(candidates, { needSeconds, targetWidth = 1920, query = '' }) {
-  const wanted = new Set(words(query));
+// minHits: how many of the query's words a candidate's tags must share (word stems, so "plugging" meets "plugged"); 0 keeps the old behaviour.
+const stem = w => (w.length > 4 ? w.replace(/(ing|ed|es|s)$/, '') : w);
+export function chooseCandidate(candidates, { needSeconds, targetWidth = 1920, query = '', minHits = 0 }) {
+  const wanted = new Set(words(query).map(stem));
   let best = null;
   for (const c of candidates) {
     if (c.duration && c.duration < needSeconds + 0.5) continue;
     const files = (c.files || []).filter(f => f.width).sort((a, b) => a.width - b.width);
     if (!files.length) continue;
     const file = files.find(f => f.width >= targetWidth) || files.at(-1);
-    const tagHits = words(c.tags || '').filter(w => wanted.has(w)).length;
+    const tagHits = new Set(words(c.tags || '').map(stem).filter(w => wanted.has(w))).size;
+    if (tagHits < Math.min(minHits, wanted.size)) continue;
     const score = tagHits * 2 + Math.min(c.duration || needSeconds, needSeconds * 3) / needSeconds * 0.3 - (file.bytes || 0) / 1e8 - (file.width < targetWidth * 0.66 ? 2 : 0);
     if (!best || score > best.score) best = { candidate: c, file, score: round(score) };
   }
   return best;
 }
 
-export async function fetchPlan(plan, { dir, manifest, search, download, library = null, execute, fetcher = fetch, provider = 'pixabay', imageProvider = null, type = 'video', max = 8, log = () => {}, only = null } = {}) {
+export async function fetchPlan(plan, { dir, manifest, search, download, library = null, execute, fetcher = fetch, provider = 'pixabay', imageProvider = null, type = 'video', max = 8, log = () => {}, only = null, minHits = 0 } = {}) {
   const { searchStock, downloadStock, pickProvider } = await import('./stock.js');
   if (!['video', 'image', 'any'].includes(type)) fail('--type must be video, image or any');
   // Sources tried in order for each query: videos first when asked for any, then photos (Unsplash when its key is set).
@@ -106,7 +109,7 @@ export async function fetchPlan(plan, { dir, manifest, search, download, library
         if (await exists(catalogFile)) await (await import('node:fs/promises')).rm(catalogFile);
         try {
           const found = await searchStock(q, catalogFile, search, fetcher, { provider: source.provider, type: source.type, orientation: portrait ? 'portrait' : 'landscape' });
-          const pick = chooseCandidate(found.candidates, { needSeconds: m.duration, targetWidth: Math.max(manifest.width, manifest.height) >= 1920 ? 1920 : 1280, query: q });
+          const pick = chooseCandidate(found.candidates, { needSeconds: m.duration, targetWidth: Math.max(manifest.width, manifest.height) >= 1920 ? 1920 : 1280, query: q, minHits });
           if (pick) { chosen = { ...pick, catalogFile, query: q, source }; break outer; }
         } catch (error) { entry.error = error.message; break outer; }
       }

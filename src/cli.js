@@ -672,7 +672,7 @@ export async function main(args) {
         const v = await readVisuals(file);
         approveVisuals(v, { beats: opts.approve === 'all' ? null : String(opts.approve).split(',').map(Number).filter(Number.isInteger) });
         await (await import('node:fs/promises')).writeFile(file, `${JSON.stringify(v, null, 2)}\n`);
-        if (v.scene3d) console.log(`3D hook scene (beat ${v.scene3d.beat}): ${v.scene3d.approved ? 'approved' : v.scene3d.available ? 'not approved' : v.scene3d.reason}`);
+        for (const s3 of [].concat(v.scene3d || [])) console.log(`3D ${s3.kind} scene (beat ${s3.beat}): ${s3.approved ? 'approved' : s3.available ? 'not approved' : s3.reason}`);
         console.log(v.beats.map(b => `beat ${b.beat}: ${[...b.logos.map(l => `${l.name} logo ${l.approved ? 'approved' : l.status}`), b.broll ? `footage ${b.broll.approved ? 'approved' : b.broll.status}` : null].filter(Boolean).join(', ')}`).join('\n'));
         break;
       }

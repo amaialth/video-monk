@@ -118,16 +118,67 @@ test('the 3D hook scene is built from the logo and the scene\'s own words, and i
   await writeFile(path.join(dir, 'logos', 'p.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/q842iQAAAABJRU5ErkJggg==', 'base64'));
   const manifest = { fps: 30, width: 1080, height: 1920, theme: { preset: 'night' }, assets: [], scenes: [{ id: 'beat-1', kind: 'graphic', purpose: 'p', duration: 6, graphic: { template: 'title', props: { kicker: 'Agents', title: 'Perplexity dropped *MCP*', subtitle: 'Back to APIs' } } }] };
   const logo = { name: 'Perplexity', domain: 'perplexity.ai', status: 'fetched', file: 'logos/p.png', approved: true, provenance: { tone: 'dark', pageUrl: 'https://www.perplexity.ai/', retrievedAt: '2026-11-03T00:00:00Z', rights: 'TM.' } };
-  const notApproved = await applyVisuals(JSON.parse(JSON.stringify(manifest)), dir, { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: { beat: 1, approved: false, available: true } });
-  assert.ok(notApproved.notes.every(n => !/3D hook/.test(n)), 'an unapproved 3D scene is not used');
+  const notApproved = await applyVisuals(JSON.parse(JSON.stringify(manifest)), dir, { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: [{ beat: 1, kind: 'hero', entity: 'Perplexity', approved: false, available: true }] });
+  assert.ok(notApproved.notes.every(n => !/true 3D/.test(n)), 'an unapproved 3D scene is not used');
   const m2 = JSON.parse(JSON.stringify(manifest));
-  const done = await applyVisuals(m2, dir, { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: { beat: 1, approved: true, available: true } });
-  assert.match(done.notes.join(' '), /3D hook scene/);
-  assert.equal(m2.scenes[0].graphic.html, path.join('scenes', 'hook3d-beat-1', 'index.html'));
+  const done = await applyVisuals(m2, dir, { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: [{ beat: 1, kind: 'hero', entity: 'Perplexity', approved: true, available: true }] });
+  assert.match(done.notes.join(' '), /true 3D hero scene/);
+  assert.equal(m2.scenes[0].graphic.html, path.join('scenes', 'hero3d-beat-1', 'index.html'));
   assert.equal(m2.scenes[0].overlays, undefined, 'the logo is on the 3D card, so there is no second badge');
-  assert.match(await readFile(path.join(dir, 'scenes', 'hook3d-beat-1', 'index.html'), 'utf8'), /Perplexity dropped \*MCP\*/);
+  assert.match(await readFile(path.join(dir, 'scenes', 'hero3d-beat-1', 'index.html'), 'utf8'), /Perplexity dropped \*MCP\*/);
   // approving everything also approves the 3D scene, but only when three.js is installed
-  const v = { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: { beat: 1, available: false, approved: false } };
-  approveVisuals(v); assert.equal(v.scene3d.approved, false);
-  v.scene3d.available = true; approveVisuals(v); assert.equal(v.scene3d.approved, true);
+  const v = { beats: [{ beat: 1, logos: [logo], broll: null }], scene3d: [{ beat: 1, kind: 'hero', available: false, approved: false }] };
+  approveVisuals(v); assert.equal(v.scene3d[0].approved, false);
+  v.scene3d[0].available = true; approveVisuals(v); assert.equal(v.scene3d[0].approved, true);
+});
+
+test('the planner decides where 3D helps; the scene is built only from the beat\'s own content and only where it honestly fits', async t => {
+  const { labelsFor, ringFrom, depthPossible, layers3dHtml, ring3dHtml } = await import('../src/scene3d.js');
+  const s = { title: 'T', beats: [
+    { say: 'Perplexity dropped it.', show: 'title', props: { title: 'Perplexity dropped *MCP*' } },
+    { say: 'Agent, server and Slack.', show: 'flow', props: { nodes: [{ label: 'Agent' }, { label: 'MCP server' }, { label: 'Slack' }], edges: [] } },
+    { say: 'It used 72 percent.', show: 'stat', props: { value: 72, suffix: '%', label: 'of the window' } },
+    { say: 'Three layers here.', show: 'bullets', props: { items: ['One', 'Two', 'Three'] } },
+    { say: 'Another stat.', show: 'stat', props: { value: 4242, label: 'things' } },
+    { say: 'A table.', show: 'table', props: {} }] };
+  assert.deepEqual(labelsFor('flow', s.beats[1].props), ['Agent', 'MCP server', 'Slack']);
+  assert.equal(labelsFor('bullets', { items: ['a', 'b'] }), null, 'fewer than three items cannot be stacked');
+  assert.deepEqual(ringFrom('stat', s.beats[2].props), { value: 72, label: 'of the window' });
+  assert.equal(ringFrom('stat', s.beats[4].props), null, 'a number that is not a percentage is never drawn as a gauge');
+  assert.equal(depthPossible('ring', 'table', {}), false);
+  const plan = normalizeVisualPlan({ beats: [
+    { beat: 1, entities: [{ name: 'Perplexity', domain: 'perplexity.ai' }], broll: { query: 'server room', alternatives: [] }, depth: 'hero' },
+    { beat: 2, entities: [], broll: null, depth: 'layers' },
+    { beat: 3, entities: [], broll: null, depth: 'ring' },
+    { beat: 4, entities: [], broll: null, depth: 'layers' },
+    { beat: 5, entities: [], broll: null, depth: 'ring' },
+    { beat: 6, entities: [], broll: null, depth: 'layers' }] }, s);
+  assert.equal(plan.find(p => p.beat === 1).depth, 'hero');
+  assert.equal(plan.find(p => p.beat === 1).broll, null, 'footage never goes on a beat that has a 3D scene');
+  assert.equal(plan.find(p => p.beat === 2), undefined, 'two 3D scenes are never back to back');
+  assert.equal(plan.find(p => p.beat === 3).depth, 'ring');
+  assert.equal(plan.find(p => p.beat === 5), undefined, 'a stat that is not a percentage gets no gauge');
+  assert.ok(plan.filter(p => p.depth).length <= 3);
+  assert.ok(layers3dHtml({ title: 'T', labels: ['A', 'B', 'C'] }).includes('"A","B","C"'));
+  assert.ok(ring3dHtml({ value: 72, label: 'x' }).includes('VALUE = 72'));
+  assert.doesNotMatch(layers3dHtml({ labels: ['a', 'b', 'c'] }) + ring3dHtml({}), /Math\.random|Date\.now|requestAnimationFrame/);
+
+  const dir = await temporary(t);
+  const manifest = { fps: 30, width: 1080, height: 1920, theme: { preset: 'night' }, assets: [], scenes: [
+    { id: 'beat-1', kind: 'graphic', purpose: 'p', duration: 7, graphic: { template: 'flow', props: s.beats[1].props } },
+    { id: 'beat-2', kind: 'graphic', purpose: 'p', duration: 7, graphic: { template: 'stat', props: s.beats[2].props } }] };
+  const r = await applyVisuals(manifest, dir, { beats: [], scene3d: [{ beat: 1, kind: 'layers', available: true, approved: true }, { beat: 2, kind: 'ring', available: true, approved: true }] });
+  assert.equal(r.notes.length, 2, r.warnings.join('; '));
+  assert.equal(manifest.scenes[0].graphic.html, path.join('scenes', 'layers3d-beat-1', 'index.html'));
+  assert.equal(manifest.scenes[1].graphic.html, path.join('scenes', 'ring3d-beat-2', 'index.html'));
+  assert.match(await readFile(path.join(dir, 'scenes', 'ring3d-beat-2', 'index.html'), 'utf8'), /VALUE = 72/);
+});
+
+test('footage must share words with the clip\'s tags, so an unrelated result is never picked', async () => {
+  const { chooseCandidate } = await import('../src/broll.js');
+  const clip = tags => ({ id: tags, tags, duration: 20, files: [{ id: 'f', width: 1920, bytes: 1e6 }] });
+  const picked = chooseCandidate([clip('cable car, mountains, alps'), clip('usb, cable, plugged, laptop')], { needSeconds: 4, query: 'plugging usb cable', minHits: 2 });
+  assert.equal(picked.candidate.tags, 'usb, cable, plugged, laptop');
+  assert.equal(chooseCandidate([clip('cable car, mountains, alps')], { needSeconds: 4, query: 'plugging usb cable', minHits: 2 }), null);
+  assert.ok(chooseCandidate([clip('cable car, mountains, alps')], { needSeconds: 4, query: 'plugging usb cable' }), 'without minHits the old behaviour stays');
 });

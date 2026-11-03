@@ -124,7 +124,7 @@ export async function openPage(browser, htmlFile, { width, height, transparent }
       .catch(() => 'wait');
     if (state === 'ready') break;
     if (state.startsWith('error:')) throw new Error(`Motion template error: ${state.slice(6)}`);
-    if (Date.now() - started > 20000) throw new Error('Motion: template did not become ready within 20s');
+    if (Date.now() - started > 90000) throw new Error('Motion: template did not become ready within 90s');
     await new Promise(resolve => setTimeout(resolve, 25));
   }
   return {

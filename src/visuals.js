@@ -11,7 +11,7 @@ import { pathToFileURL } from 'node:url';
 import { run, exists, writeJson } from './core.js';
 import { launchChrome, browsePage } from './chrome.js';
 import { listLibs } from './libs.js';
-import { hook3dHtml } from './scene3d.js';
+import { hook3dHtml, layers3dHtml, ring3dHtml, SCENE3D_KINDS, depthPossible, labelsFor, ringFrom, heroFrom } from './scene3d.js';
 
 const fail = message => { throw new Error(`Visuals: ${message}`); };
 const slug = text => String(text).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'item';
@@ -35,8 +35,9 @@ export async function assertPublic(host, lookup = dns.lookup) {
 const sameSite = (host, expected) => host === expected || host.endsWith(`.${expected}`) || expected.endsWith(`.${host}`) || host.replace(/^www\./, '') === expected.replace(/^www\./, '');
 
 // ---------------------------------------------------------------- the plan (Claude)
-export const VISUAL_SCHEMA = { type: 'object', additionalProperties: false, required: ['beats'], properties: { beats: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['beat', 'entities', 'broll'],
+export const VISUAL_SCHEMA = { type: 'object', additionalProperties: false, required: ['beats'], properties: { beats: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['beat', 'entities', 'broll', 'depth'],
   properties: { beat: { type: 'integer' }, entities: { type: 'array', items: { type: 'object', additionalProperties: false, required: ['name', 'domain'], properties: { name: { type: 'string' }, domain: { type: 'string' } } } },
+    depth: { type: ['string', 'null'], enum: ['hero', 'layers', 'ring', null] },
     broll: { type: ['object', 'null'], additionalProperties: false, required: ['query', 'alternatives'], properties: { query: { type: 'string' }, alternatives: { type: 'array', items: { type: 'string' } } } } } } } } };
 
 export function visualPrompt(script, source) {
@@ -55,7 +56,8 @@ ${beats}
 For each beat that needs one, return:
 - entities: companies, products, projects or standards that the beat's narration NAMES (for example Perplexity, Google, Slack, Knostic). Give the exact name as spoken and the brand's OFFICIAL website domain (for example perplexity.ai, google.com, slack.com). Never people, never a name the narration does not say, at most 2 per beat. If you are not sure of the official domain, leave the entity out.
 - broll: one stock footage idea for the beat, or null: a concrete visual query of 2 to 4 English words (for example "server room", "typing on laptop", "network cables") plus up to 2 alternatives. Avoid faces, brand logos and readable text. Use B-roll on at most 3 beats, never on the beat that shows a number, and not on every beat.
-Return {"beats":[{"beat":1,"entities":[],"broll":null}, ...]} listing only beats that have an entity or B-roll. Return only the JSON.`;
+- depth: whether a true 3D scene (three.js) would explain the beat better than flat graphics, or null. Use it on at most 3 beats, never on two beats in a row, never on a beat that also has footage, and only where the beat's template fits: "hero" (the beat is a title, kinetic-text, quote or term card and a named company has a logo: a glossy 3D card carrying the logo flies in, usually the opening hook), "layers" (the beat is bullets, steps, flow, comparison or tabs-panels with 3 to 5 items that are stacked, nested or built on top of each other: an architecture, a protocol stack; the labels are taken from the beat's own items), "ring" (the beat is a stat showing ONE percentage up to 100: a 3D gauge that fills while the number counts up). The words and numbers in a 3D scene always come from the beat's own on-screen content, so you never write any.
+Return {"beats":[{"beat":1,"entities":[],"broll":null,"depth":null}, ...]} listing only beats that have an entity, footage or depth. Return only the JSON.`;
 }
 
 // A plan is made safe before it is used: real beat numbers, valid public domains, short queries, limits.
@@ -76,14 +78,19 @@ export function normalizeVisualPlan(raw, script) {
     }
     const q = b.broll && typeof b.broll.query === 'string' ? b.broll.query.replace(/[^\p{L}\p{N} ]+/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase() : '';
     const broll = q && q.split(' ').length >= 1 && q.split(' ').length <= 5 ? { query: q, alternatives: (b.broll.alternatives || []).map(a => String(a).replace(/[^\p{L}\p{N} ]+/gu, ' ').trim().toLowerCase()).filter(a => a && a.split(' ').length <= 5).slice(0, 2) } : null;
-    if (entities.length || broll) out.push({ beat, entities, broll });
+    const sb = script.beats[beat - 1];
+    const depth = SCENE3D_KINDS.includes(b.depth) && depthPossible(b.depth, sb.show, sb.props) && (b.depth !== 'hero' || entities.length) ? b.depth : null;
+    if (entities.length || broll || depth) out.push({ beat, entities, broll: depth ? null : broll, depth });
   }
   // footage never goes behind a scene whose point is a number, a chart, a table or code
   const DATA_SCENES = new Set(['stat', 'pull-back-reveal', 'bar-chart', 'line-chart', 'donut', 'table', 'code', 'code-diff', 'code-focus', 'code-morph', 'counter']);
   for (const o of out) if (DATA_SCENES.has(script.beats[o.beat - 1].show)) o.broll = null;
+  // at most three 3D scenes, never two in a row
+  let kept = 0, lastDepth = -9;
+  for (const o of out) { if (!o.depth) continue; if (kept >= 3 || o.beat - lastDepth < 2) { o.depth = null; continue; } kept++; lastDepth = o.beat; }
   const withBroll = out.filter(o => o.broll);
   for (const o of withBroll.slice(3)) o.broll = null;
-  return out.filter(o => o.entities.length || o.broll).sort((a, b) => a.beat - b.beat);
+  return out.filter(o => o.entities.length || o.broll || o.depth).sort((a, b) => a.beat - b.beat);
 }
 
 export async function recommendVisuals(script, source, { execute = run, model = null } = {}) {
@@ -211,7 +218,8 @@ export async function fetchBroll(items, { dir, search = false, download = { allo
   const { fetchPlan } = await import('./broll.js');
   const folder = path.join(dir, 'broll'); await mkdir(folder, { recursive: true });
   const plan = { moments: items.map(i => ({ id: `beat-${i.beat}`, at: 0, duration: i.seconds, query: i.query, alternatives: i.alternatives || [] })) };
-  const { placements } = await fetchPlan(plan, { dir: folder, manifest: { width: 1080, height: 1920 }, search, download, execute, fetcher, type: 'any', log });
+  // both providers are used: Pixabay video first, then Unsplash photos; a result must share at least two query words (stems) with its tags, so an unrelated clip is never chosen
+  const { placements } = await fetchPlan(plan, { dir: folder, manifest: { width: 1080, height: 1920 }, search, download, execute, fetcher, type: 'any', log, minHits: 2 });
   return placements.map(p => ({ beat: Number(p.id.replace('beat-', '')), status: p.status, query: p.query, source: p.source, creator: p.creator || null, sourceUrl: p.sourceUrl || null, size: p.size || null, clipSeconds: p.clipSeconds || null,
     assetDir: p.assetDir ? path.join('broll', p.assetDir) : null, preview: p.status === 'downloaded' ? path.join('broll', `${p.id}.png`) : null, error: p.error || null }));
 }
@@ -246,11 +254,18 @@ export async function researchVisuals({ script, source = '', dir, allowLlm = fal
       logos: p.entities.map(e => { const l = logos.get(e.domain); return { name: e.name, domain: e.domain, status: l ? (l.ok ? 'fetched' : 'failed') : (allowBrowse ? 'skipped' : 'not-visited'), file: l?.ok ? l.file : null, provenance: l?.ok ? l.provenance : null, reason: l && !l.ok ? l.reason : null, approved: false }; }),
       broll: p.broll ? { ...(found.find(f => f.beat === p.beat) || { query: p.broll.query, status: allowStock ? 'no-result' : 'not-searched' }), approved: false } : null });
   }
-  // a true 3D hook scene is offered when the opening beat has a logo and three.js is installed in the vault
-  const first = result.beats.find(b => b.beat === 1 && b.logos.some(l => l.status === 'fetched'));
-  if (first) {
+  // true 3D scenes the planner chose are offered when three.js is installed in the vault (the person approves each one)
+  const wants3d = plan.filter(p => p.depth);
+  if (wants3d.length) {
     const three = (await listLibs().catch(() => [])).some(l => l.id === 'three');
-    result.scene3d = { beat: 1, kind: 'hook', entity: first.logos.find(l => l.status === 'fetched').name, available: three, approved: false, ...(three ? {} : { reason: 'three.js is not installed: video-monk libs --add three --allow-download' }) };
+    result.scene3d = [];
+    for (const p of wants3d) {
+      const entry = result.beats.find(b => b.beat === p.beat);
+      const logo = entry?.logos.find(l => l.status === 'fetched');
+      if (p.depth === 'hero' && !logo) continue;                       // a hero card needs the logo to carry
+      result.scene3d.push({ beat: p.beat, kind: p.depth, ...(logo && p.depth === 'hero' ? { entity: logo.name } : {}), available: three, approved: false, ...(three ? {} : { reason: 'three.js is not installed: video-monk libs --add three --allow-download' }) });
+    }
+    if (!result.scene3d.length) delete result.scene3d;
   }
   await writeJson(path.join(dir, 'visuals.json'), result);
   return result;
@@ -264,7 +279,7 @@ export function approveVisuals(visuals, { beats = null } = {}) {
     for (const l of b.logos) l.approved = l.status === 'fetched';
     if (b.broll) b.broll.approved = b.broll.status === 'downloaded';
   }
-  if (visuals.scene3d && (!beats || beats.includes(visuals.scene3d.beat))) visuals.scene3d.approved = Boolean(visuals.scene3d.available);
+  for (const s3 of [].concat(visuals.scene3d || [])) if (!beats || beats.includes(s3.beat)) s3.approved = Boolean(s3.available);
   return visuals;
 }
 
@@ -318,8 +333,38 @@ export async function applyVisuals(manifest, dir, visuals, base = dir) {
   const starts = []; let cursor = 0;
   for (const sc of manifest.scenes) { starts.push(cursor / manifest.fps); cursor += frames(sc.duration); }
   const manifestDir = dir;
+  // true 3D scenes first: each replaces its beat's flat graphic with a three.js scene built from that beat's own on-screen content
+  const done3d = new Set();
+  for (const s3 of [].concat(visuals?.scene3d || [])) {
+    if (!s3.approved || !s3.available) continue;
+    const i = s3.beat - 1, scene = manifest.scenes[i], original = scene?.kind === 'graphic' ? scene.graphic : null;
+    if (!original?.template) { warnings.push(`the 3D scene for beat ${s3.beat} was skipped: the scene is not a graphic`); continue; }
+    try {
+      const props = original.props || {}, theme = manifest.theme?.preset || 'night';
+      const folder = path.join(dir, 'scenes', `${s3.kind}3d-beat-${s3.beat}`);
+      let html;
+      if (s3.kind === 'layers') { const labels = labelsFor(original.template, props); if (!labels) throw new Error('the beat has no 3 to 5 items to stack'); html = layers3dHtml({ title: String(props.title || '').replace(/\*/g, ''), labels, theme, seconds: scene.duration }); }
+      else if (s3.kind === 'ring') { const r = ringFrom(original.template, props); if (!r) throw new Error('the beat does not show one percentage up to 100'); html = ring3dHtml({ ...r, theme, seconds: scene.duration }); }
+      else if (s3.kind === 'hero') {
+        const entry = (visuals.beats || []).find(b => b.beat === s3.beat);
+        const logo = (entry?.logos || []).find(l => l.approved && l.status === 'fetched' && l.file && s3.entity === l.name);
+        if (!logo || !(await exists(path.join(base, logo.file)))) throw new Error('its logo is not approved or the file is missing');
+        const h = heroFrom(original.template, props); if (!h) throw new Error('the beat has no title to show');
+        await mkdir(folder, { recursive: true });
+        await writeFile(path.join(folder, 'logo0.png'), await readFile(path.join(base, logo.file)));
+        html = hook3dHtml({ ...h, logo: 'logo0.png', logoTone: logo.provenance?.tone, theme, seconds: scene.duration });
+        manifest.notes = `${manifest.notes || ''} ${logo.name} logo from ${logo.provenance?.pageUrl || logo.domain} (retrieved ${String(logo.provenance?.retrievedAt || '').slice(0, 10)}); ${logo.provenance?.rights || ''}`.trim();
+      } else throw new Error(`unknown kind ${s3.kind}`);
+      await mkdir(folder, { recursive: true });
+      await writeFile(path.join(folder, 'index.html'), html);
+      scene.graphic = { html: path.join('scenes', `${s3.kind}3d-beat-${s3.beat}`, 'index.html') };
+      done3d.add(s3.beat);
+      notes.push(`beat ${s3.beat}: true 3D ${s3.kind} scene (three.js)`);
+    } catch (error) { warnings.push(`the 3D ${s3.kind} scene for beat ${s3.beat} was skipped: ${String(error.message).replace(/^Visuals: /, '')}`); }
+  }
   for (const entry of visuals?.beats || []) {
     const i = entry.beat - 1, scene = manifest.scenes[i];
+    if (done3d.has(entry.beat)) continue;
     if (!scene) { warnings.push(`visuals for beat ${entry.beat} were skipped: there is no such scene`); continue; }
     const logos = (entry.logos || []).filter(l => l.approved && l.status === 'fetched' && l.file);
     const okLogos = [];
@@ -340,21 +385,6 @@ export async function applyVisuals(manifest, dir, visuals, base = dir) {
         notes.push(`beat ${entry.beat}: ${asset.kind === 'video' ? 'stock footage' : 'stock photo'} behind the graphic${asset.attribution ? ` (${asset.attribution})` : ''}`);
         void saved;
       } catch (error) { warnings.push(`B-roll for beat ${entry.beat} was skipped: ${String(error.message).replace(/^B-roll: /, '')}`); }
-    }
-    const s3 = visuals.scene3d;
-    if (s3?.approved && s3.beat === entry.beat && okLogos.length && original) {
-      try {
-        const p3 = original.props || {};
-        const folder = path.join(dir, 'scenes', `hook3d-beat-${entry.beat}`);
-        await mkdir(folder, { recursive: true });
-        await writeFile(path.join(folder, 'logo0.png'), await readFile(path.join(base, okLogos[0].file)));
-        await writeFile(path.join(folder, 'index.html'), hook3dHtml({ kicker: p3.kicker || p3.eyebrow || '', title: p3.title || p3.text || okLogos[0].name, subtitle: p3.subtitle || '', logo: 'logo0.png', logoTone: okLogos[0].provenance?.tone, theme: manifest.theme?.preset || 'night', seconds: scene.duration }));
-        scene.graphic = { html: path.join('scenes', `hook3d-beat-${entry.beat}`, 'index.html') };
-        const credit = `${okLogos[0].name} logo from ${okLogos[0].provenance?.pageUrl || okLogos[0].domain} (retrieved ${String(okLogos[0].provenance?.retrievedAt || '').slice(0, 10)}); ${okLogos[0].provenance?.rights || ''}`;
-        manifest.notes = `${manifest.notes || ''} ${credit}`.trim();
-        notes.push(`beat ${entry.beat}: 3D hook scene (three.js) with the ${okLogos[0].name} logo`);
-        continue;
-      } catch (error) { warnings.push(`the 3D hook scene for beat ${entry.beat} was skipped: ${error.message}`); }
     }
     if (okLogos.length) {
       const folder = path.join(dir, 'scenes', `logo-beat-${entry.beat}`);
