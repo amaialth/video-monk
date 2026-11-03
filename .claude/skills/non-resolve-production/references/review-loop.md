@@ -58,3 +58,9 @@ and the picture moves.
 - Report only real problems; rank them; return an empty list when the work is good.
 - A rejection must say what to change and where. Never reject with "make it better".
 - The producer must not argue a finding away; if it disagrees it escalates to the lead with evidence.
+
+## Checks added in 0.5
+
+- Storyboard: `sb-caption-duplicate` (a top-bar strip repeats the burned-in captions; major; fix drop). Stat graphics' numbers are checked against the transcript like any other number.
+- Render: graphic readability audit (off the frame, clipped, too small, low contrast), caption audit (overlap, reading speed, length, flicker, lone words), frozen picture.
+- Planning (not a reviewer verdict): `BROLL-PLAN.md` lists where B-roll is needed; the editor decides each moment.

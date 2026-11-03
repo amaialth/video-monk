@@ -64,9 +64,9 @@ Use `--approve-plan`/`--rights-confirmed` only after the user approves.
    `video-monk storyboard --manifest <production.json> --output <production.graphics.json>`
    (rules engine offline; `--engine claude --allow-llm` for designed diagrams). Read the
    generated `.STORYBOARD.md`, edit `.storyboard.json` if needed (`--from-storyboard`).
-   Cutaway, side panel or nothing per idea; cues land on spoken words; never invent
+   Cutaway, side panel or nothing per idea; `--variants 3 --engine claude --allow-llm` drafts alternative designs per key moment, renders and audits them, and keeps them for you to switch (see graphic briefs); cues land on spoken words; never invent
    numbers; stress key words with `*asterisks*`. Then fine-tune the manifest: B-roll
-   (`stock-search`, `stock-fetch`, `broll-add`; see the B-roll reference),
+   (read `BROLL-PLAN.md`, decide each moment, then `broll-fetch` / `broll-apply`; see the B-roll reference),
    `motion` (zoom/pan/punch-in), overlays. Pick templates with
    `video-monk templates`; preview one with
    `video-monk graphic --template bar-chart --props <props.json> --output <chart.png>`

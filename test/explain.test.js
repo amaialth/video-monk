@@ -180,7 +180,7 @@ test('storyboard application writes a valid manifest, chapter labels and an edit
   for (let at = 0, i = 0; at < duration; at += 10, i++) scenes.push({ id: `s${i}`, kind: 'video', asset: 'rec', in: 0, duration: Math.min(10, duration - at), purpose: 'Speech', audio: {} });
   await writeJson(path.join(folder, 'production.json'), { version: 2, title: 'Explain test', fps: 30, width: 640, height: 360,
     assets: [{ id: 'rec', path: 'rec.mp4', kind: 'video', approved: true, rights: 'Own', attribution: 'Me' }],
-    scenes, captions: { words: 'words.timeline.json' } });
+    scenes, captions: { words: 'words.timeline.json', burnIn: false } });
   const result = await storyboardManifest(path.join(folder, 'production.json'), path.join(folder, 'production.graphics.json'),
     { density: 'heavy', theme: 'paper' }, probe);
   const manifest = await readJson(result.manifest);

@@ -47,3 +47,16 @@ Check: still PNG at settled state; readable in 9:16; nothing invented; face time
 | Hides the slide for too long | use `panel` (right half) or shorten; keep cutaways under 8 s |
 | Numbers look made up | remove them; show relative bars or labels only |
 | Caption clash | boxed placements end above the caption zone; keep strips at the top |
+
+## Several designs for one moment
+
+A first design is not always the best one. For the key explanatory moments (not chapter cards or titles) ask for alternatives from different directions, using the same brief for each:
+
+| Direction | Templates | Use when |
+|---|---|---|
+| structure | flow, steps, comparison, table | the line is about how parts connect, a sequence or a contrast |
+| typographic | term, kinetic-text, quote, stat | one strong idea, a definition or a single number the speaker states |
+| points | bullets, bar-chart, donut, line-chart, code | two to four parallel items, or relative sizes the speaker gives |
+
+`video-monk storyboard --engine claude --allow-llm --variants 3` (or `auto --variants 3`) drafts the alternatives (one request per key moment, up to six moments), renders each as a still, rejects any with text off the frame or clipped and any with content the speaker did not say, and applies the best. The original design always stays as alternative 0 and wins a tie. Compare them in `<name>.variants/VARIANTS.md` and the `gNN-compare.png` images; to use another, set `"chosen"` on the item in `<name>.storyboard.json` and re-apply with `--from-storyboard`.
+Cost: about one Claude request per key moment; the cost is reported. The automatic choice is a gate and a tiebreak, not taste: look at the comparison images.

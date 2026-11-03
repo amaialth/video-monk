@@ -9,7 +9,8 @@ import { complete, parseModelJson, styleContent } from './llm.js';
 import { PLAN_SCHEMA, validateInventory, validatePlan, captionsSrt, resolveXml, requireXmlRates } from './plan.js';
 import { reviewProduction, buildProduction, verifyProduction } from './production.js';
 import { searchStock, downloadStock } from './stock.js';
-import { addBroll } from './broll.js';
+import { addBroll, fetchPlan, applyPlacements } from './broll.js';
+import { planBroll, brollPlanMarkdown } from './broll-plan.js';
 import { transcribeParakeet, renderHyperframes } from './external-tools.js';
 import { transcribeWhisper, downloadModel, findWhisper, findModel, MODELS, MODEL_DIR } from './transcribe.js';
 import { autocut, analyzeFootage, FORMATS } from './autocut.js';
@@ -49,19 +50,22 @@ AUTOMATED EDITING
              Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
   auto       --media <recording> --output <new folder> [--transcribe] [--words <words.json>]
              [--brief <brief.json>] [--deliverables long|short|both|feed] [--short-max <s> --short-from <s> --short-to <s> --short-pick hook|highlight|range]
+             [--broll off|plan|fetch (default plan; fetch needs --allow-search --allow-download --rights-confirmed)] [--broll-density light|medium|heavy]
              [--sfx off|subtle|full] [--sfx-engine synth|mirelo --allow-mirelo [--mirelo-budget 300]] [--captions kinetic|plain|off] [--target youtube|web|master] [--brand <brand.json: theme + logo>]
              [--format source|landscape|vertical|square] [--allow-render --approve-plan
              --rights-confirmed] [--quality draft|final] [--model base.en] [--language en]
              [--style bytemonk|plain (default bytemonk)] [--pace relaxed|natural|tight|extra] [--speed 1-1.5] [--asr-prompt <text>]
              [--review-loop on|off (default on)] [--max-rounds 3] [--review-agent none|claude (needs --allow-llm)] [--glossary <terms file>]
              [--graphics off|light|medium|heavy (default medium)] [--graphics-mode mixed|cutaway|panel]
-             [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--presenter <name> --role <text>]
+             [--theme auto|paper|night] [--engine rules|claude --allow-llm] [--variants 2-4] [--presenter <name> --role <text>]
              One shot: inspect -> transcribe -> autocut -> explainer graphics -> review -> render final.mp4
   storyboard --manifest <production.json> --output <new manifest in the same folder>
              [--style bytemonk|plain] [--density light|medium|heavy] [--graphics-mode mixed|cutaway|panel] [--theme auto|paper|night]
              [--engine rules|claude --allow-llm [--model <alias>]] [--presenter <name> --role <text>]
              [--from-storyboard <edited storyboard.json>]
-             Plan motion graphics from the transcript: writes the manifest, <name>.storyboard.json and <name>.STORYBOARD.md
+             [--variants 2-4  Draft alternative designs per key moment (needs --engine claude --allow-llm), render, audit and pick; compare in <name>.variants/]
+             Plan motion graphics from the transcript: writes the manifest, <name>.storyboard.json and <name>.STORYBOARD.md, and the B-roll plan <name>.BROLL-PLAN.md
+             [--broll off|plan|fetch --content talking-head|screen|explainer|interview] [--sfx off|subtle|full]
   inspect    --media <file> [--output <new analysis.json>]  Loudness, pauses, pacing, suggestions
   transcribe --media <file> --output <new folder> --allow-transcribe
              [--engine whisper|parakeet] [--model base.en] [--language en|auto] [--asr-prompt <text>]
@@ -129,6 +133,11 @@ REFERENCE STUDY AND RESOLVE HANDOFF
   stock-search --query <words> --output <new candidates.json> --allow-search
                [--provider auto|pixabay|pexels (auto: Pixabay when PIXABAY_API_KEY is set)] [--type video|image (Pixabay)]
                [--orientation landscape|portrait|any] [--include-ai] [--min-width <px>]
+  broll-plan --manifest <production.json> --output <new plan.json> [--density off|light|medium|heavy] [--content talking-head|screen|explainer|interview]
+             Decide where B-roll is needed (concrete subjects with no graphic on screen, and long speaker-only stretches) with draft search queries; offline
+  broll-fetch --plan <plan.json> --manifest <production.json> --output <new folder> --allow-search --allow-download --rights-confirmed [--max 6] [--only b01,b03]
+             Search, choose, download and preview a clip for each moment; writes placements.json (set "drop": true on any you reject)
+  broll-apply --manifest <production.json> --placements <placements.json> --output <new manifest in the same folder> [--fit cover|contain|blur]
   broll-add  --manifest <production.json> --output <new manifest in the same folder> --asset-dir <stock-fetch folder>
              --at <timeline seconds> --duration <seconds> [--in-start <s>] [--fit cover|contain|blur]
              Lay a downloaded clip or image over the picture from --at, running continuously across the speech cuts
@@ -162,6 +171,9 @@ const definitions = {
     quality: 'string', 'keep-work': 'boolean', concurrency: 'string' },
   'production-verify': { manifest: 'string', media: 'string', output: 'string', 'target-lufs': 'string', 'max-true-peak': 'string', 'approve-playback': 'boolean' },
   'stock-search': { query: 'string', output: 'string', 'allow-search': 'boolean', provider: 'string', type: 'string', orientation: 'string', 'include-ai': 'boolean', 'min-width': 'string' },
+  'broll-plan': { manifest: 'string', output: 'string', density: 'string', content: 'string' },
+  'broll-fetch': { plan: 'string', manifest: 'string', output: 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', 'rights-confirmed': 'boolean', provider: 'string', max: 'string', only: 'string' },
+  'broll-apply': { manifest: 'string', placements: 'string', output: 'string', fit: 'string' },
   'broll-add': { manifest: 'string', output: 'string', 'asset-dir': 'string', at: 'string', duration: 'string', 'in-start': 'string', fit: 'string' },
   'stock-fetch': { catalog: 'string', id: 'string', 'file-id': 'string', output: 'string', 'allow-download': 'boolean', 'rights-confirmed': 'boolean' },
   transcribe: { media: 'string', output: 'string', 'allow-transcribe': 'boolean', 'allow-tool-network': 'boolean',
@@ -173,14 +185,15 @@ const definitions = {
   review: { stage: 'string', words: 'string', glossary: 'string', manifest: 'string', media: 'string', storyboard: 'string', 'render-dir': 'string', style: 'string', pace: 'string',
     output: 'string', ledger: 'string', round: 'string', reviewer: 'string', 'record-revision': 'string', reviser: 'string' },
   storyboard: { manifest: 'string', output: 'string', 'from-storyboard': 'string', density: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string',
-    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string' },
+    'allow-llm': 'boolean', model: 'string', presenter: 'string', role: 'string', style: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', content: 'string',
+    'allow-search': 'boolean', 'allow-download': 'boolean', 'rights-confirmed': 'boolean', sfx: 'string' },
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   'script-check': { words: 'string', glossary: 'string', output: 'string' },
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
-  auto: { concurrency: 'string', brief: 'string', brand: 'string', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
+  auto: { concurrency: 'string', brief: 'string', brand: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
     'approve-plan': 'boolean', 'rights-confirmed': 'boolean', rights: 'string', attribution: 'string', quality: 'string',
     model: 'string', language: 'string', 'keep-fillers': 'boolean', 'no-jump-zoom': 'boolean', 'jump-zoom': 'boolean', fit: 'string', voice: 'string', title: 'string' },
@@ -373,11 +386,11 @@ export async function main(args) {
       const cutOpts = cutOptions({ ...opts, format: opts.format ?? fromBrief.format ?? (deliverables === 'short' ? 'vertical' : deliverables === 'feed' ? 'square' : undefined),
         pace: opts.pace ?? fromBrief.pace, fit: opts.fit ?? fromBrief.fit ?? (['short', 'feed'].includes(deliverables) ? 'blur' : undefined), captions: opts.captions ?? fromBrief.captions, target: opts.target ?? fromBrief.target });
       const result = await autoEdit(required(opts, 'media'), path.resolve(required(opts, 'output')), {
-        ...cutOpts, deliverables, shortFit: opts['short-fit'] ?? fromBrief.shortFit, shortMax: flag('shortMax', opts['short-max'] ? Number(opts['short-max']) : undefined) ?? (deliverables === 'both' ? 55 : undefined),
+        ...cutOpts, content: opts.content ?? fromBrief.content, deliverables, shortFit: opts['short-fit'] ?? fromBrief.shortFit, shortMax: flag('shortMax', opts['short-max'] ? Number(opts['short-max']) : undefined) ?? (deliverables === 'both' ? 55 : undefined),
         shortFrom: flag('shortFrom', opts['short-from'] ? Number(opts['short-from']) : undefined), shortTo: flag('shortTo', opts['short-to'] ? Number(opts['short-to']) : undefined),
         shortPick: flag('shortPick', opts['short-pick']), concurrency: opts.concurrency ? Number(opts.concurrency) : undefined, words: opts.words, transcribe: opts.transcribe, model: opts.model, language: opts.language, asrPrompt: opts['asr-prompt'],
         render: opts['allow-render'], approvePlan: opts['approve-plan'], quality: opts.quality, log: message => console.error(message),
-        sfx: flag('sfx', opts.sfx), sfxEngine: opts['sfx-engine'], allowMirelo: opts['allow-mirelo'], mireloBudget: opts['mirelo-budget'] ? Number(opts['mirelo-budget']) : undefined, graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
+        variants: opts.variants ? integer(opts.variants, 'variants', 2, 4) : undefined, broll: opts.broll, brollDensity: opts['broll-density'], allowSearch: opts['allow-search'], allowDownload: opts['allow-download'], sfx: flag('sfx', opts.sfx), sfxEngine: opts['sfx-engine'], allowMirelo: opts['allow-mirelo'], mireloBudget: opts['mirelo-budget'] ? Number(opts['mirelo-budget']) : undefined, graphics: flag('graphics', opts.graphics), graphicsMode: flag('graphicsMode', opts['graphics-mode']), theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
         presenter: opts.presenter, role: opts.role, reviewLoop: opts['review-loop'] === 'off' ? false : undefined,
         maxRounds: opts['max-rounds'] ? integer(opts['max-rounds'], 'max-rounds', 1, 8) : undefined, reviewAgent: opts['review-agent'],
         glossary: opts.glossary ? parseGlossary(await readFile(opts.glossary, 'utf8')) : undefined
@@ -491,9 +504,15 @@ export async function main(args) {
     case 'storyboard': {
       const result = await storyboardManifest(required(opts, 'manifest'), required(opts, 'output'), {
         density: opts.density, graphicsMode: opts['graphics-mode'], theme: opts.theme, engine: opts.engine, allowLlm: opts['allow-llm'],
-        model: opts.model, presenter: opts.presenter, role: opts.role, fromStoryboard: opts['from-storyboard'], style: opts.style });
+        model: opts.model, presenter: opts.presenter, role: opts.role, fromStoryboard: opts['from-storyboard'], style: opts.style,
+        variants: opts.variants ? integer(opts.variants, 'variants', 2, 4) : undefined,
+        broll: opts.broll, brollDensity: opts['broll-density'], content: opts.content, allowSearch: opts['allow-search'], allowDownload: opts['allow-download'], rightsConfirmed: opts['rights-confirmed'], sfx: opts.sfx,
+        log: message => console.error(message) });
       const st = result.storyboard.stats;
       console.log(`Storyboard (${result.storyboard.engine}): ${st.graphics} graphics, ${st.perMinute}/min, ${st.cutawaySeconds}s of cutaways.\nTable: ${result.table}\nManifest: ${result.manifest}\nReview the table, edit ${path.basename(result.storyboardFile)} if needed, then production-review and production-build.`);
+      if (result.variants) console.log(`Variants: ${result.variants.alternatives} alternative design(s) for ${result.variants.items} moment(s), ${result.variants.switched} switched from the original${result.variants.costUsd ? `, about $${result.variants.costUsd}` : ''}. Compare: ${result.table.replace(/\.STORYBOARD\.md$/, '.variants')}/VARIANTS.md`);
+      if (result.broll) console.log(`B-roll: ${result.broll.moments} moment(s) planned (${result.broll.density}), ${result.broll.placed} placed. Plan: ${result.broll.planFile.replace(/\.json$/, '.md')}`);
+      for (const w of [...(result.brollWarnings || []), ...(result.sfxWarnings || [])]) console.log(`  warning: ${w}`);
       break;
     }
     case 'assets': {
@@ -610,6 +629,34 @@ export async function main(args) {
       await downloadStock(required(opts, 'catalog'), required(opts, 'id'), required(opts, 'file-id'),
         path.resolve(required(opts, 'output')), { allowDownload: opts['allow-download'], rightsConfirmed: opts['rights-confirmed'], library: await Library.open() });
       console.log('Selected stock asset downloaded with attribution/provenance. Inspect the clip before production approval.');
+      break;
+    }
+    case 'broll-plan': {
+      const manifestFile = path.resolve(required(opts, 'manifest'));
+      const manifest = await readJson(manifestFile);
+      const wordsFile = manifest.captions?.words ? path.resolve(path.dirname(manifestFile), manifest.captions.words) : null;
+      if (!wordsFile) throw new Error('The manifest needs captions.words (transcript words) so B-roll can be planned from what is said');
+      const plan = planBroll(manifest, await readJson(wordsFile), { density: opts.density, content: opts.content });
+      const out = path.resolve(required(opts, 'output'));
+      await writeNew(out, JSON.stringify(plan, null, 2));
+      await writeNew(out.replace(/\.json$/i, '') + '.md', brollPlanMarkdown(plan, `B-roll plan: ${manifest.title}`));
+      console.log(`${plan.stats.moments} B-roll moment(s) planned (${plan.density}); stretches over the speaker-only limit: ${plan.stats.gapsBefore} before, ${plan.stats.gapsAfter} after.\n${plan.moments.map(m => `  ${m.id} ${m.at}s +${m.duration}s  "${m.query}"  [${m.confidence}]`).join('\n')}\nPlan: ${out}`);
+      break;
+    }
+    case 'broll-fetch': {
+      const plan = await readJson(required(opts, 'plan'));
+      const manifest = await readJson(path.resolve(required(opts, 'manifest')));
+      if (!opts['allow-search'] || !opts['allow-download'] || !opts['rights-confirmed']) throw new Error('Fetching B-roll sends queries to the stock site and downloads files: add --allow-search --allow-download --rights-confirmed (your acceptance of the licence for the selected clips)');
+      const { pickProvider } = await import('./stock.js');
+      const result = await fetchPlan(plan, { dir: path.resolve(required(opts, 'output')), manifest, search: true, download: { allowDownload: true, rightsConfirmed: true, library: await Library.open() },
+        library: await Library.open(), provider: pickProvider(opts.provider || 'auto'), max: opts.max ? Number(opts.max) : 8, only: opts.only ? opts.only.split(',') : null, log: message => console.error(message) });
+      const got = result.placements.filter(p => p.status === 'downloaded').length;
+      console.log(`${got} of ${result.placements.length} clip(s) downloaded with previews. Look at each PNG, set "drop": true on any that do not fit, then broll-apply.\nPlacements: ${result.file}`);
+      break;
+    }
+    case 'broll-apply': {
+      const result = await applyPlacements(required(opts, 'manifest'), required(opts, 'output'), required(opts, 'placements'), { fit: opts.fit });
+      console.log(`${result.placed} B-roll clip(s) placed: ${result.output}${result.results.filter(r => r.skipped).map(r => `\n  skipped ${r.id}: ${r.skipped}`).join('')}${result.warnings.map(w => `\n  warning: ${w}`).join('')}\nNext: production-review, then production-build.`);
       break;
     }
     case 'broll-add': {

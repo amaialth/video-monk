@@ -421,19 +421,35 @@ export function ruleCandidates(words, { duration, graphics = 'mixed', density = 
 }
 
 export function planStoryboard(words, options = {}) {
-  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', style = null } = options;
+  const { duration = words.at(-1).end, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', style = null, captionsOn = false } = options;
   if (!DENSITY[density]) throw new Error(`Explain: density must be ${Object.keys(DENSITY).join(', ')}`);
   if (!GRAPHIC_MODES.includes(graphics)) throw new Error(`Explain: graphics mode must be ${GRAPHIC_MODES.join(', ')}`);
   const { built, candidates, skipped } = ruleCandidates(words, { duration, graphics, density });
-  return finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates, skipped, engine: 'rules', style });
+  return finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates, skipped, engine: 'rules', style, captionsOn });
 }
 
 
+// A top-bar pull-text strip that repeats the words the burned-in captions are showing at the same moment adds nothing: the viewer reads the same
+// line twice. True when at least `threshold` of the strip's words are in the caption words spoken during the strip.
+export function repeatsCaptions(item, words, threshold = 0.6) {
+  if (item.template !== 'kinetic-text' || item.mode !== 'overlay') return false;
+  const norm = t => String(t).toLowerCase().replace(/\*/g, '').replace(/[^\p{L}\p{N}\s']/gu, ' ').split(/\s+/).filter(x => x.length > 1);
+  const tokens = norm(item.props?.text || '');
+  if (!tokens.length) return false;
+  const spoken = new Set(norm(words.filter(w => w.end > item.start - 0.3 && w.start < item.start + item.duration + 0.3).map(w => w.text).join(' ')));
+  return tokens.filter(t => spoken.has(t)).length / tokens.length >= threshold;
+}
+
 // Select graphics under the density budget and face-time rules, then number chapters and assemble the storyboard.
 // `built` items: { kind, mode, start, duration, score, template, props, why, line, numbered?, plainTitle? }.
-export function finalizeStoryboard(built, { words, duration, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', candidates = built.length, skipped = 0, engine = 'rules', style = null }) {
+export function finalizeStoryboard(built, { words, duration, density = 'medium', graphics = 'mixed', presenter = null, role = null, theme = 'night', candidates = built.length, skipped = 0, engine = 'rules', style = null, captionsOn = false }) {
   const conf = DENSITY[density];
-  void words;
+  let strips = 0;
+  if (captionsOn) {
+    const kept = built.filter(it => !repeatsCaptions(it, words));
+    strips = built.length - kept.length;
+    built = kept;
+  }
   // House style: boost the templates it prefers (diagrams, flows, comparisons) and cap pull-text.
   if (style?.scoreBoost) built = built.map(it => ({ ...it, score: it.score + (style.scoreBoost[it.template] ?? 0) }));
   // Normalize durations: long full-frame ideas become side panels so the picture stays visible; others are capped per template.
@@ -504,7 +520,8 @@ export function finalizeStoryboard(built, { words, duration, density = 'medium',
     version: 1, engine, style: style?.name ?? 'plain', density, graphics, theme, duration: round(duration),
     stats: { graphics: items.length, perMinute: round(items.length / minutes), cutawaySeconds: round(items.filter(x => x.mode === 'cutaway').reduce((n, x) => n + x.duration, 0)),
       candidates, skipped, byTemplate },
-    notes: ['Every label, number and phrase comes from the transcript; no data is invented. Verify wording and numbers before publishing.'],
+    notes: ['Every label, number and phrase comes from the transcript; no data is invented. Verify wording and numbers before publishing.',
+      ...(strips ? [`${strips} pull-text strip(s) were not drawn: the burned-in captions already show the same words.`] : [])],
     items
   };
 }

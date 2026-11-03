@@ -57,7 +57,7 @@ const OUTPUT_SCHEMA = {
   required: ['items']
 };
 
-function compactCatalog() {
+export function compactCatalog() {
   return templateCatalog().filter(t => LLM_TEMPLATES.includes(t.name)).map(t => {
     const props = Object.entries(t.props).filter(([k]) => !/^(cues|at)\??$/.test(k)).map(([k, v]) => `${k}: ${v}`).join('; ');
     return `- ${t.name}: ${t.description}\n    props { ${props} }`;
@@ -199,7 +199,7 @@ export async function planWithClaude(words, options = {}, execute = run) {
     const rules = ruleCandidates(words, { duration, graphics, density });
     built = built.concat(rules.built.filter(r => ['kinetic-text', 'stat', 'title'].includes(r.template)));
   }
-  const storyboard = finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates: first.items.length, skipped: rejected.length, engine: options.fill === false ? 'claude' : 'claude+rules', style });
+  const storyboard = finalizeStoryboard(built, { words, duration, density, graphics, presenter, role, theme, candidates: first.items.length, skipped: rejected.length, engine: options.fill === false ? 'claude' : 'claude+rules', style, captionsOn: options.captionsOn === true });
   storyboard.stats.claudeGraphics = storyboard.items.filter(i => i.kind === 'llm').length;
   void llmCount;
   storyboard.stats.llmCostUsd = cost ? round(cost) : null;

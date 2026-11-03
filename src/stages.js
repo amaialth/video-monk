@@ -10,7 +10,7 @@ import { autocut, alignRanges, materializeEdit, FILLERS, LEVEL_STEP } from './au
 import { transcribeWhisper } from './transcribe.js';
 import { storyboardManifest } from './storyboard.js';
 import { loadTimeline } from './timeline.js';
-import { DENSITY, applyStoryboard, planStoryboard, storyboardMarkdown } from './explain.js';
+import { DENSITY, applyStoryboard, planStoryboard, storyboardMarkdown, repeatsCaptions } from './explain.js';
 import { STOP_WORDS, cleanWord } from './stress.js';
 import { reviewProduction, buildProduction } from './production.js';
 import { claudeReview } from './review-llm.js';
@@ -192,7 +192,7 @@ export async function reviseCut(artifact, findings, ctx) {
 
 // ---------------------------------------------------------------- storyboard
 const GENERIC_LABELS = new Set(['welcome', 'concept', 'definition', 'conceptual', 'schematic', 'what', "we'll", 'cover', 'coming', 'up', 'in', 'this', 'course']);
-const textFields = props => [props.title, props.text, props.term, props.definition, props.label, props.kicker, props.subtitle, props.note, ...(props.items || []), ...(props.steps || []).map(s => s.title),
+const textFields = props => [props.title, props.text, ...(typeof props.value === 'number' ? [`${props.prefix || ''}${props.value}${props.suffix || ''}`] : []), props.term, props.definition, props.label, props.kicker, props.subtitle, props.note, ...(props.items || []), ...(props.steps || []).map(s => s.title),
   ...(props.nodes || []).map(n => n.label), ...(props.bars || []).map(b => b.label), ...(props.columns || []).flatMap(c => [c.heading, ...(c.items || [])])].filter(Boolean);
 
 export function reviewStoryboard(artifact, { style = null } = {}) {
@@ -209,6 +209,10 @@ export function reviewStoryboard(artifact, { style = null } = {}) {
     if (numbers.length) findings.push(finding({ id: `sb-number-${it.id}`, severity: 'blocker', owner: 'storyboard', target: { item: it.id }, message: `${it.id} shows a number (${numbers.join(', ')}) the speaker never said`, suggestion: 'remove the graphic or use a number from the transcript', fix: { op: 'dropItem', id: it.id } }));
     else if (content.length >= 3 && unknown.length / content.length > 0.5) findings.push(finding({ id: `sb-grounding-${it.id}`, severity: 'major', owner: 'storyboard', target: { item: it.id }, message: `${it.id} uses words that are mostly not in the transcript (${unknown.slice(0, 4).join(', ')})`, suggestion: 'rephrase with the speaker\'s words or drop it', fix: { op: 'dropItem', id: it.id } }));
     if (it.start + it.duration > duration + 0.05 || it.start < 0) findings.push(finding({ id: `sb-bounds-${it.id}`, severity: 'blocker', owner: 'storyboard', target: { item: it.id }, message: `${it.id} runs outside the video`, fix: { op: 'dropItem', id: it.id } }));
+    // The top bar must not repeat what the burned-in captions already show.
+    if (artifact.captionsOn && repeatsCaptions(it, words)) findings.push(finding({ id: `sb-caption-duplicate-${it.id}`, severity: 'major', owner: 'storyboard', target: { item: it.id },
+      message: `${it.id} (top bar) shows the same words as the captions at that moment ("${textFields(it.props).join(' ').replace(/\*/g, '').slice(0, 50)}")`,
+      suggestion: 'drop the strip, or turn captions off for that stretch; keep it only if it adds a different, shorter key phrase', fix: { op: 'dropItem', id: it.id } }));
     const longText = textFields(it.props).find(t => t.length > (it.template === 'title' ? 70 : 90));
     if (longText) findings.push(finding({ id: `sb-length-${it.id}`, severity: 'minor', owner: 'storyboard', target: { item: it.id }, message: `${it.id} has long text that may be hard to read ("${longText.slice(0, 40)}…")` }));
   }
@@ -237,7 +241,7 @@ export function reviewStoryboard(artifact, { style = null } = {}) {
     const from = edges[k], to = edges[k + 1];
     if (to - from <= limit) continue;
     const window = words.filter(w => w.start >= from && w.end <= to);
-    const fill = window.length > 12 ? planStoryboard(window, { duration, density: 'heavy', graphics: storyboard.graphics, theme: storyboard.theme, style }).items.filter(i => i.start >= from && i.start + i.duration <= to) : [];
+    const fill = window.length > 12 ? planStoryboard(window, { duration, density: 'heavy', graphics: storyboard.graphics, theme: storyboard.theme, style, captionsOn: artifact.captionsOn }).items.filter(i => i.start >= from && i.start + i.duration <= to) : [];
     findings.push(finding({ id: `sb-gap-${from.toFixed(0)}`, severity: fill.length ? 'major' : 'minor', owner: 'storyboard', target: { window: [round(from), round(to)] },
       message: `${(to - from).toFixed(0)} s without a graphic (${from.toFixed(0)}–${to.toFixed(0)} s)${fill.length ? '' : '; nothing suitable found there'}`, suggestion: 'add a graphic for the idea in this window', fix: fill.length ? { op: 'fillWindow', from: round(from), to: round(to) } : null }));
   }
@@ -262,7 +266,7 @@ export async function reviseStoryboard(artifact, findings, ctx) {
     if (fx.op === 'setProps') { const it = storyboard.items.find(i => i.id === fx.id); if (it && fx.props) { it.props = fx.props; changed.push(`${fx.id}: props rewritten`); } }
     if (fx.op === 'fillWindow') {
       const window = artifact.words.filter(w => w.start >= fx.from && w.end <= fx.to);
-      const planned = planStoryboard(window, { duration: artifact.duration, density: 'heavy', graphics: storyboard.graphics, theme: storyboard.theme, style });
+      const planned = planStoryboard(window, { duration: artifact.duration, density: 'heavy', graphics: storyboard.graphics, theme: storyboard.theme, style, captionsOn: artifact.captionsOn });
       for (const it of planned.items.filter(i => i.start >= fx.from && i.start + i.duration <= fx.to)) {
         if (storyboard.items.some(o => it.start < o.start + o.duration + 0.3 && o.start < it.start + it.duration + 0.3)) continue;
         storyboard.items.push({ ...it, id: `f${storyboard.items.length + 1}` });
@@ -436,7 +440,8 @@ export function buildStages(options, execute = run) {
         const out = path.join(path.dirname(cut.manifestFile), `production.graphics.${Date.now().toString(36)}.json`);
         const planned = await storyboardManifest(cut.manifestFile, out, { ...options.storyboard, style: style.name }, execute);
         const loaded = await loadTimeline(planned.manifest, execute);
-        return { storyboard: planned.storyboard, manifestFile: planned.manifest, storyboardFile: planned.storyboardFile, baseManifestFile: cut.manifestFile, words: loaded.words, duration: loaded.duration, version: 1, styleName: style.name };
+        return { storyboard: planned.storyboard, manifestFile: planned.manifest, storyboardFile: planned.storyboardFile, baseManifestFile: cut.manifestFile, words: loaded.words, duration: loaded.duration, version: 1, styleName: style.name,
+          captionsOn: Boolean(loaded.manifest.captions) && loaded.manifest.captions.burnIn !== false };
       },
       async review(artifact, ctx) {
         const v = reviewStoryboard(artifact, { style });

@@ -3,6 +3,22 @@
 B-roll is picture that covers the speaker while the voice carries on: a place, an object, a process, a metaphor. It is used where a concrete subject is
 named and no graphic already explains it. It is not a substitute for the explainer graphics.
 
+## Planning is a standing step
+
+Every storyboard run writes `<name>.BROLL-PLAN.md` and `.json` beside the manifest (offline, no requests; `--broll off` to skip). It lists the moments where B-roll is needed:
+a spoken line that names something a viewer can picture and no graphic is already on screen, plus any stretch longer than the footage type's limit with only the speaker visible
+(about 25 s for talking heads and explainers, 40 s for screen recordings and interviews). Each moment has a time, a length, a draft search query, alternatives and a confidence.
+
+The editor **always reads the plan** and decides: keep, refine the query (English, 2-4 words, the thing to show), move or drop each moment. `video-monk broll-plan --manifest production.json --output plan.json`
+re-plans after the edit changes (`--density light|medium|heavy`, `--content talking-head|screen|explainer|interview`). Then either run the manual steps below, or execute the whole plan:
+
+1. `video-monk broll-fetch --plan plan.json --manifest production.json --output <new folder> --allow-search --allow-download --rights-confirmed` searches, picks a clip per moment (long enough, wide enough, on-topic, small), downloads it and writes a preview frame `bNN.png` and `placements.json`.
+2. **Look at every preview PNG.** Set `"drop": true` in `placements.json` for any clip that is wrong, shows faces, logos or text, or hides the point; change `at` or `duration` if needed.
+3. `video-monk broll-apply --manifest production.json --placements <folder>/placements.json --output production.broll.json` places the rest.
+
+`auto --broll fetch` does the planning, fetching and placing inside the pipeline (needs `--allow-search --allow-download --rights-confirmed`); if anything fails it keeps the plan and says why. Still look at the previews before delivering.
+Moments are never planned in the first 5 s or last 5 s, over a graphic, or closer than 12 s apart; talking heads get about 2 a minute at most, screen recordings and interviews about 1.
+
 ## When to use it
 
 - A concrete subject is spoken and a viewer would like to see it ("data center", "a busy warehouse", "typing at a desk").

@@ -37,7 +37,7 @@ async function legacyAutoEdit(media, output, options = {}, execute = run) {
   if (density !== 'off' && cut.words) {
     log(`    Planning explainer graphics (${density}, engine ${options.engine || 'rules'})...`);
     const planned = await storyboardManifest(manifest, path.join(output, 'edit', 'production.graphics.json'), {
-      density: options.graphics === undefined ? undefined : density, sfx: options.sfx, sfxEngine: options.sfxEngine, allowMirelo: options.allowMirelo, mireloBudget: options.mireloBudget, log, graphicsMode: options.graphicsMode, theme: options.theme, style: options.style, engine: options.engine, allowLlm: options.allowLlm,
+      density: options.graphics === undefined ? undefined : density, variants: options.variants, broll: options.broll, brollDensity: options.brollDensity, content: options.content, allowSearch: options.allowSearch, allowDownload: options.allowDownload, rightsConfirmed: options.rightsConfirmed, sfx: options.sfx, sfxEngine: options.sfxEngine, allowMirelo: options.allowMirelo, mireloBudget: options.mireloBudget, log, graphicsMode: options.graphicsMode, theme: options.theme, style: options.style, engine: options.engine, allowLlm: options.allowLlm,
       presenter: options.presenter, role: options.role }, execute);
     manifest = planned.manifest;
     storyboard = planned.storyboard;
@@ -75,7 +75,7 @@ export async function autoEdit(media, output, options = {}, execute = run) {
     media, root: output, words: options.words ? path.resolve(options.words) : null, transcribe: options.transcribe, model: options.model, language: options.language,
     asrPrompt: options.asrPrompt, cut: { ...options, words: undefined }, style: options.style, reviewAgent: options.reviewAgent, allowLlm: options.allowLlm,
     reviewModel: options.reviewModel, quality: options.quality, concurrency: options.concurrency, log, glossary: options.glossary,
-    storyboard: { density, sfx: options.sfx, sfxEngine: options.sfxEngine, allowMirelo: options.allowMirelo, mireloBudget: options.mireloBudget, log, graphicsMode: options.graphicsMode, theme: options.theme, engine: options.engine, allowLlm: options.allowLlm, presenter: options.presenter, role: options.role }
+    storyboard: { density, variants: options.variants, broll: options.broll, brollDensity: options.brollDensity, content: options.content, allowSearch: options.allowSearch, allowDownload: options.allowDownload, rightsConfirmed: options.rightsConfirmed, sfx: options.sfx, sfxEngine: options.sfxEngine, allowMirelo: options.allowMirelo, mireloBudget: options.mireloBudget, log, graphicsMode: options.graphicsMode, theme: options.theme, engine: options.engine, allowLlm: options.allowLlm, presenter: options.presenter, role: options.role }
   }, execute);
   if (!wantsGraphics) stages = stages.filter(s => s.name !== 'storyboard');
   if (!options.render) stages = stages.filter(s => s.name !== 'render');

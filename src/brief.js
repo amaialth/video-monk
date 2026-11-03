@@ -88,7 +88,7 @@ export function resolveBrief(answers = {}) {
 export function briefToAutoOptions(brief) {
   return {
     format: brief.primaryFormat, pace: brief.pace, graphics: brief.graphics, graphicsMode: brief.graphicsMode, fit: brief.fit,
-    captions: brief.captions, sfx: brief.sfx, target: brief.target, deliverables: brief.deliverable, shortFit: brief.shortFit,
+    captions: brief.captions, sfx: brief.sfx, content: brief.content, target: brief.target, deliverables: brief.deliverable, shortFit: brief.shortFit,
     ...(brief.shortSelection ? { shortMax: brief.shortSelection.maxSeconds, shortFrom: brief.shortSelection.from, shortTo: brief.shortSelection.to, shortPick: brief.shortSelection.pick } : {})
   };
 }

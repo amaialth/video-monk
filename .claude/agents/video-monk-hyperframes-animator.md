@@ -18,3 +18,4 @@ the PNG; check readability for both 16:9 and 9:16. Custom HTML must expose a pur
 `window.__seek(t)`; review its code. HyperFrames `animate` stays optional.
 No copied branding or paid generation. Return manifest overlay/graphic JSON,
 preview paths, visual-review notes and fact/rights blockers. Stop before assembly.
+For key explanatory moments produce several designs (structure, typographic, points) from the graphic brief, render stills of each and compare them; `storyboard --variants N` automates this with Claude. Never repeat in a top-bar strip what the captions already show.

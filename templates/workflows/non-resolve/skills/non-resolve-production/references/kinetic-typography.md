@@ -50,3 +50,7 @@ motion-graphics skill defaults). `auto` mode chooses `paper` for bright footage 
 
 Bouncy easing on UI text, particle bursts, glows, gradients on UI chrome, mixed icon strokes, dead time,
 anything that restates the caption word for word, invented data.
+
+## Top bar and captions must not say the same thing
+
+A pull-text strip at the top that repeats the words the burned-in captions show at that moment makes the viewer read the line twice. The planner does not draw a strip when at least 60% of its words are in the captions at that time, and the storyboard reviewer flags any that remain (`sb-caption-duplicate`, fix: drop it). Keep a top-bar strip only if it adds something the captions do not: a shorter key phrase, a different wording of the point, or when captions are off. If you want the emphasis, stress the words in the captions instead (they already render stressed words in italic serif).
