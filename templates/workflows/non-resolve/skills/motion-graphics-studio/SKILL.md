@@ -22,6 +22,7 @@ Everything the toolkit renders is already code: templates are pure functions of 
 | 3D, a model, a Lottie file, a library timeline (three.js, GSAP, anime.js, Motion, Lottie, Babylon, PlayCanvas, Rive) | [3D and animation libraries](./references/3d-and-animation-libraries.md): `video-monk libs --add <name> --allow-download`, then a starter from `assets/motion-starters/` |
 | Make it feel physical and calm (springs, depth, type, restraint) | [Apple-style motion audit](./references/apple-motion-audit.md) |
 | A component from a gallery (21st.dev and similar) | [donor components](./references/donor-components.md): the copy is yours to make and license-check; nothing is bundled |
+| Beats that feel like separate slides (seams, direction of travel) | [scene seams](./references/scene-seams.md): one current, matched exits and entries, `"current"` in the brief |
 | "It feels cheap" | [polish](./references/polish.md): ranked audit, one fix at a time |
 
 ## Always

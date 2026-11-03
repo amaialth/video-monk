@@ -64,7 +64,7 @@ function templatesTab(body, data, track) {
 
 // ---------------------------------------------------------------- standalone video
 function videoTab(body, data) {
-  const state = { type: 'milestone', title: '', aspect: '16:9', sfx: 'subtle', beats: [], music: { file: '', rights: '', attribution: '', gainDb: -18 }, facts: '', output: '' };
+  const state = { type: 'milestone', title: '', aspect: '16:9', sfx: 'subtle', current: 'left', beats: [], music: { file: '', rights: '', attribution: '', gainDb: -18 }, facts: '', output: '' };
   const usable = data.templates.filter(t => !['captions', 'progress-bar', 'callout'].includes(t.name));
   const exampleOf = name => (data.templates.find(t => t.name === name)?.example) || {};
   const starter = type => {
@@ -84,6 +84,7 @@ function videoTab(body, data) {
           h('label', { class: 'field' }, h('span', {}, 'Format'), h('select', { class: 'select', onchange: e => { state.type = e.target.value; state.beats = starter(state.type); draw(); } }, Object.keys(data.types).map(k => h('option', { value: k, selected: k === state.type }, k)))),
           h('label', { class: 'field' }, h('span', {}, 'Title'), h('input', { class: 'input', value: state.title, placeholder: 'Shown in the manifest and credits', oninput: e => { state.title = e.target.value; } })),
           h('label', { class: 'field' }, h('span', {}, 'Shape'), h('select', { class: 'select', onchange: e => { state.aspect = e.target.value; } }, [['16:9', 'Landscape 1920x1080'], ['9:16', 'Reel 1080x1920'], ['1:1', 'Square 1080x1080'], ['4:5', 'Feed 1080x1350']].map(([v, l]) => h('option', { value: v, selected: v === state.aspect }, l)))),
+          h('label', { class: 'field' }, h('span', {}, 'Direction of travel between beats'), h('select', { class: 'select', onchange: e => { state.current = e.target.value; } }, ['left', 'right', 'up', 'down'].map(v => h('option', { value: v, selected: v === state.current }, v)))),
           h('label', { class: 'field' }, h('span', {}, 'Sound effects'), h('select', { class: 'select', onchange: e => { state.sfx = e.target.value; } }, ['subtle', 'off', 'full'].map(v => h('option', { value: v, selected: v === state.sfx }, v))))),
         h('div', { class: 'hint mt-s' }, icon('info', 16), `${spec.about[0].toUpperCase()}${spec.about.slice(1)}. ${spec.beats[0]}-${spec.beats[1]} beats, ${spec.seconds[0]}-${spec.seconds[1]} s, last beat held at least ${spec.hold} s. ${spec.hook[0].toUpperCase()}${spec.hook.slice(1)}.`)),
       h('div', { class: 'card pad' }, h('div', { class: 'row between' }, h('h3', {}, 'Beats'), h('button', { class: 'btn sm', onclick: () => { state.beats.push({ say: '', show: 'bullets', props: exampleOf('bullets'), seconds: 4 }); draw(); } }, icon('plus', 14), 'Add beat')),
@@ -120,7 +121,7 @@ function videoTab(body, data) {
       (info?.assets || []).map(name => h('label', { class: 'field mt-s' }, h('span', {}, `Your file for ${name} (full path)`), h('input', { class: 'input', value: (b.assets || {})[name] || '', placeholder: `/Users/you/${name}`, oninput: e => { b.assets = { ...(b.assets || {}), [name]: e.target.value }; } }))));
   };
   const brief = () => {
-    const out = { type: state.type, title: state.title || 'Untitled', aspect: state.aspect, beats: state.beats.map(b => (b.starter ? { say: b.say || undefined, starter: b.starter, seconds: b.seconds, assets: b.assets && Object.keys(b.assets).length ? b.assets : undefined } : { say: b.say || undefined, show: b.show, props: b.props, seconds: b.seconds })) };
+    const out = { type: state.type, title: state.title || 'Untitled', aspect: state.aspect, current: state.current, beats: state.beats.map(b => (b.starter ? { say: b.say || undefined, starter: b.starter, seconds: b.seconds, assets: b.assets && Object.keys(b.assets).length ? b.assets : undefined } : { say: b.say || undefined, show: b.show, props: b.props, seconds: b.seconds })) };
     if (state.music.file) out.music = { ...state.music, gainDb: Number(state.music.gainDb) };
     return out;
   };

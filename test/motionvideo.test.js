@@ -146,3 +146,19 @@ test('a scene that needs your own file asks for it and copies it next to the sce
   assert.equal(await readFile(path.join(dir, 'o2', 'scenes', 'model.glb'), 'utf8'), 'glTF');
   assert.equal(r.libs[0].id, 'three');
 });
+
+test('seams keep one direction of travel (the current): all slide the same way, and a ping-pong is warned about', async t => {
+  const dir = await temporary(t);
+  const b = brief({ type: 'launch', beats: Array.from({ length: 4 }, (_, i) => ({ say: `Beat ${i + 1}`, show: ['title', 'bullets', 'quote', 'title'][i], props: [{ title: 'A' }, { items: ['x'] }, { quote: 'Q' }, { title: 'B' }][i], seconds: 8 })) });
+  await writeFile(path.join(dir, 'b.json'), JSON.stringify(b));
+  const r = await motionVideo(path.join(dir, 'b.json'), path.join(dir, 'o'), { sfx: 'off' });
+  const m = JSON.parse(await readFile(r.output, 'utf8'));
+  assert.deepEqual(m.scenes.slice(0, -1).map(s => s.transition.type), ['slideleft', 'slideleft', 'slideleft']);
+  b.current = 'up';
+  await writeFile(path.join(dir, 'b2.json'), JSON.stringify(b));
+  const up = JSON.parse(await readFile((await motionVideo(path.join(dir, 'b2.json'), path.join(dir, 'o2'), { sfx: 'off' })).output, 'utf8'));
+  assert.ok(up.scenes.slice(0, -1).every(s => s.transition.type === 'slideup'));
+  assert.match(reviewBrief({ ...b, current: 'sideways' }).errors.join(), /current must be one of/);
+  const pp = { ...b, current: undefined, beats: b.beats.map((x, i) => ({ ...x, transition: ['slideleft', 'slideright', 'slideleft', undefined][i] })) };
+  assert.ok(reviewBrief(pp).warnings.some(w => /opposite transitions/.test(w)));
+});

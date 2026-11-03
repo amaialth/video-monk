@@ -31,7 +31,12 @@ export const starterNames = () => { try { return readdirSync(STARTER_DIR).filter
 const libsIn = html => [...new Set([...String(html).replace(/<!--[\s\S]*?-->/g, '').matchAll(/<vm-lib\s+name="([\w@/.-]+)"/g)].map(m => m[1]))];
 const assetsIn = html => [...String(html).replace(/<!--[\s\S]*?-->/g, '').matchAll(/<vm-asset\s+name="[\w.-]+"\s+src="([^"]+)"/g)].map(m => m[1]);
 const NOT_BEATS = new Set(Object.entries(TEMPLATES).filter(([, d]) => d.internal || d.fullFrame).map(([n]) => n));
-const CYCLE = ['fade', 'slideleft', 'fade', 'slideup'];
+// One dominant direction of travel for the whole piece (the "current"): ordinary seams all slide the same way so the eye keeps its momentum.
+// Another direction is reserved for a reason (a chapter change, an arrival); alternating left and right between beats reads as an error.
+export const CURRENTS = ['left', 'right', 'up', 'down'];
+const OPPOSITE = { left: 'right', right: 'left', up: 'down', down: 'up' };
+const directionOf = type => /(left|right|up|down)$/.exec(String(type))?.[1] || null;
+const pingPong = (a, b) => { const x = directionOf(a), y = directionOf(b); return Boolean(x && y && OPPOSITE[x] === y); };
 const fail = message => { throw new Error(`Motion video: ${message}`); };
 
 export async function readBrief(file) {
@@ -73,6 +78,8 @@ export function reviewBrief(brief) {
   if (total > type.seconds[1]) warnings.push(`a ${brief.type} runs ${type.seconds[0]}-${type.seconds[1]} s; this one is ${total} s`);
   for (let i = 1; i < templates.length; i++) if (templates[i] === templates[i - 1] && templates[i] !== 'html') warnings.push(`beats ${i} and ${i + 1} use the same template (${templates[i]}); vary the layouts`);
   if (!beats[0]?.say && !beats[0]?.props?.title && !beats[0]?.props?.text) warnings.push(`${type.hook}: beat 1 has no say or title`);
+  if (brief.current !== undefined && !CURRENTS.includes(brief.current)) errors.push(`current must be one of ${CURRENTS.join(', ')}`);
+  for (let i = 1; i < beats.length - 1; i++) if (pingPong(beats[i - 1].transition, beats[i].transition)) warnings.push(`beats ${i} and ${i + 1} end with opposite transitions (${beats[i - 1].transition}, then ${beats[i].transition}); keep one direction of travel unless something causes the change`);
   if (brief.aspect !== undefined && !ASPECTS[brief.aspect]) errors.push(`aspect must be one of ${Object.keys(ASPECTS).join(', ')}`);
   if (brief.music !== undefined && !(brief.music.file && brief.music.rights && brief.music.attribution)) errors.push('music needs file, rights and attribution (licensed audio only)');
   return { errors, warnings, total };
@@ -136,7 +143,7 @@ export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 's
       graphic: sceneFiles.has(i) ? { html: sceneFiles.get(i).file } : b.html ? { html: path.resolve(briefDir, b.html) } : { template: b.show, props: b.props || {} } };
     if (!scene.chapter) delete scene.chapter;
     if (i < beats.length - 1) {
-      const type = brief.transitions === 'cut' ? null : TRANSITIONS.includes(b.transition) ? b.transition : CYCLE[i % CYCLE.length];
+      const type = brief.transitions === 'cut' ? null : TRANSITIONS.includes(b.transition) ? b.transition : `slide${brief.current || 'left'}`;
       if (type) scene.transition = { type, duration: Math.min(0.5, b.seconds / 3) };
     }
     at += b.seconds;

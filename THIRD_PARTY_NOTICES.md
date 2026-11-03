@@ -31,6 +31,10 @@ bundles them under the same license. The fonts are unmodified and are not sold o
   Adapted: the springs, spatial-consistency, depth and materials, typography and restraint ideas, rewritten in original words and
   mapped to video in `.../motion-graphics-studio/references/apple-motion-audit.md`. The interactive-interface parts (gestures, drag, haptics) are not used.
   Its own source is Apple's WWDC talk *Designing Fluid Interfaces*; no Apple text is reproduced.
+- **HyperFrames** by HeyGen, Inc., Apache License 2.0, Copyright 2026 HeyGen, Inc. https://github.com/heygen-com/hyperframes
+  Read as reference only. The motion doctrine (one direction of travel, matched exits and entries, carriers, cause before effect, no idle wobble, stillness before the peak)
+  informed `.../motion-graphics-studio/references/scene-seams.md` and the single-direction default of `motion-video` seams, rewritten in original words;
+  no HyperFrames code or text is copied or redistributed, and its skills are not installed or bundled. Video Monk can still call an installed `hyperframes` CLI (`animate`, `transcribe --engine parakeet`).
 - **3D and animation libraries are not bundled.** `video-monk libs --add <name> --allow-download` downloads a package once, at the user's request, from
   registry.npmjs.org, checks it against the registry's SHA-512 hash and stores it in the user's own `~/.video-monk/libs/` with its licence. Nothing below is
   copied into this package or redistributed by it; each keeps its own licence: three.js (MIT), anime.js (MIT), lottie-web (MIT), Motion (MIT),
