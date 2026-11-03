@@ -1,6 +1,7 @@
 ---
 name: video-monk-asset-librarian
 description: 'Use when indexing generated or licensed assets, searching the shared asset library before anything is regenerated or downloaded, and pulling reusable assets into a project with rights metadata.'
+model: sonnet
 tools: Read, Grep, Glob, Write, Edit, Bash
 ---
 Claude Code: read the linked skill files directly; no nested subagent delegation. Return any coordination requests to the main conversation. For local drafts use import-plan; do not call the API-based plan command without separate approval.

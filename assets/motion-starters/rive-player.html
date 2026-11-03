@@ -1,0 +1,16 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Rive player</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head><body>
+<!-- Starter: play a Rive (.riv) animation by scrubbing. Needs:  video-monk libs --add rive --allow-download   and your file next to this page as animation.riv.
+     NOT TESTED in the toolkit's own checks (it needs a .riv file we cannot ship): treat it as a starting point and check the frames. -->
+<vm-lib name="rive"></vm-lib>
+<vm-asset name="riv" src="animation.riv"></vm-asset>
+<canvas id="c"></canvas>
+<script type="module">
+const canvas = document.getElementById('c'); canvas.width = innerWidth; canvas.height = innerHeight;
+rive.RuntimeLoader.setWasmUrl(window.__vmLibFiles['rive.wasm']);                        // the runtime's wasm, inlined: no network
+const buffer = await (await fetch(window.__vmAssets.riv)).arrayBuffer();
+const r = new rive.Rive({ buffer, canvas, autoplay: false, onLoad: () => { r.resizeDrawingSurfaceToCanvas(); window.__vmReady = true; } });
+const NAME = 'Timeline 1';                                                               // your animation's name in the Rive editor
+window.__seek = t => { r.scrub(NAME, t); };                                              // seconds into that animation
+</script></body></html>

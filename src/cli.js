@@ -23,9 +23,11 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
+import { motionVideo, reviewBrief, readBrief, TYPES as MOTION_TYPES } from './motionvideo.js';
 import { SFX, SFX_KINDS, synthesize, applySfx, graphicsOf, planSfx, mireloSession, obtainFromMirelo, auditionPage } from './sfx.js';
 import { mireloKey, account } from './mirelo.js';
 import { writeBrand } from './brand.js';
+import { LIBS, NOT_SUPPORTED, addLib, listLibs, removeLib } from './libs.js';
 import { checkFacts, readFacts } from './facts.js';
 import { parseGlossary, findMisheard, applyScriptFixes, fixesMarkdown } from './script.js';
 
@@ -33,6 +35,9 @@ const templates = fileURLToPath(new URL('../templates/', import.meta.url));
 const HELP = `video-monk - automated video editing: analyze, transcribe, cut, motion graphics, mix and deliver
 
 AUTOMATED EDITING
+  libs       [--list] [--supported] [--add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download [--version 1.2.3] [--with A,B]] [--remove <id>]
+             3D and animation libraries for custom motion graphics. Downloaded once from the npm registry (integrity-checked) into ~/.video-monk/libs and
+             used offline through <vm-lib name="three"></vm-lib> in a custom graphic. Nothing is bundled; each keeps its licence
   brand      --output <new folder> --name <text> [--background #hex --surface #hex --text #hex --muted #hex --accent #hex]
              [--preset night|paper] [--font <ttf/otf/woff2>] [--logo <file>] [--feel "calm, premium"] [--never "no glow; no bounce"] [--on-twos] [--calm]
              Write brand.json (use with --brand) and MOTION.md, the file agents read before animating. Unknown fields say ASK ME, never a guess
@@ -59,6 +64,10 @@ AUTOMATED EDITING
   brief      [--questions] [--answers <answers.json>] [--output <new brief.json>]
              Settle the format BEFORE editing: long-form 16:9, a vertical 9:16 short, both, or a square/4:5 feed post;
              footage type, pace, graphics, captions, destination. Interactive in a terminal; --questions prints them as JSON.
+  motion-video --brief <brief.json> --output <new folder> [--facts facts.json] [--sfx off|subtle|full]   (or --check to review a brief, --types to list the formats)
+             a standalone piece made only of graphic scenes (launch, explainer, chart, milestone, opener, promo) from beats (say, show, props, seconds):
+             checks beat count, length, a 3 s hold on the last beat and facts-first numbers, then writes production.json with transitions, music and subtle SFX.
+             Builds nothing: review the plan, then production-review --approve-plan and production-build.
   cutdown    --manifest <production.json> --output <new manifest in the same folder> [--aspect 9:16|1:1|4:5|16:9]
              [--fit blur|cover|contain] [--max-seconds 55 | --from <s> --to <s>] [--highlight] [--width 1080]
              Reformat a finished edit (and optionally a time window of it) into a vertical short or feed cut
@@ -205,12 +214,14 @@ const definitions = {
   sfx: { list: 'boolean', kind: 'string', output: 'string', manifest: 'string', mode: 'string', plan: 'boolean', engine: 'string', prompt: 'string', seconds: 'string',
     'allow-mirelo': 'boolean', budget: 'string', credits: 'boolean', audition: 'string' },
   ui: { port: 'string', 'no-open': 'boolean' },
+  libs: { list: 'boolean', add: 'string', remove: 'string', 'allow-download': 'boolean', version: 'string', with: 'string', supported: 'boolean' },
   brand: { output: 'string', name: 'string', background: 'string', surface: 'string', text: 'string', muted: 'string', accent: 'string', preset: 'string', font: 'string', logo: 'string', feel: 'string', never: 'string', 'on-twos': 'boolean', calm: 'boolean', rights: 'string', attribution: 'string' },
   'facts-check': { manifest: 'string', facts: 'string' },
   db: { info: 'boolean', prune: 'boolean' },
   'script-check': { words: 'string', glossary: 'string', output: 'string' },
   'script-fix': { words: 'string', fixes: 'string', output: 'string' },
   brief: { questions: 'boolean', answers: 'string', output: 'string' },
+  'motion-video': { brief: 'string', output: 'string', facts: 'string', sfx: 'string', check: 'boolean', types: 'boolean' },
   cutdown: { manifest: 'string', output: 'string', aspect: 'string', fit: 'string', 'max-seconds': 'string', from: 'string', to: 'string', highlight: 'boolean', width: 'string' },
   auto: { concurrency: 'string', brief: 'string', brand: 'string', cta: 'string', variants: 'string', broll: 'string', 'broll-density': 'string', 'allow-search': 'boolean', 'allow-download': 'boolean', sfx: 'string', 'sfx-engine': 'string', 'allow-mirelo': 'boolean', 'mirelo-budget': 'string', deliverables: 'string', 'short-max': 'string', 'short-from': 'string', 'short-to': 'string', 'short-pick': 'string', 'short-fit': 'string', captions: 'string', target: 'string', media: 'string', output: 'string', words: 'string', transcribe: 'boolean', format: 'string', 'allow-render': 'boolean', pace: 'string', speed: 'string', 'asr-prompt': 'string', style: 'string', 'review-loop': 'string', 'max-rounds': 'string', 'review-agent': 'string', 'glossary': 'string',
     graphics: 'string', 'graphics-mode': 'string', theme: 'string', engine: 'string', 'allow-llm': 'boolean', presenter: 'string', role: 'string',
@@ -482,6 +493,21 @@ export async function main(args) {
       for (const w of placed.warnings) console.log(`  warning: ${w}`);
       break;
     }
+    case 'libs': {
+      if (opts.add) {
+        const r = await addLib(opts.add, { allowDownload: opts['allow-download'], version: opts.version, with: opts.with ? opts.with.split(',').map(x => x.trim()).filter(Boolean) : [] });
+        console.log(`${r.existed ? 'Already installed' : 'Installed'} ${r.id}@${r.version} (${r.vaultLicence || r.license}) in ${r.dir}\n  use: <vm-lib name="${r.id}"></vm-lib>   ${r.global ? `global: ${r.global}` : 'import * as THREE from "three"'}`);
+        break;
+      }
+      if (opts.remove) { console.log(`Removed ${await removeLib(opts.remove)} installed version(s) of ${opts.remove}`); break; }
+      if (opts.supported) {
+        console.log(Object.entries(LIBS).map(([id, d]) => `${id.padEnd(11)} ${d.license.split(' ')[0].padEnd(11)} ${d.use}`).join('\n') + '\n\nNot in the vault:\n' + Object.entries(NOT_SUPPORTED).map(([id, why]) => `  ${id}: ${why}`).join('\n'));
+        break;
+      }
+      const installed = await listLibs();
+      console.log(installed.length ? installed.map(l => `${(`${l.id}@${l.version}`).padEnd(24)} ${(l.vaultLicence || l.license || '').split(' ')[0].padEnd(11)} ${l.use}`).join('\n') : 'No libraries installed. Try: video-monk libs --supported');
+      break;
+    }
     case 'brand': {
       const result = await writeBrand(required(opts, 'output'), { name: opts.name, background: opts.background, surface: opts.surface, text: opts.text, muted: opts.muted, accent: opts.accent, preset: opts.preset,
         font: opts.font, logo: opts.logo, feel: opts.feel, never: opts.never, onTwos: opts['on-twos'], calm: opts.calm, rights: opts.rights, attribution: opts.attribution });
@@ -551,6 +577,19 @@ export async function main(args) {
       if (opts.output) await writeJson(path.resolve(opts.output), brief);
       console.log(JSON.stringify(brief, null, 2));
       console.error(`\nUse it: video-monk auto --brief ${opts.output || '<brief.json>'} --media <file> --output <new folder> --transcribe --allow-render --approve-plan --rights-confirmed`);
+      break;
+    }
+    case 'motion-video': {
+      if (opts.types) { for (const [name, t] of Object.entries(MOTION_TYPES)) console.log(`${name.padEnd(10)} ${t.beats.join('-')} beats, ${t.seconds.join('-')} s, last beat held ${t.hold} s: ${t.about}`); break; }
+      if (opts.check) {
+        const review = reviewBrief(await readBrief(required(opts, 'brief')));
+        review.errors.forEach(e => console.log(`  ERROR    ${e}`)); review.warnings.forEach(w => console.log(`  warning  ${w}`));
+        console.log(review.errors.length ? 'The brief needs changes.' : `The brief passes (${review.total} s).`);
+        if (review.errors.length) process.exitCode = 1;
+        break;
+      }
+      const result = await motionVideo(required(opts, 'brief'), required(opts, 'output'), { facts: opts.facts, sfx: opts.sfx || 'subtle', log: message => console.error(message) });
+      console.log(`Motion video plan: ${result.scenes} graphic scenes, ${result.seconds}s, ${result.width}x${result.height}${result.sfx ? `, ${result.sfx} sound cues` : ''}${result.facts ? `, facts-check OK (${result.facts.checked} numbers)` : ''}.\nManifest: ${result.output}${result.warnings.length ? `\n${result.warnings.map(w => `  warning: ${w}`).join('\n')}` : ''}\nNext: production-review --manifest ${result.output} --approve-plan, then production-build --quality draft and read the contact sheet.`);
       break;
     }
     case 'cutdown': {

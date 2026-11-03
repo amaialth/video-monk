@@ -39,7 +39,7 @@ for (const format of ['claude', 'copilot']) {
       if (workflow !== 'resolve') {
         for (const [role, tools] of Object.entries(roles)) {
           const text = (await readFile(isAgent(role), 'utf8')).replace(/\r\n/g, '\n');
-          assert.match(text, /^---\nname: video-monk-[\w-]+\ndescription: 'Use when [^\n]+'\ntools:/);
+          assert.match(text, /^---\nname: video-monk-[\w-]+\ndescription: 'Use when [^\n]+'\n(?:model: [\w-]+\n)?tools:/);
           if (format === 'claude') {
             assert.equal(text.match(/^tools: (.*)$/m)[1], tools, role);
             assert.doesNotMatch(text, /^agents:/m);

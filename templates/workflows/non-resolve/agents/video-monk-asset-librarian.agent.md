@@ -3,6 +3,7 @@ name: video-monk-asset-librarian
 description: 'Use when indexing generated or licensed assets, searching the shared asset library before anything is regenerated or downloaded, and pulling reusable assets into a project with rights metadata.'
 tools: [read, edit, search, execute]
 agents: []
+model: sonnet
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md) and its asset-library reference.

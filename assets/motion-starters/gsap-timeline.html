@@ -1,0 +1,23 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>GSAP timeline</title>
+<style>
+html,body{margin:0;height:100%;background:#0b1020;color:#f4f6fb;font:700 7vh/1.1 system-ui,sans-serif;overflow:hidden}
+#stage{position:absolute;inset:0;display:grid;place-items:center}
+.row{display:flex;gap:3vh}.card{width:22vh;height:22vh;border-radius:3vh;background:#151d33;display:grid;place-items:center;font-size:5vh;box-shadow:0 2vh 6vh rgba(0,0,0,.4)}
+.card.hot{background:#4cc9f0;color:#04222c}h1{position:absolute;top:12vh;margin:0;font-size:9vh}
+</style></head><body>
+<!-- Starter: a GSAP timeline driven by seek. Needs:  video-monk libs --add gsap --allow-download
+     The timeline is paused and never plays itself: __seek(t) puts it at exactly t. -->
+<vm-lib name="gsap"></vm-lib>
+<div id="stage"><h1>One idea at a time</h1><div class="row"><div class="card">A</div><div class="card hot">B</div><div class="card">C</div></div></div>
+<script>
+const cards = gsap.utils.toArray('.card');
+const tl = gsap.timeline({ paused: true, defaults: { ease: 'power3.out' } });
+tl.from('h1', { y: -40, opacity: 0, duration: 0.6 })
+  .from(cards, { y: 90, opacity: 0, scale: 0.8, duration: 0.7, stagger: 0.18 }, 0.3)           // stagger by a beat
+  .to(cards[1], { scale: 1.18, y: -18, duration: 0.5 }, 1.8)
+  .to([cards[0], cards[2]], { opacity: 0.35, duration: 0.4 }, 1.8)
+  .to(cards[1], { y: -10, duration: 0.8, yoyo: true, repeat: 1, ease: 'sine.inOut' }, 2.4);    // something stays alive in the hold
+window.__seek = t => { tl.time(Math.min(t, tl.duration())); };
+window.__seek(0); window.__vmReady = true;
+</script></body></html>

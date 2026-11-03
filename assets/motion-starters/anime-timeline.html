@@ -1,0 +1,21 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>anime.js timeline</title>
+<style>
+html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}svg{width:100%;height:100%}
+text{font:700 64px system-ui,sans-serif;fill:#f4f6fb}
+</style></head><body>
+<!-- Starter: an anime.js timeline seeked frame by frame. Needs:  video-monk libs --add animejs --allow-download -->
+<vm-lib name="animejs"></vm-lib>
+<svg viewBox="0 0 1280 720"><rect width="1280" height="720" fill="#0b1020"/>
+<g id="dots"></g><text id="t" x="640" y="400" text-anchor="middle">Built from time alone</text></svg>
+<script>
+const { createTimeline, stagger } = anime;
+const g = document.getElementById('dots'); const NS = 'http://www.w3.org/2000/svg';
+for (let i = 0; i < 24; i++) { const c = document.createElementNS(NS, 'circle'); c.setAttribute('r', 14); c.setAttribute('cx', 160 + (i % 12) * 84); c.setAttribute('cy', i < 12 ? 210 : 560); c.setAttribute('fill', i % 5 === 0 ? '#f72585' : '#4cc9f0'); g.appendChild(c); }
+const tl = createTimeline({ autoplay: false, defaults: { ease: 'outExpo' } });
+tl.add('circle', { opacity: [0, 1], scale: [0, 1], duration: 700, delay: stagger(40) }, 0)
+  .add('#t', { opacity: [0, 1], translateY: [30, 0], duration: 800 }, 500)
+  .add('circle', { translateY: (el, i) => (i < 12 ? 40 : -40), duration: 900, delay: stagger(25, { from: 'center' }), ease: 'inOutSine' }, 1700);
+window.__seek = t => { tl.seek(t * 1000); };                                   // anime.js time is in milliseconds
+window.__seek(0); window.__vmReady = true;
+</script></body></html>

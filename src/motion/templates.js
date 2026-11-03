@@ -2,6 +2,8 @@
 // self-contained: it may only use its arguments (root, props, ctx, VM). It builds the DOM once and returns
 // update(t), a pure function of time in seconds. Text is always inserted with textContent.
 
+import { EFFECTS } from './effects.js';
+
 const str = (max, required = false) => ({ type: 'string', max, required });
 const num = (required = false, min = -1e12, max = 1e12) => ({ type: 'number', required, min, max });
 const color = { type: 'color' };
@@ -786,6 +788,8 @@ export const TEMPLATES = {
     }
   }
 };
+
+Object.assign(TEMPLATES, EFFECTS);
 
 // Validate template props against the mini schema. Returns a cleaned copy (unknown fields rejected).
 export function validateProps(template, props, location = 'props') {

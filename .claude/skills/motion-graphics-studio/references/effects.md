@@ -7,22 +7,25 @@ The list and its grouping follow the motion-effects skill of the MIT [motion-gra
 
 | # | Effect | Use it to | Build with |
 |---|---|---|---|
-| 01 | Button to player | add a "watch the demo" moment | custom HTML |
-| 02 | Search to results | show what people find in a help centre or library | custom HTML |
-| 03 | Card to workspace | announce a feature: a small card becomes the editor | custom HTML |
-| 04 | Tabs to panels | compare plans or channels without a wall of text | `comparison`, or custom HTML for real tabs |
-| 05 | Chart morph | land a weekly result: bars turn into a line | `bar-chart` then `line-chart` with the same data, or custom HTML for the morph itself |
+| 01 | Button to player | add a "watch the demo" moment | `button-player` |
+| 02 | Search to results | show what people find in a help centre or library | `search-results` |
+| 03 | Card to workspace | announce a feature: a small card becomes the editor | `card-workspace` |
+| 04 | Tabs to panels | compare plans or channels without a wall of text | `tabs-panels` (or `comparison` for side by side) |
+| 05 | Chart morph | land a weekly result: bars turn into a line | `chart-morph` (bars turn into a line; `illustrative: true` labels sample data) |
 | 06 | Dashboard zoom | pull the one KPI that matters out of a dashboard | custom HTML (the donor screenshot is the user's own) or `stat` |
-| 07 | Spring stack | show three offers or testimonials in turn | `bullets` with cues, or custom HTML |
-| 08 | Magnetic dock | show the tools or integrations used | custom HTML |
+| 07 | Spring stack | show three offers or testimonials in turn | `spring-stack` (or `bullets` with cues) |
+| 08 | Magnetic dock | show the tools or integrations used | `dock` |
 | 09 | Masked type | reveal a campaign name or headline | `kinetic-text` with `reveal: "mask"` |
 | 10 | Elastic type | open an event with a title card | `kinetic-text` (`reveal: "pop"`), `title`; `theme.calm` turns the overshoot off |
 | 11 | Text to layout | turn a headline into a carousel cover | `title`, or custom HTML |
 | 12 | Image reveal | tease a drop, then swap in the real photo | custom HTML with the user's image inlined |
-| 13 | Perspective shift | explain the layers of a stack | `steps` or `flow`, or custom HTML for real depth |
-| 14 | Glass focus | make one line of a report the only readable thing | `callout`, `quote` |
+| 13 | Perspective shift | explain the layers of a stack | `perspective-layers` (real depth), or `steps` / `flow` |
+| 14 | Glass focus | make one line of a report the only readable thing | `glass-focus` (or `callout`, `quote`) |
 | 15 | Flowing paths | show one source feeding several channels | `flow` (packets on edges) |
-| 16 | Particle logo | close on the mark | custom HTML with a seeded particle field and the user's logo file |
+| 16 | Particle logo | close on the mark | `particle-text` for a word; custom HTML with the user's logo file for a mark |
+
+Thirteen of the sixteen are now built in (`video-monk templates` lists them with their props). The ten new ones are `button-player`, `search-results`, `card-workspace`, `tabs-panels`, `chart-morph`, `spring-stack`, `dock`, `perspective-layers`, `glass-focus` and `particle-text`; masked and elastic type are `kinetic-text`. Dashboard zoom, text to layout and image reveal stay custom HTML (they depend on the user's own screenshot, image or layout).
+For 3D and library-driven effects see [3D and animation libraries](./3d-and-animation-libraries.md).
 
 Where a built-in template covers the idea, use it: it is deterministic, themed, grounded and cached. Build custom HTML only for what no template does.
 

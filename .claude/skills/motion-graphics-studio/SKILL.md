@@ -18,7 +18,10 @@ Everything the toolkit renders is already code: templates are pure functions of 
 | Their brand in every graphic | [brand and MOTION.md](./references/brand-motion.md): `video-monk brand`, then `--brand brand.json` |
 | A precise brief before building | [motion brief](./references/motion-brief.md): the 8-part brief and the reference breakdown |
 | A premium effect (button to player, chart morph, masked type, particle logo) | [effects catalog](./references/effects.md): a built-in template, or a custom seekable HTML piece |
-| A whole standalone piece (launch film, explainer, animated chart, milestone, opener, promo, loop cover, reel) | [standalone motion](./references/standalone-motion.md) |
+| A whole standalone piece (launch film, explainer, animated chart, milestone, opener, promo, loop cover, reel) | `video-monk motion-video --brief brief.json --output dir`, see [standalone motion](./references/standalone-motion.md) |
+| 3D, a model, a Lottie file, a library timeline (three.js, GSAP, anime.js, Motion, Lottie, Babylon, PlayCanvas, Rive) | [3D and animation libraries](./references/3d-and-animation-libraries.md): `video-monk libs --add <name> --allow-download`, then a starter from `assets/motion-starters/` |
+| Make it feel physical and calm (springs, depth, type, restraint) | [Apple-style motion audit](./references/apple-motion-audit.md) |
+| A component from a gallery (21st.dev and similar) | [donor components](./references/donor-components.md): the copy is yours to make and license-check; nothing is bundled |
 | "It feels cheap" | [polish](./references/polish.md): ranked audit, one fix at a time |
 
 ## Always
@@ -35,4 +38,6 @@ Everything the toolkit renders is already code: templates are pure functions of 
 - `theme.onTwos` (manifest theme, or in `brand.json`): hold every pose for two frames, the stepped hand-made look. `theme.calm`: no overshoot. `--style bytemonk`: calm, diagram-first.
 - `video-monk facts-check --manifest M --facts facts.json`: every number on screen is in the approved, sourced list.
 - `video-monk cutdown --aspect 9:16` and `--fit blur`: reels from any horizontal piece. Vertical captions and lower thirds already sit above the bottom ~26% that the apps cover.
+- `video-monk motion-video --brief B --output DIR [--facts F]`: a standalone piece from beats; checks beat count, last-beat hold, facts and writes the manifest.
+- `video-monk libs --add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download`: opt-in, integrity-checked, never bundled. `<vm-lib>` and `<vm-asset>` in a custom graphic.
 - `video-monk graphic --template T --props P --output x.png|.mp4|.mov`: one graphic for review or reuse (the asset library caches every render).

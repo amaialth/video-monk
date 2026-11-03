@@ -16,7 +16,28 @@ Always first: `MOTION.md` ([brand](./brand-motion.md)), the real content, and fo
 | Loop cover | 9 s loop | only the one named element moves; the loop is rotated so frame 1 is the finished picture; measure the seam |
 | Reel or TikTok | any | see below |
 
-## Build it here
+## Build it with one command
+
+`video-monk motion-video --brief brief.json --output <new folder> [--facts facts.json] [--sfx off|subtle|full]` turns a brief into the manifest. It builds nothing and approves nothing.
+
+```json
+{ "type": "milestone", "title": "Ten thousand", "aspect": "16:9",
+  "theme": { "accent": "#4cc9f0" },
+  "music": { "file": "bed.mp3", "rights": "YouTube Audio Library", "attribution": "Track by Someone", "gainDb": -18 },
+  "beats": [
+    { "say": "It started with one.", "show": "title", "props": { "title": "From one to *ten thousand*" }, "seconds": 3.5 },
+    { "say": "Then people came.", "show": "stat", "props": { "value": 10000, "label": "members" }, "seconds": 4 },
+    { "say": "Thank you.", "show": "quote", "props": { "quote": "Built by the people who showed up." }, "seconds": 3.5 } ] }
+```
+
+- `type`: `launch`, `explainer`, `chart`, `milestone`, `opener` or `promo` (`--types` lists each format's beat count and length). Beat count and the **3 s hold on the last beat** are enforced; a total length outside the format, or the same template twice in a row, is a warning.
+- Each beat: `say` (what is said or meant; becomes the scene's purpose), `show` (any built-in template, including the effect templates) **or** `html` (your own seekable page, with `<vm-lib>`), `props`, `seconds`, optional `label` (chapter) and `transition`. Transitions vary by default; `"transitions": "cut"` for hard cuts.
+- **Facts first:** numbers on screen need `--facts facts.json` (every fact with a source) and are checked; without it the command stops. Sample data is only allowed through `chart-morph` with `"illustrative": true`, which prints an "Illustrative" label on every frame.
+- `music` needs its licence and attribution. `--sfx subtle` (default) adds quiet synthesised accents, never more than one per graphic.
+- `--check` reviews a brief without writing anything. Then: `production-review --approve-plan`, `production-build --quality draft`, read the contact sheet, final build.
+
+## Build it by hand
+
 
 1. Write the **beat sheet** (a table of time, beat, what is on screen, the source of every number) and get a yes. Build the first 10 seconds in two or three looks and let the user pick before building the rest.
 2. Each beat is a graphic scene: choose a built-in template from the idea (`video-monk templates`), or a custom `html` for an [effect](./effects.md). Vary layouts: no two beats alike.

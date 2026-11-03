@@ -27,6 +27,17 @@ bundles them under the same license. The fonts are unmodified and are not sold o
   idea, graphics timed to spoken words, minimum face time between cutaways, the "never invent numbers" rule,
   the interaction vocabulary, and the `paper` theme palette (warm gray, black ink, one orange accent).
   See `.../references/explainer-graphics.md`. Video Monk does not use that project's Python or Playwright engine.
+- **apple-design** by Emil Kowalski, MIT License, Copyright (c) 2026 Emil Kowalski (https://github.com/emilkowalski, part of his skills repository).
+  Adapted: the springs, spatial-consistency, depth and materials, typography and restraint ideas, rewritten in original words and
+  mapped to video in `.../motion-graphics-studio/references/apple-motion-audit.md`. The interactive-interface parts (gestures, drag, haptics) are not used.
+  Its own source is Apple's WWDC talk *Designing Fluid Interfaces*; no Apple text is reproduced.
+- **3D and animation libraries are not bundled.** `video-monk libs --add <name> --allow-download` downloads a package once, at the user's request, from
+  registry.npmjs.org, checks it against the registry's SHA-512 hash and stores it in the user's own `~/.video-monk/libs/` with its licence. Nothing below is
+  copied into this package or redistributed by it; each keeps its own licence: three.js (MIT), anime.js (MIT), lottie-web (MIT), Motion (MIT),
+  Rive `@rive-app/canvas` (MIT), PlayCanvas (MIT), A-Frame (MIT), Babylon.js (Apache-2.0) and GSAP (the GSAP "Standard no charge" licence,
+  https://gsap.com/standard-license: free to use but not open source, which is why it is only downloaded by the user). The starters in `assets/motion-starters/` are our own code.
+- **21st.dev** and other component galleries: nothing from them is included or fetched. Their terms restrict redistribution and automated copying, and each component has its
+  own author's licence. `.../references/donor-components.md` only describes how a user can rebuild an idea they have licence-checked themselves.
 - **awesome-opus-5-5-video-prompts** by Leadde Open Lab. https://github.com/LeaddeOpenLab/awesome-opus-5-5-video-prompts
   The collection states that its prompts belong to their individual authors and that no license applies to
   them, so no prompt text is reproduced or redistributed. Only general craft lessons about how effective

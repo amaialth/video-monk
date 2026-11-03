@@ -6,6 +6,7 @@ import { launchChrome, openPage } from '../chrome.js';
 import { renderPage } from './runtime.js';
 import { TEMPLATES, validateProps } from './templates.js';
 import { auditExpression } from './audit.js';
+import { expandVm } from '../libs.js';
 
 // Theme presets. `night` suits dark footage; `paper` (warm gray canvas, black ink, one orange accent, after the
 // motion-graphics skill's defaults) suits light slides and screen recordings.
@@ -77,7 +78,11 @@ async function loadFonts(customFont) {
 // Build the HTML for one motion job. `job` = { template | html, props, width, height, fps, duration, theme,
 // font, placement, panel, background, exit, fadeFrame }.
 export async function motionPage(job) {
-  if (job.html) return readFile(job.html, 'utf8');
+  if (job.html) {
+    // A custom graphic may name vaulted libraries and assets (<vm-lib>, <vm-asset>); they are inlined so the page needs nothing from the network.
+    const raw = await readFile(job.html, 'utf8');
+    return /<vm-(lib|asset)\b/.test(raw) ? (await expandVm(raw, { baseDir: path.dirname(path.resolve(job.html)) })).html : raw;
+  }
   const def = TEMPLATES[job.template];
   if (!def) throw new Error(`Motion: unknown template ${job.template}`);
   const props = def.internal ? job.props : validateProps(job.template, job.props);
@@ -111,8 +116,9 @@ export class MotionRenderer {
   // hardlinked instead of re-captured, so held frames cost almost nothing. Returns { dir, pattern, frames, captured }.
   async render(job, cacheRoot) {
     const frames = Math.max(1, Math.round(job.duration * job.fps));
-    const html = job.html ? null : await motionPage(job);
-    const key = createHash('sha256').update(html ?? `custom:${job.html}:${await readFile(job.html, 'utf8')}`)
+    const customRaw = job.html ? await readFile(job.html, 'utf8') : null;
+    const html = job.html ? (/<vm-(lib|asset)\b/.test(customRaw) ? await motionPage(job) : null) : await motionPage(job);
+    const key = createHash('sha256').update(html ?? `custom:${job.html}:${customRaw}`)
       .update(`${job.width}x${job.height}@${job.fps}:${frames}`).digest('hex').slice(0, 20);
     const dir = path.join(cacheRoot, key);
     const done = path.join(dir, 'done.json');
@@ -164,7 +170,7 @@ export class MotionRenderer {
 
   // One settled frame of a job as a PNG (no frame sequence): fast previews for the UI.
   async still(job, at, outFile) {
-    const html = job.html ? await readFile(job.html, 'utf8') : await motionPage(job);
+    const html = await motionPage(job);
     const dir = path.join(path.dirname(outFile), `.still-${createHash('sha256').update(html).update(String(at)).digest('hex').slice(0, 12)}`);
     await mkdir(dir, { recursive: true });
     const file = path.join(dir, 'page.html');

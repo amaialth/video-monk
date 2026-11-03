@@ -3,6 +3,7 @@ name: video-monk-chrome-researcher
 description: 'Use when researching video claims and B-roll leads using Google Chrome primary-source browsing, attributed evidence and access limitations.'
 tools: [read, search]
 agents: []
+model: sonnet
 ---
 
 Read [non-Resolve production](../skills/non-resolve-production/SKILL.md), stage 2.

@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Babylon.js scene</title>
+<style>html,body{margin:0;height:100%;background:#0b1020;overflow:hidden}canvas{display:block;width:100%;height:100%}</style></head><body>
+<!-- Starter: a Babylon.js scene drawn one frame at a time. Needs:  video-monk libs --add babylonjs --allow-download (about 8 MB) -->
+<vm-lib name="babylonjs"></vm-lib>
+<canvas id="c" width="1280" height="720"></canvas>
+<script>
+const canvas = document.getElementById('c'); canvas.width = innerWidth; canvas.height = innerHeight;
+const engine = new BABYLON.Engine(canvas, true, { preserveDrawingBuffer: true, stencil: true }, false);
+const scene = new BABYLON.Scene(engine); scene.clearColor = new BABYLON.Color4(0.043, 0.063, 0.125, 1);
+const cam = new BABYLON.ArcRotateCamera('cam', 0, 1.15, 7, BABYLON.Vector3.Zero(), scene);
+new BABYLON.HemisphericLight('h', new BABYLON.Vector3(0.3, 1, 0.2), scene).intensity = 0.9;
+const sun = new BABYLON.DirectionalLight('d', new BABYLON.Vector3(-1, -2, -1), scene); sun.intensity = 1.6;
+const mat = new BABYLON.PBRMaterial('m', scene); mat.albedoColor = BABYLON.Color3.FromHexString('#4cc9f0'); mat.metallic = 0.2; mat.roughness = 0.25;
+const knot = BABYLON.MeshBuilder.CreateTorusKnot('k', { radius: 1.2, tube: 0.38, radialSegments: 160, tubularSegments: 32 }, scene); knot.material = mat;
+scene.animationsEnabled = false;                         // nothing runs on its own: __seek draws the frame
+window.__seek = t => { knot.rotation.set(0.4 + t * 0.4, t * 0.7, 0); cam.alpha = -1.2 + Math.sin(t * 0.3) * 0.3; scene.render(); };
+scene.executeWhenReady(() => { window.__seek(0); window.__vmReady = true; });
+</script></body></html>
