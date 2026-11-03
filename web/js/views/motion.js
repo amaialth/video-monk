@@ -3,7 +3,7 @@ import { api } from '../api.js';
 
 // Motion studio: preview any built-in template, plan a standalone video from beats, and manage the 3D/animation libraries.
 // The studio plans and previews; building and approving stay explicit steps (shown as commands to copy).
-const TABS = [['templates', 'Templates and effects'], ['video', 'Standalone video'], ['libs', 'Libraries and 3D']];
+const TABS = [['templates', 'Templates and effects'], ['video', 'Standalone video'], ['libs', 'Libraries and 3D'], ['catalog', 'Catalog']];
 const SAFE_BEATS = ['title', 'bullets', 'spring-stack', 'glass-focus', 'quote', 'search-results', 'tabs-panels', 'perspective-layers'];
 const pretty = value => JSON.stringify(value, null, 2);
 
@@ -18,6 +18,7 @@ export async function renderMotion(view, ctx, tab = 'templates') {
   const track = u => { urls.push(u); return u; };
   if (tab === 'templates') templatesTab(body, data, track);
   else if (tab === 'video') videoTab(body, data);
+  else if (tab === 'catalog') await catalogTab(body);
   else libsTab(body, data, track, () => renderMotion(view, ctx, 'libs'));
   return () => urls.forEach(u => URL.revokeObjectURL(u));
 }
@@ -178,4 +179,33 @@ function libsTab(body, data, track, reload) {
     h('div', { class: 'pgrid mt-s' }, data.starters.map(starterCard)),
     h('h2', { class: 'mt' }, 'Researched, not included'),
     h('div', { class: 'card pad' }, Object.entries(data.unsupported).map(([k, v]) => h('div', { style: { padding: '9px 0', borderBottom: '1px solid var(--line)' } }, h('b', {}, k), h('div', { class: 'muted small' }, v)))));
+}
+
+// ---------------------------------------------------------------- catalog
+const STATUS_TEXT = { have: ['Built in', 'good'], adapt: ['Portable (untested)', ''], defer: ['Needs WebGPU', 'warn'], skip: ['Skipped', ''] };
+async function catalogTab(body) {
+  const cat = await api.get('/api/motion/catalog');
+  const f = { q: '', group: '', status: '', top: false, limit: 60 };
+  const groups = [...new Set(cat.items.map(i => i.group))].sort();
+  const list = h('div', { class: 'col', style: { gap: '8px' } });
+  const count = h('div', { class: 'muted small' });
+  const draw = () => {
+    const q = f.q.toLowerCase();
+    const hits = cat.items.filter(i => (!f.group || i.group === f.group) && (!f.status || i.status === f.status) && (!f.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')} ${i.description || ''}`.toLowerCase().includes(q)));
+    count.textContent = `${hits.length} of ${cat.count} items`;
+    mount(list, hits.slice(0, f.limit).map(i => h('div', { class: 'card pad' },
+      h('div', { class: 'row between' }, h('div', {}, h('b', {}, i.title), ' ', h('span', { class: 'faint small mono' }, i.name)), h('div', { class: 'row' }, i.top ? h('span', { class: 'chip good' }, 'build next') : null, h('span', { class: `chip ${STATUS_TEXT[i.status][1]}` }, STATUS_TEXT[i.status][0]), h('span', { class: 'chip' }, i.group))),
+      h('div', { class: 'muted small mt-s' }, i.why || i.description || ''),
+      h('div', { class: 'row wrap mt-s small faint' }, (i.needs || []).map(n => h('span', { class: 'chip' }, n)), i.ours ? h('span', {}, `Built in as ${i.ours}`) : h('span', {}, i.note), h('a', { href: i.url, target: '_blank', rel: 'noopener noreferrer', style: { marginLeft: 'auto' } }, 'Catalog page ', icon('external', 12))))),
+      hits.length > f.limit ? h('button', { class: 'btn ghost', onclick: () => { f.limit += 60; draw(); } }, `Show more (${hits.length - f.limit} left)`) : null);
+  };
+  mount(body,
+    h('div', { class: 'hint' }, icon('info', 18), 'The HyperFrames catalog (HeyGen, Apache-2.0), captured by reading its open-source registry. Nothing here is bundled or run. "Build next" marks the highest-value gaps; see references/hyperframes-catalog.md for what porting an item takes.'),
+    h('div', { class: 'row wrap mt', style: { gap: '10px' } },
+      h('input', { class: 'input', placeholder: 'Search names, tags, descriptions', style: { maxWidth: '320px' }, oninput: e => { f.q = e.target.value; f.limit = 60; draw(); } }),
+      h('select', { class: 'select', style: { maxWidth: '230px' }, onchange: e => { f.group = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'All groups'), groups.map(g => h('option', { value: g }, g))),
+      h('select', { class: 'select', style: { maxWidth: '200px' }, onchange: e => { f.status = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'Any status'), Object.entries(STATUS_TEXT).map(([k, [t]]) => h('option', { value: k }, t))),
+      h('label', { class: 'row small' }, h('input', { type: 'checkbox', onchange: e => { f.top = e.target.checked; f.limit = 60; draw(); } }), 'Build next only')),
+    h('div', { class: 'mt-s' }, count), h('div', { class: 'mt-s' }, list));
+  draw();
 }

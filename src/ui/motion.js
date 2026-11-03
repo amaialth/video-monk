@@ -10,6 +10,8 @@ import { TYPES, reviewBrief, motionVideo, libsNeeded } from '../motionvideo.js';
 import { LIBS, NOT_SUPPORTED, addLib, listLibs, removeLib } from '../libs.js';
 
 const STARTERS = new URL('../../assets/motion-starters/', import.meta.url).pathname;
+const CATALOG = new URL('../../assets/hyperframes-catalog.json', import.meta.url).pathname;
+let catalogCache = null;
 const err = (message, status = 400) => Object.assign(new Error(message), { status });
 
 async function starters() {
@@ -68,6 +70,12 @@ export function registerMotion(on, { previews, serveFile, HANDLED }) {
     const stamp = `${(await stat(file)).mtimeMs}|${installed.map(l => `${l.id}@${l.version}`).sort().join(',')}`;
     try { await serveFile(req, res, await previews.still({ html: file, stamp, at, duration: Math.max(6, at + 1), width: 640, height: 360 }), { cache: true }); } catch (error) { if (error.status) throw error; throw err(`The preview failed: ${String(error.message).slice(0, 200)}`, 500); }
     return HANDLED;
+  });
+
+  // The captured HyperFrames catalog (read-only data; see references/hyperframes-catalog.md).
+  on('GET', '/api/motion/catalog', async () => {
+    catalogCache ||= JSON.parse(await readFile(CATALOG, 'utf8'));
+    return catalogCache;
   });
 
   on('POST', '/api/motion/brief/check', async ({ body }) => {

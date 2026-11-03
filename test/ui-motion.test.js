@@ -115,3 +115,20 @@ test('the studio plans 3D scene beats, reports missing libraries when checking, 
   const list = await call('GET', '/api/motion');
   assert.deepEqual(list.json.starters.find(s => s.name === 'three-gltf').assets, ['model.glb']);
 });
+
+test('the captured HyperFrames catalog is served read-only with statuses, groups and links', async t => {
+  const { call } = await app(t, await temporary(t));
+  const { status, json } = await call('GET', '/api/motion/catalog');
+  assert.equal(status, 200);
+  assert.equal(json.count, json.items.length);
+  assert.ok(json.count >= 440);
+  const names = new Set(json.items.map(i => i.name));
+  assert.equal(names.size, json.items.length);
+  for (const i of json.items) { assert.ok(['adapt', 'have', 'defer', 'skip'].includes(i.status), i.name); assert.match(i.url, /^https:\/\/hyperframes\.heygen\.com\/catalog\//); assert.ok(i.group, i.name); }
+  assert.ok(json.items.filter(i => i.top).length >= 30);
+  assert.ok(json.items.find(i => i.name === 'cursor-zoom-follow').top);
+  assert.ok(json.items.filter(i => i.status === 'defer').every(i => i.needs.includes('webgpu')));
+  assert.ok(json.items.filter(i => i.status === 'skip').length >= 20);
+  assert.match(json.source, /hyperframes\.heygen\.com/);
+  assert.equal((await call('POST', '/api/motion/catalog', {})).status, 404);
+});
