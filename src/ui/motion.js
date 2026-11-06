@@ -76,13 +76,13 @@ export function registerMotion(on, { previews, serveFile, HANDLED }) {
     return HANDLED;
   });
 
-  // The captured HyperFrames catalog (read-only data; see references/hyperframes-catalog.md).
+  // The HyperFrames catalog (read-only data; see references/hyperframes-catalog.md).
   on('GET', '/api/motion/catalog', async () => {
     catalogCache ||= JSON.parse(await readFile(CATALOG, 'utf8'));
     return { ...catalogCache, imported: (await listImported()).map(i => i.name) };
   });
 
-  // Import one standalone block (a one-time download from a fixed commit of github.com/heygen-com/hyperframes; needs confirm: true).
+  // Import one standalone block from the vendored registry (without it, a one-time download from a fixed commit of github.com/heygen-com/hyperframes; fonts come from Google; needs confirm: true).
   const importing = new Set();
   on('POST', '/api/catalog/import', async ({ body }) => {
     const name = String(body.name || '');

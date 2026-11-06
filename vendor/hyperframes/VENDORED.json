@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/heygen-com/hyperframes.git",
+  "commit": "18fc75dcd7b453ab10d0834bc9e8d2265353121c",
+  "paths": [
+    "registry",
+    "LICENSE",
+    "CREDITS.md"
+  ],
+  "license": "Apache-2.0",
+  "copyright": "Copyright 2026 HeyGen, Inc. and contributors",
+  "registryFiles": 1685,
+  "modified": false
+}

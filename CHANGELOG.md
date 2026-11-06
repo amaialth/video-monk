@@ -3,6 +3,19 @@
 Each entry says what changed, why it matters, and how to use or undo it. The full explanation of every part is in
 [docs/architecture.html](docs/architecture.html).
 
+## Unreleased
+
+**Why:** catalog scenes had to be downloaded one at a time before a video could use them. The whole HyperFrames registry now lives in the project, so a brief can name any of them and build.
+
+### Added
+- **Vendored HyperFrames registry** (`vendor/hyperframes/`, commit 18fc75d, about 107 MB, Apache-2.0, files unchanged; refresh with `scripts/vendor-hyperframes.mjs`). The importer reads it first and needs no network, except `--allow-download` for an item's Google Fonts. The npm package leaves the folder out and keeps the download route. To undo: delete the folder and the importer goes back to downloading.
+- **`motion-video` imports a catalog beat's item by itself** when it is not imported yet.
+- **The 9 upstream project examples** in the inventory (457 items, status `reference`).
+- **Real offline results per item** (the `offline` field, shown by `motion-catalog --info` and the Catalog tab's filter), measured by importing and playing each item in the renderer.
+
+### Changed
+- `npm test` runs `test/` only, so the test files inside the vendored registry are not run.
+
 ## 0.5.0: production-grade delivery, voice and captions
 
 **Why:** a render that only "passes" is not yet a video you can upload. This release adds delivery tuning, voice treatment and caption hygiene,

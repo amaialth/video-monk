@@ -13,7 +13,7 @@ import { ASPECTS } from './cutdown.js';
 import { checkFacts, readFacts, graphicTexts, numbersIn } from './facts.js';
 import { applySfx } from './sfx.js';
 import { listLibs } from './libs.js';
-import { listImported, copyImported } from './catalog.js';
+import { listImported, copyImported, importBlock } from './catalog.js';
 import { exists } from './core.js';
 
 // beats: [min, max]; seconds: the length the format is meant to have (outside it is a warning); hold: minimum seconds on the last beat.
@@ -131,8 +131,12 @@ export async function motionVideo(briefFile, outputDir, { facts = null, sfx = 's
   const catalogUsed = [];
   for (const [i, b] of beats.entries()) {
     if (b.catalog === undefined) continue;
-    const item = imported.find(x => x.name === b.catalog);
-    if (!item) { problems.push(`beat ${i + 1}: ${b.catalog} is not imported: run  video-monk motion-catalog --import ${b.catalog} --allow-download  (a one-time download), then plan again`); continue; }
+    let item = imported.find(x => x.name === b.catalog);
+    if (!item) {
+      // a vendored item is prepared here without any network; one that needs a download or cannot run offline says why
+      try { item = await importBlock(b.catalog); imported.push(item); log(`Imported ${b.catalog} from the vendored catalog`); }
+      catch (error) { problems.push(`beat ${i + 1}: ${b.catalog} is not imported: run  video-monk motion-catalog --import ${b.catalog} --allow-download  (a one-time download), then plan again (${String(error.message).replace(/^Catalog: /, '')})`); continue; }
+    }
     const declared = new Set((item.variables || []).map(v => v.id));
     for (const k of Object.keys(b.vars || {})) if (!declared.has(k)) problems.push(`beat ${i + 1}: ${b.catalog} has no variable "${k}"${declared.size ? ` (it has: ${[...declared].join(', ')})` : ''}`);
     const lib = installed.filter(l => l.id === 'gsap').sort((a, c) => String(c.addedAt).localeCompare(String(a.addedAt)))[0];

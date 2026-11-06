@@ -23,7 +23,7 @@ import { findChrome } from './chrome.js';
 import { Library, KINDS } from './library.js';
 import { QUESTIONS, resolveBrief, briefToAutoOptions, loadBrief, askInteractive } from './brief.js';
 import { cutdownManifest, ASPECTS } from './cutdown.js';
-import { catalogData, catalogEntry, importBlock, importAll, listImported, removeImported, CATALOG_COMMIT } from './catalog.js';
+import { catalogData, catalogEntry, importBlock, importAll, listImported, removeImported, CATALOG_COMMIT, VENDOR_ROOT } from './catalog.js';
 import { focusManifest, detectActivity } from './focus.js';
 import { researchVisuals, readVisuals, approveVisuals, addLogoFromUrl } from './visuals.js';
 import { makeShort, shortOptions, readSource, LENGTHS, TONES, AUDIENCES, CAPTION_STYLES } from './shorts.js';
@@ -41,9 +41,10 @@ const HELP = `video-monk - automated video editing: analyze, transcribe, cut, mo
 
 AUTOMATED EDITING
   motion-catalog [--list [--group G] [--status adapt|have|defer|skip] [--top] [--search text]] [--info <name>] [--imported]
-             [--import <block> --allow-download [--vars '{"name":"Ada"}'] [--transparent true|false]] [--remove <block>]
-             motion-catalog --import-all --allow-download [--group G] [--status adapt|have|defer] [--concurrency 4] [--report results.json]: import every item that can run offline (downloads many items: use deliberately)
-             The captured HyperFrames catalog (448 items, Apache-2.0). --import downloads one standalone block once (fixed commit, github.com only), swaps its GSAP
+             [--import <block> [--allow-download] [--vars '{"name":"Ada"}'] [--transparent true|false]] [--remove <block>]
+             motion-catalog --import-all [--allow-download] [--group G] [--status adapt|have|defer|reference] [--concurrency 4] [--report results.json]: import every item that can run offline
+             The HyperFrames catalog (457 items, Apache-2.0), vendored at a fixed commit in vendor/hyperframes. --import prepares one standalone block without network (--allow-download is
+             needed for Google Fonts, and for every file in the npm package, which leaves the vendored copy out: fixed commit, github.com only). It swaps its GSAP
              for the library vault, inlines its fonts and adds a seek bridge so it plays offline; it refuses blocks that cannot (video, nested compositions, other libraries).
              Use it with a motion-video beat: { "catalog": "<block>", "vars": {...}, "seconds": 5 }. It is third-party code: read it first.
   libs       [--list] [--supported] [--add three|gsap|animejs|lottie-web|motion|rive|babylonjs|playcanvas|aframe --allow-download [--version 1.2.3] [--with A,B]] [--remove <id>]
@@ -529,9 +530,9 @@ export async function main(args) {
       if (opts['import-all']) {
         const q = (opts.search || '').toLowerCase();
         const names = (await catalogData()).items.filter(i => i.status !== 'skip' && (!opts.group || i.group.toLowerCase() === opts.group.toLowerCase()) && (!opts.status || i.status === opts.status) && (!opts.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')}`.toLowerCase().includes(q))).map(i => i.name);
-        if (!opts['allow-download']) throw new Error(`This downloads ${names.length} catalog item(s) from github.com/heygen-com/hyperframes (a fixed commit, Apache-2.0). Pass --allow-download to confirm.`);
+        if (!opts['allow-download'] && !(await exists(VENDOR_ROOT))) throw new Error(`This downloads ${names.length} catalog item(s) from github.com/heygen-com/hyperframes (a fixed commit, Apache-2.0). Pass --allow-download to confirm.`);
         let done = 0;
-        const results = await importAll(names, { allowDownload: true, concurrency: opts.concurrency ? Number(opts.concurrency) : 4, onResult: r => { done++; if (done % 25 === 0 || done === names.length) console.error(`  ${done}/${names.length} (${r.name})`); } });
+        const results = await importAll(names, { allowDownload: opts['allow-download'], concurrency: opts.concurrency ? Number(opts.concurrency) : 4, onResult: r => { done++; if (done % 25 === 0 || done === names.length) console.error(`  ${done}/${names.length} (${r.name})`); } });
         const ok = results.filter(r => r.ok), bad = results.filter(r => !r.ok);
         const reasons = {};
         for (const r of bad) { const k = r.error.replace(/^.*because /, '').replace(/ from [\w.-]+/g, ' from <host>'); reasons[k] = (reasons[k] || 0) + 1; }
@@ -549,12 +550,12 @@ export async function main(args) {
       if (opts.imported) { const l = await listImported(); console.log(l.length ? l.map(i => `${i.name.padEnd(28)} ${i.width || '?'}x${i.height || '?'} ${i.duration || '?'}s  ${i.license}`).join('\n') : 'Nothing imported yet.'); break; }
       if (opts.info) {
         const e = await catalogEntry(opts.info);
-        console.log(`${e.title} (${e.name})\n  ${e.type}, ${e.group}, status: ${e.status}${e.top ? ', build next' : ''}\n  ${e.note || ''}\n  needs: ${(e.needs || []).join(', ') || 'nothing special'}\n  ${e.description || ''}\n  ${e.url}\n  licence: ${e.license} (commit ${CATALOG_COMMIT.slice(0, 7)})`);
+        console.log(`${e.title} (${e.name})\n  ${e.type}, ${e.group}, status: ${e.status}${e.top ? ', build next' : ''}\n  ${e.note || ''}\n  needs: ${(e.needs || []).join(', ') || 'nothing special'}\n  ${e.description || ''}\n  ${e.url}${e.offline ? `\n  offline: ${e.offline.import !== 'ok' ? `cannot be imported (${e.offline.reason})` : e.offline.verified ? 'verified in the renderer' : `imports, but did not run cleanly (${e.offline.reason})`}` : ''}\n  licence: ${e.license} (commit ${CATALOG_COMMIT.slice(0, 7)})`);
         break;
       }
       const q = (opts.search || '').toLowerCase();
       const hits = (await catalogData()).items.filter(i => (!opts.group || i.group.toLowerCase() === opts.group.toLowerCase()) && (!opts.status || i.status === opts.status) && (!opts.top || i.top) && (!q || `${i.name} ${i.title} ${(i.tags || []).join(' ')}`.toLowerCase().includes(q)));
-      console.log(hits.map(i => `${i.name.padEnd(34)} ${i.type.padEnd(9)} ${i.status.padEnd(6)} ${i.group}${i.top ? '  *' : ''}`).join('\n') + `\n\n${hits.length} item(s). * = build next. Import a block with: video-monk motion-catalog --import <name> --allow-download`);
+      console.log(hits.map(i => `${i.name.padEnd(34)} ${i.type.padEnd(9)} ${i.status.padEnd(6)} ${i.group}${i.top ? '  *' : ''}`).join('\n') + `\n\n${hits.length} item(s). * = build next. Import a block with: video-monk motion-catalog --import <name>`);
       break;
     }
     case 'libs': {

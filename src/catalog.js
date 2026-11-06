@@ -5,19 +5,23 @@
 //   - inlines Google Fonts (latin subset) as data URLs,
 //   - adds a small bridge: __hyperframes.getVariables()/assetUrl() and a __seek(t) that seeks every registered timeline,
 //   - and REFUSES blocks it cannot make offline (video/audio, nested compositions, runtime fetches, other libraries, remote images).
-// Nothing is bundled: files are downloaded once, on explicit permission, from a fixed commit of github.com/heygen-com/hyperframes (Apache-2.0)
-// and cached under ~/.video-monk/catalog/. The licence and author are kept in a header comment and in item.json. Items are third-party code: they run
+// The registry of a fixed commit of github.com/heygen-com/hyperframes (Apache-2.0) is vendored unchanged in vendor/hyperframes/, so importing needs no network
+// (only Google Fonts are still fetched, on explicit permission). The npm package leaves the vendored copy out: there, files are downloaded once, on explicit permission,
+// from the same commit. Either way the result is cached under ~/.video-monk/catalog/. The licence and author are kept in a header comment and in item.json. Items are third-party code: they run
 // only inside the offline renderer, and the person importing one is asked to read what they import.
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { mkdir, readFile, readdir, rm, writeFile, cp } from 'node:fs/promises';
 import { exists, run } from './core.js';
 import { LIBS } from './libs.js';
 
 const fail = message => { throw new Error(`Catalog: ${message}`); };
-export const CATALOG_COMMIT = '47dddedd6cd1dea646c5ae53d40bb5821f45590f';
+export const CATALOG_COMMIT = '18fc75dcd7b453ab10d0834bc9e8d2265353121c';
 const RAW_ROOT = `https://raw.githubusercontent.com/heygen-com/hyperframes/${CATALOG_COMMIT}/registry/`;
 export const catalogRoot = () => path.join(process.env.VIDEO_MONK_HOME || path.join(os.homedir(), '.video-monk'), 'catalog');
+export const VENDOR_ROOT = fileURLToPath(new URL('../vendor/hyperframes/registry/', import.meta.url));
+const REGISTRY_DIRS = { block: 'blocks', component: 'components', example: 'examples' };
 const DATA = new URL('../assets/hyperframes-catalog.json', import.meta.url).pathname;
 const MAX_FILE = 12 * 1024 * 1024, MAX_TOTAL = 40 * 1024 * 1024;
 const FONT_HOSTS = new Set(['fonts.googleapis.com', 'fonts.gstatic.com']);
@@ -215,15 +219,23 @@ export async function inlineGoogleFonts(links, fetcher) {
   return { css: css.join('\n'), warnings };
 }
 
-export async function importBlock(name, { allowDownload, vars = {}, transparent, placeholders = true, fetcher = fetch, root = catalogRoot() } = {}) {
+export async function importBlock(name, { allowDownload, vars = {}, transparent, placeholders = true, fetcher = fetch, root = catalogRoot(), vendor = VENDOR_ROOT } = {}) {
   const entry = await catalogEntry(name);
   if (entry.status === 'skip') fail(`${name} is skipped: ${entry.note}`);
-  if (!allowDownload) fail(`${name} is downloaded once from github.com/heygen-com/hyperframes (commit ${CATALOG_COMMIT.slice(0, 7)}, Apache-2.0); pass --allow-download to confirm. It is third-party code: read it before you use it.`);
   if (!/^[\w-]+$/.test(name)) fail('invalid name');
+  const component = entry.type === 'component';                                     // a component is imported through its standalone demo page
+  const registryPath = `${REGISTRY_DIRS[entry.type]}/${name}`;
+  const localDir = vendor ? path.join(vendor, registryPath) : null;
+  const local = localDir && await exists(path.join(localDir, 'registry-item.json'));
+  if (!local && !allowDownload) fail(`${name} is downloaded once from github.com/heygen-com/hyperframes (commit ${CATALOG_COMMIT.slice(0, 7)}, Apache-2.0); pass --allow-download to confirm. It is third-party code: read it before you use it.`);
   const host = new Set(['raw.githubusercontent.com']);
-  const component = entry.type === 'component';
-  const base = `${RAW_ROOT}${component ? 'components' : 'blocks'}/${name}/`;      // a component is imported through its standalone demo page
-  const meta = JSON.parse((await getBuffer(`${base}registry-item.json`, fetcher, { hosts: host, limit: 1048576 })).toString('utf8'));
+  const readItemFile = async (rel, limit = MAX_FILE) => {
+    if (!local) return getBuffer(`${RAW_ROOT}${registryPath}/${rel}`, fetcher, { hosts: host, limit });
+    const buf = await readFile(path.join(localDir, rel));
+    if (buf.length > limit) fail(`${rel} is larger than ${Math.round(limit / 1048576)} MB`);
+    return buf;
+  };
+  const meta = JSON.parse((await readItemFile('registry-item.json', 1048576)).toString('utf8'));
   if (meta.name !== name) fail('the registry item does not match the requested name');
   // Sample images and similar files that the registry hosts on its own CDN (not in the repository) are demo content: they are not downloaded, and the
   // paths the page expects are recorded so you can put your own files there.
@@ -241,18 +253,19 @@ export async function importBlock(name, { allowDownload, vars = {}, transparent,
   const defaults = Object.fromEntries((meta.variables || []).filter(v => v.default !== undefined).map(v => [v.id, v.default]));
   let total = 0;
   const bodies = new Map();
-  for (const f of files) { const b = await getBuffer(base + f, fetcher, { hosts: host }); total += b.length; if (total > MAX_TOTAL) fail('the item is larger than 40 MB'); bodies.set(f, b); }
+  for (const f of files) { const b = await readItemFile(f); total += b.length; if (total > MAX_TOTAL) fail('the item is larger than 40 MB'); bodies.set(f, b); }
   // compositions mounted from other files are inlined first (only plain ./name.html files next to the page)
   const fragments = new Map();
   const source = await inlineMounts(bodies.get(mainName).toString('utf8'), async rel => {
-    if (!fragments.has(rel)) { const b = await getBuffer(base + rel, fetcher, { hosts: host }); total += b.length; if (total > MAX_TOTAL) fail('the item is larger than 40 MB'); fragments.set(rel, b.toString('utf8')); }
+    if (!fragments.has(rel)) { const b = await readItemFile(rel); total += b.length; if (total > MAX_TOTAL) fail('the item is larger than 40 MB'); fragments.set(rel, b.toString('utf8')); }
     return fragments.get(rel);
   });
   const scan = scanBlock(source);
   if (scan.issues.length) fail(`${name} cannot run offline in Video Monk because ${scan.issues.join('; and ')}`);
+  if (scan.fontLinks.length && !allowDownload) fail(`${name} needs its fonts from Google Fonts, which are embedded once at import; pass --allow-download to confirm`);
   const fonts = scan.fontLinks.length ? await inlineGoogleFonts(scan.fontLinks, fetcher) : { css: '', warnings: [] };
   const license = meta.license || 'Apache-2.0';
-  const header = [`Imported by Video Monk from the HyperFrames catalog: ${meta.title || name}`, `Source: https://github.com/heygen-com/hyperframes (commit ${CATALOG_COMMIT.slice(0, 7)}), registry/${component ? 'components' : 'blocks'}/${name}`,
+  const header = [`Imported by Video Monk from the HyperFrames catalog: ${meta.title || name}`, `Source: https://github.com/heygen-com/hyperframes (commit ${CATALOG_COMMIT.slice(0, 7)}), registry/${registryPath}`,
     `Licence: ${license}${meta.author ? `; author: ${meta.author}` : ''}; Copyright 2026 HeyGen, Inc. and contributors. Licensed under the Apache License, Version 2.0 (http://www.apache.org/licenses/LICENSE-2.0).`,
     'Changed by Video Monk: libraries loaded from the local library vault, fonts inlined, mounted compositions inlined, a seek bridge added.'].join('\n');
   // overlays (lower thirds, bugs, effects over footage) get a transparent page; a full-screen scene keeps its own background
@@ -277,7 +290,7 @@ export async function importBlock(name, { allowDownload, vars = {}, transparent,
     }
   }
   const libs = [...(scan.usesGsap ? ['gsap'] : []), ...(scan.lottieTags.length ? ['lottie-web'] : [])];
-  const item = { name, type: entry.type, sampleAssetsNotIncluded: external.slice(0, 40), sampleAssetCount: external.length, placeholdersMade: made, title: meta.title || name, license, author: meta.author || null, commit: CATALOG_COMMIT, source: `https://github.com/heygen-com/hyperframes/tree/${CATALOG_COMMIT}/registry/${component ? 'components' : 'blocks'}/${name}`,
+  const item = { name, type: entry.type, sampleAssetsNotIncluded: external.slice(0, 40), sampleAssetCount: external.length, placeholdersMade: made, title: meta.title || name, license, author: meta.author || null, commit: CATALOG_COMMIT, source: `https://github.com/heygen-com/hyperframes/tree/${CATALOG_COMMIT}/registry/${registryPath}`, from: local ? 'vendored' : 'download',
     width: meta.dimensions?.width || pick(source, /data-width="(\d+)"/) || pick(source, /name="viewport"[^>]*width=(\d+)/), height: meta.dimensions?.height || pick(source, /data-height="(\d+)"/) || pick(source, /name="viewport"[^>]*height=(\d+)/), duration: meta.duration || pick(source, /data-duration="([\d.]+)"/),
     variables: (meta.variables || []).map(v => ({ id: v.id, type: v.type, label: v.label, default: v.default })),
     vars, transparent: clear, needs: { gsap: scan.usesGsap, libs, plugins: scan.plugins, webgpu: scan.webgpu }, warnings: [...fonts.warnings, ...(external.length ? [`${external.length} sample image(s) are not included (they are demo content hosted by HeyGen); ${made ? `${made} plain colour placeholders stand in for them` : 'none were created'}: put your own files at the same paths in the imported folder`] : []), ...(scan.webgpu ? ['needs WebGPU: it renders only on a computer whose Chrome supports it'] : [])], importedAt: new Date().toISOString() };

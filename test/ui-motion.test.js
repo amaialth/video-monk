@@ -124,7 +124,7 @@ test('the captured HyperFrames catalog is served read-only with statuses, groups
   assert.ok(json.count >= 440);
   const names = new Set(json.items.map(i => i.name));
   assert.equal(names.size, json.items.length);
-  for (const i of json.items) { assert.ok(['adapt', 'have', 'defer', 'skip'].includes(i.status), i.name); assert.match(i.url, /^https:\/\/hyperframes\.heygen\.com\/catalog\//); assert.ok(i.group, i.name); }
+  for (const i of json.items) { assert.ok(['adapt', 'have', 'defer', 'skip', 'reference'].includes(i.status), i.name); assert.match(i.url, i.type === 'example' ? /^https:\/\/github\.com\/heygen-com\/hyperframes\/tree\// : /^https:\/\/hyperframes\.heygen\.com\/catalog\//); assert.ok(i.group, i.name); assert.ok(['ok', 'refused', 'skipped'].includes(i.offline?.import), i.name); }
   assert.ok(json.items.filter(i => i.top).length >= 30);
   assert.ok(json.items.find(i => i.name === 'cursor-zoom-follow').top);
   assert.ok(json.items.filter(i => i.status === 'defer').every(i => i.needs.includes('webgpu')));

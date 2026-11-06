@@ -1,7 +1,7 @@
-# HyperFrames catalog, captured for Video Monk
+# HyperFrames catalog, vendored in Video Monk
 
-The HyperFrames catalog (https://hyperframes.heygen.com/catalog, by HeyGen, Apache License 2.0) lists 448 reusable scenes, transitions, captions, overlays, effects and components. All 448 are inventoried in `assets/hyperframes-catalog.json` (inside the installed package: name, group, what it needs, status, link) and browsable in the web app's Motion studio, Catalog tab.
-It was captured by **reading** the open-source registry (github.com/heygen-com/hyperframes, commit 47ddded). **Nothing from it was run or rendered**, and none of its code is bundled. Every statement about portability below comes from reading the code and is untested.
+The HyperFrames catalog (https://hyperframes.heygen.com/catalog, by HeyGen, Apache License 2.0) has 457 items: 448 reusable scenes, transitions, captions, overlays, effects and components, and 9 whole project examples. All are inventoried in `assets/hyperframes-catalog.json` (name, group, what it needs, status, offline result, link) and browsable in the web app's Motion studio, Catalog tab.
+Its whole registry is **vendored unchanged** in `vendor/hyperframes/registry` (github.com/heygen-com/hyperframes, commit 18fc75d, with its LICENSE and CREDITS.md; refresh with `scripts/vendor-hyperframes.mjs`). The npm package leaves that folder out, and there the importer downloads each item from the same commit. Each entry's `offline` field records what happened when it was imported and played in the renderer (`motion-catalog --info <name>`, and the Catalog tab's filter); `status` and the notes below come from reading the code.
 
 ## What the catalog is, and what it takes to use an item
 
@@ -166,16 +166,16 @@ Not built: the long tail of 300+ other items (see the lists below). Importable b
 
 ## Using a catalog block: `video-monk motion-catalog --import`
 
-Standalone **blocks** can be imported and played offline. This was built, and tested end to end on real blocks (`lt-clean-bar`, `data-chart`); components (paste-in fragments) cannot be imported and are rebuilt as templates.
+Blocks, and components through their demo page, can be imported and played offline. A `{ "catalog": "<name>" }` beat in `motion-video` imports its item by itself, so `--import` is only needed to set variables up front, to choose transparency, or to embed Google Fonts.
 
 ```
 video-monk libs --add gsap --allow-download                       # once: the block's animation library
 video-monk motion-catalog --list --status adapt --group "Lower thirds"
-video-monk motion-catalog --import lt-color-block --allow-download   # once per block: a fixed commit of github.com/heygen-com/hyperframes, Apache-2.0
+video-monk motion-catalog --import lt-color-block                 # from vendor/hyperframes, no network; add --allow-download if the block embeds Google Fonts
 video-monk motion-catalog --import data-chart --allow-download --vars '{"title":"..."}'   # blocks that declare variables take them here
 ```
 
-What the importer does: downloads the block's files from **one fixed commit on raw.githubusercontent.com** (no other host, 40 MB limit); swaps the GSAP script for the library vault; embeds Google Fonts (latin subset) as data; adds a small bridge (`__hyperframes.getVariables()`, `assetUrl()`, and a `__seek(t)` that seeks every timeline the block registered and holds the last frame); keeps the Apache-2.0 header; and caches it under `~/.video-monk/catalog/<name>/`.
+What the importer does: reads the block's files from `vendor/hyperframes` (from **one fixed commit on raw.githubusercontent.com** when that folder is absent; no other host, 40 MB limit); swaps the GSAP script for the library vault; embeds Google Fonts (latin subset) as data; adds a small bridge (`__hyperframes.getVariables()`, `assetUrl()`, and a `__seek(t)` that seeks every timeline the block registered and holds the last frame); keeps the Apache-2.0 header; and caches it under `~/.video-monk/catalog/<name>/`.
 It **refuses** a block that cannot run offline: it plays video or audio, mounts nested compositions, loads data at run time, needs WebGPU, loads a library other than GSAP (three.js, D3 and others), loads remote images, or needs a GSAP plugin not in the vault. Skipped items (brand imitations) are refused too.
 
 Using an imported block:

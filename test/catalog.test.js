@@ -1,10 +1,13 @@
 import './setup.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, realpath, rm, readFile } from 'node:fs/promises';
+import { access, mkdtemp, realpath, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { scanBlock, convertBlock, inlineMounts, extractTemplate, unwrapRootTemplate, importBlock, listImported, findImported, removeImported, inlineGoogleFonts, catalogEntry, CATALOG_COMMIT } from '../src/catalog.js';
+import { scanBlock, convertBlock, inlineMounts, extractTemplate, unwrapRootTemplate, importBlock as importFrom, listImported, findImported, removeImported, inlineGoogleFonts, catalogEntry, CATALOG_COMMIT, VENDOR_ROOT, catalogData } from '../src/catalog.js';
+
+// These tests pin the download route with a fake network; the vendored route has its own tests at the end.
+const importBlock = (name, options) => importFrom(name, { vendor: null, ...options });
 
 async function temporary(t) {
   const folder = await realpath(await mkdtemp(path.join(tmpdir(), 'video-monk-cat-')));
@@ -311,4 +314,39 @@ test('the bridge makes window.__timelines exist, and reports unhandled rejection
   assert.deepEqual(win.__timelines, {});
   listeners.unhandledrejection({ reason: new Error('boom') });
   assert.deepEqual(win.__vmErrors, ['unhandled: boom']);
+});
+
+const noNetwork = async url => { throw new Error(`network used: ${url}`); };
+
+test('the vendored registry holds every inventory item at the commit the importer names', async () => {
+  const stamp = JSON.parse(await readFile(new URL('../vendor/hyperframes/VENDORED.json', import.meta.url), 'utf8'));
+  assert.equal(stamp.commit, CATALOG_COMMIT);
+  await access(new URL('../vendor/hyperframes/LICENSE', import.meta.url));
+  const dirs = { block: 'blocks', component: 'components', example: 'examples' };
+  const { items, count } = await catalogData();
+  assert.equal(items.length, count);
+  for (const i of items) await access(path.join(VENDOR_ROOT, dirs[i.type], i.name, 'registry-item.json'));
+});
+
+test('a vendored block imports with no network and no permission, and records where it came from', async t => {
+  const root = await temporary(t);
+  const item = await importFrom('lt-clean-bar', { root, fetcher: noNetwork });
+  assert.equal(item.from, 'vendored');
+  assert.equal(item.commit, CATALOG_COMMIT);
+  assert.match(await readFile(item.file, 'utf8'), /Licensed under the Apache License/);
+});
+
+test('a vendored block that needs Google Fonts asks for permission before the one download it needs', async t => {
+  const root = await temporary(t);
+  await assert.rejects(importFrom('data-chart', { root, fetcher: noNetwork }), /Google Fonts.*--allow-download/);
+  const calls = [];
+  const fonts = async url => { calls.push(new URL(url).hostname); return new URL(url).hostname === 'fonts.googleapis.com' ? new Response(FONT_CSS) : new Response(Buffer.from('woff2-bytes')); };
+  const item = await importFrom('data-chart', { root, allowDownload: true, fetcher: fonts });
+  assert.equal(item.from, 'vendored');
+  assert.ok(calls.length && calls.every(h => h.startsWith('fonts.')), 'only font hosts are contacted');
+});
+
+test('the upstream examples are inventoried and vendored, and are refused with a reason when they cannot run offline', async t => {
+  assert.equal((await catalogEntry('nyt-graph')).type, 'example');
+  await assert.rejects(importFrom('nyt-graph', { root: await temporary(t), allowDownload: true, fetcher: noNetwork }), /nested compositions/);
 });

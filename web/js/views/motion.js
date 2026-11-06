@@ -192,7 +192,7 @@ function libsTab(body, data, track, reload) {
 }
 
 // ---------------------------------------------------------------- catalog
-const STATUS_TEXT = { have: ['Built in', 'good'], adapt: ['Portable (untested)', ''], defer: ['Needs WebGPU', 'warn'], skip: ['Skipped', ''] };
+const STATUS_TEXT = { have: ['Built in', 'good'], adapt: ['Portable (untested)', ''], defer: ['Needs WebGPU', 'warn'], reference: ['Project example', ''], skip: ['Skipped', ''] };
 // What was measured by importing every item and playing it in the offline renderer (see references/hyperframes-catalog.md)
 const offlineKind = i => (i.offline ? (i.offline.import === 'skipped' ? 'skipped' : i.offline.import !== 'ok' ? 'refused' : i.offline.verified ? 'verified' : 'unverified') : 'unknown');
 const OFFLINE_TEXT = { verified: ['Runs offline (verified)', 'good'], unverified: ['Imports; did not run cleanly', 'warn'], refused: ['Cannot run offline', ''], skipped: ['Skipped', ''], unknown: ['Not tested', ''] };
@@ -234,7 +234,7 @@ async function catalogTab(body, track) {
       hits.length > f.limit ? h('button', { class: 'btn ghost', onclick: () => { f.limit += 60; draw(); } }, `Show more (${hits.length - f.limit} left)`) : null);
   };
   mount(body,
-    h('div', { class: 'hint' }, icon('info', 18), 'The HyperFrames catalog (HeyGen, Apache-2.0). Nothing is bundled: Import downloads one standalone block, once, after you confirm, and plays it offline. It is third-party code, so read it before you publish. "Build next" marks the highest-value gaps; see references/hyperframes-catalog.md.'),
+    h('div', { class: 'hint' }, icon('info', 18), 'The HyperFrames catalog (HeyGen, Apache-2.0), kept in this project under vendor/hyperframes. Import prepares one standalone block after you confirm (only its Google Fonts are downloaded) and plays it offline. It is third-party code, so read it before you publish. "Build next" marks the highest-value gaps; see references/hyperframes-catalog.md.'),
     h('div', { class: 'row wrap mt', style: { gap: '10px' } },
       h('input', { class: 'input', placeholder: 'Search names, tags, descriptions', style: { maxWidth: '320px' }, oninput: e => { f.q = e.target.value; f.limit = 60; draw(); } }),
       h('select', { class: 'select', style: { maxWidth: '230px' }, onchange: e => { f.group = e.target.value; f.limit = 60; draw(); } }, h('option', { value: '' }, 'All groups'), groups.map(g => h('option', { value: g }, g))),
